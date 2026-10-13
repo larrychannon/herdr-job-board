@@ -84,15 +84,15 @@ export function readBoard(file) {
   try {
     state = JSON.parse(readFileSync(file, "utf8"))
   } catch (error) {
-    throw new Error(`${file} is not valid JSON (${error.message}); fix or remove it`)
+    throw new Error(`board file is not valid JSON (${error.message}); fix or remove ${file}`)
   }
   const isObject = (v) => v && typeof v === "object" && !Array.isArray(v)
   if (!isObject(state) || !Array.isArray(state.items) || !state.items.every(isObject)) {
-    throw new Error(`${file} is not a job board (it needs an "items" list of objects)`)
+    throw new Error(`board file is not a job board (it needs an "items" list of objects): ${file}`)
   }
   // An id goes into what a button sends: only positive whole numbers.
   if (!state.items.every((i) => Number.isSafeInteger(i.id) && i.id > 0)) {
-    throw new Error(`${file} is not a job board (every item id must be a positive whole number)`)
+    throw new Error(`board file is not a job board (every item id must be a positive whole number): ${file}`)
   }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}

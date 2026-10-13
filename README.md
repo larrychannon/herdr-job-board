@@ -108,13 +108,13 @@ node board.mjs add waiting "Release notes: approve" \
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
   sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
   then press again), or Herdr can't prompt it (next point).
-- **Herdr only hands messages to agents it started.** Buttons work when the coordinator was
-  started with `herdr agent start`, for example from another pane:
-  `herdr agent start coordinator --kind claude --pane <a pane at a shell prompt>` (with Claude
-  Code, `-- --continue` picks up the last conversation in that folder). A coordinator you
-  started by typing `claude` gets the message "Herdr can only hand a message to an agent
-  started with `herdr agent start`"; renaming it with `herdr agent rename` doesn't change that.
-  Use Other… and type the answer instead.
+- **Which coordinators can receive a button.** With Herdr 0.9.3, `herdr agent prompt` to a
+  Claude Code session started by typing `claude` returned `agent_not_ready`, and renaming it
+  with `herdr agent rename` didn't change that; a coordinator started with `herdr agent start`
+  receives it. To start one that way, run from another pane:
+  `herdr agent start coordinator --kind claude --pane <a pane at a shell prompt>`. Arguments for
+  the agent go after `--`, e.g. `-- --continue` to pick up the last conversation in that
+  folder. When the board can't hand an answer over, the card says so; use Other… and type it.
 - Up to 4 buttons of up to 24 characters; `--clear-options` removes them. They are for Waiting
   cards only and go away when the card leaves Waiting.
 
@@ -314,18 +314,20 @@ another file.
   that can run commands as you can also write the file directly, or type into any pane with
   `herdr pane send-text`. Even then, a button only sends its own label, with the card's id and
   title, to the coordinator, and only when you press it.
-- **Enter sends the suggested answer.** When you select a Waiting card, its suggested button
-  is already chosen, so Tab into the board and Enter sends that answer. Move with ← → first if
-  you want another one.
+- **Enter sends the chosen answer at once.** When you select a Waiting card, one button is
+  already chosen: the suggested one, or the first button when the card has no `--suggest`. So
+  Tab into the board and Enter sends that answer. Move with ← → first if you want another one.
 - **Locks.** A lock left by a process that is gone is taken back at once, but if the system has
   already given that process id to a new process, the lock waits until that one ends too (the
   writer gives up after 10 s with "the board is locked by process N"; remove the `.lock`
   folder if nothing is writing). Taking back a stale lock checks it is the same one, but two
   writers racing for it within the same instant could still overlap; it needs a crashed writer
   plus two writers within microseconds.
-- **A killed board** (`kill -9`) can't switch mouse reporting off: that pane then prints
-  mouse codes until you run `reset`. Any other way out (q, Ctrl-C, closing the pane, a crash)
-  switches it off.
+- **Restoring the terminal.** The board switches mouse reporting off and leaves its screen when
+  you quit with `q` or Ctrl-C, when it gets SIGINT, SIGTERM or SIGHUP (closing the pane sends
+  SIGHUP), and when it crashes. A kill it can't catch (`kill -9`) leaves that pane printing
+  mouse codes: run `reset`, or `printf '\e[?1000l\e[?1006l'` to switch only mouse reporting
+  off.
 
 ## Tests
 
