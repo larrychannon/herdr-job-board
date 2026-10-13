@@ -171,7 +171,7 @@ test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (sna
       const lines = r.stdout.replace(/\n$/, "").split("\n")
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
       assert.equal(lines.length, height, `exactly ${height} lines`)
-      assert.equal(lines.at(-1), "Tab section · ↑↓ scroll · q quit", "the key hint is the last line")
+      assert.equal(lines.at(-1), width >= 80 ? "Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit" : "Tab · ↑↓ · Enter · c copy · mouse: board · q", "the key hint is the last line")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
@@ -195,7 +195,7 @@ test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (sna
     // how many cards are above.
     const end = frame(88, 40, dir, "G")
     assert.match(end, /^↑ 2 above$/m)
-    assert.match(end, /5▸Deploy v1\.4: go[\s\S]*< Go ✓ >  \[ Not now \]  \[ Other… \]/)
+    assert.match(end, /5▸Deploy v1\.4: go[\s\S]*\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/)
     assert.doesNotMatch(end.split("DOING")[0], /↓ \d+ more/)
 
     // With nothing waiting, Waiting is one line and the rest goes to the bottom.

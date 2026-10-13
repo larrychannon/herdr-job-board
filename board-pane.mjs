@@ -4,28 +4,37 @@
 // board.mjs writes it.
 //
 //   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
-//   node board-pane.mjs --once [--width N] [--height N] [--color] [--keys <input>] [--origin <pane>]
+//   node board-pane.mjs --once [--width N] [--height N] [--color] [--links] [--keys <input>] [--origin <pane>]
 //
 // `board.mjs open` starts it in a split right of the calling pane. WAITING ON YOU across the
 // top; DOING, TO DO and DONE (today, newest first) in three columns below; under 70 cells wide
 // the four stack. Each card: the title, the description over up to 3 lines, for Waiting the
 // ask ("→ …"), and the age; Doing shows its agent's live status from `herdr agent list`, and a
-// blocked agent shows under Waiting. It also keeps the sidebar's $board token current.
+// blocked agent shows under Waiting. Colours come from the 16-colour palette (NO_COLOR turns
+// them off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also
+// keeps the sidebar's $board token current.
 //
-// Every section scrolls on its own, and the position holds across redraws and new cards.
-//   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   scroll one card
-//   PgUp PgDn               scroll a page           g G        top / bottom
-//   mouse wheel             scroll the section under the pointer (a click selects it)
+// Every section scrolls on its own and has a selected card; the position holds across redraws
+// and new cards.
+//   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   select a card (the view follows)
+//   PgUp PgDn               scroll a page           g G        first / last card
+//   mouse wheel             scroll the section under the pointer
+//   click, double click     select a card, open its details
+//   Enter                   open the selected card's details; Esc closes them
+//   c                       copy the card's first link, or its text (OSC 52)
+//   t                       go to the job's tab (herdr agent focus)
+//   m                       mouse capture off and on (off: the terminal selects text)
 //   q quit, r redraw
-// Waiting cards can carry answer buttons (board.mjs add … --option): in Waiting, ↑ ↓ select a
-// card, ← → a button, Enter (or a click) sends "Board card <id> (<title>): <label>" to the
-// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane for the user to type.
-// Presses run one at a time; a card answered already asks before sending again.
+// Waiting cards can carry answer buttons (board.mjs add … --option): ← → choose one (the
+// suggested first), Enter (or a click on it) sends "Board card <id> (<title>): <label>" to the
+// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane for the user to
+// type. Presses run one at a time; a card answered already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // when the text changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
 // signal and on a crash.
 //
-// --once prints one frame and exits (no colour unless --color): for tests and a quick look.
+// --once prints one frame and exits (no colour unless --color, no hyperlinks unless --links): for
+// tests and a quick look.
 // --keys feeds it input first, e.g. --keys $'\t\e[B' (next section, then one card down); a
 // button pressed there is really sent.
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
@@ -36,10 +45,13 @@ import { basename, dirname, resolve, sep } from "node:path"
 import {
   boardPath,
   buildView,
+  copyPayload,
   createAnswerer,
   emptyBoard,
+  focusAgent,
   handleInput,
   listAgentsAsync,
+  listTabsAsync,
   parseInput,
   readBoard,
   renderBoard,
@@ -48,15 +60,17 @@ import {
   textWidth,
   tokenText,
 } from "./board.mjs"
+import { osc52 } from "./links.mjs"
 
 const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, keys: "", origin: "" }
+  const opts = { interval: 3, once: false, color: null, links: false, keys: "", origin: "" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
+    else if (a === "--links") opts.links = true
     else if (a === "--color") opts.color = true
     else if (a === "--no-color") opts.color = false
     else if (["--board", "--interval", "--width", "--height", "--keys", "--origin"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
@@ -72,13 +86,13 @@ function locate(opts, env) {
   return boardPath(process.cwd(), env)
 }
 
-/** The board's data and live agents, read fresh; drawing then works from this cache. */
+/** The board's data, live agents and tab labels, read fresh; drawing then works from this cache. */
 async function load(file, env) {
-  const agents = await listAgentsAsync(env)
+  const [agents, tabs] = await Promise.all([listAgentsAsync(env), listTabsAsync(env)])
   try {
-    return { state: readBoard(file), agents, error: "" }
+    return { state: readBoard(file), agents, tabs, error: "" }
   } catch (e) {
-    return { state: emptyBoard(), agents, error: e.message }
+    return { state: emptyBoard(), agents, tabs, error: e.message }
   }
 }
 
@@ -86,12 +100,45 @@ const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new
 
 function compose(data, file, env, layout) {
   const now = clockNow(env)
-  const view = buildView(data.state, data.agents, { now, workspace: env.HERDR_WORKSPACE_ID || "" })
-  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true })
+  const workspace = env.HERDR_WORKSPACE_ID || ""
+  const view = buildView(data.state, data.agents, { now, workspace })
+  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace })
   return { drawn, token: data.error ? null : tokenText(view) }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
+/**
+ * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
+ * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
+ * only that card. t switches to the job's tab. m switches mouse capture off and on. Resolves to
+ * the footer message, if any.
+ */
+async function perform(action, ctx) {
+  if (action.type === "send" || action.type === "other") {
+    const pressed = ctx.answers.press(action)
+    if (ctx.wait) await pressed
+    return null
+  }
+  if (action.type === "mouse") {
+    ctx.mouse = !ctx.mouse
+    ctx.write(ctx.mouse ? MOUSE_ON : MOUSE_OFF)
+    return ctx.mouse ? "mouse: board" : "mouse: select · drag to select text, m gives the mouse back"
+  }
+  const entry = ctx.drawn?.entries?.[action.key]
+  if (!entry) return null
+  if (action.type === "copy") {
+    const { text, what } = copyPayload(entry)
+    ctx.write(osc52(text))
+    return what === "link" ? `copied ${text}` : `copied card ${entry.id ?? entry.job}`
+  }
+  if (action.type === "tab") {
+    if (!entry.job) return "this card has no job, so no tab"
+    const error = await focusAgent(entry.job, ctx.env)
+    return error ? `couldn't go to the tab: ${error}` : null
+  }
+  return null
+}
+
+const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   let opts
@@ -110,14 +157,19 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (opts.once) {
     let data = await load(file, env)
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
-    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true }
-    const draw = (scroll) => compose(data, file, env, { ...layout, scroll, notes: answers.notes }).drawn
+    const ctx = { answers, env, wait: true, mouse: true, drawn: null, write: (text) => process.stdout.write(text) }
+    let message = null
+    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links }
+    const draw = (scroll) =>
+      compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
+      event.at = Date.now()
       const { scroll, action } = handleInput(drawn.scroll, event, drawn)
       if (action) {
-        await answers.press(action)
+        ctx.drawn = drawn
+        message = (await perform(action, ctx)) ?? message
         data = await load(file, env)
       }
       drawn = draw(scroll)
@@ -145,12 +197,34 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   let drawn = null
   let last = ""
   let lastToken
+  const ctx = { answers, env, wait: false, mouse: true, drawn: null, write: (text) => out.write(text) }
+  // A footer message (copied, mouse mode, …) shows for a few seconds.
+  let message = null
+  let messageTimer
+  const say = (text) => {
+    if (!text) return
+    message = text
+    clearTimeout(messageTimer)
+    messageTimer = setTimeout(() => {
+      message = null
+      paint()
+    }, 5000)
+    paint()
+  }
 
   // Draw from the cache: instant for keys and resizes. One cell of margin on the right, so a
   // full last column never wraps. Synchronised update (ignored by terminals that lack it).
   const paint = () => {
     const cols = out.columns || 80
-    const result = compose(data, file, env, { width: cols - 1, height: out.rows || 24, color, scroll, notes: answers.notes })
+    const result = compose(data, file, env, {
+      width: cols - 1,
+      height: out.rows || 24,
+      color,
+      links: true,
+      scroll,
+      notes: answers.notes,
+      footer: { mouse: ctx.mouse ? "board" : "select", message },
+    })
     drawn = result.drawn
     scroll = drawn.scroll
     if (drawn.text !== last) {
@@ -215,9 +289,13 @@ async function main(argv = process.argv.slice(2), env = process.env) {
           continue
         }
         if (!drawn) continue
+        event.at = Date.now()
         const result = handleInput(scroll, event, drawn)
         scroll = result.scroll
-        if (result.action) answers.press(result.action)
+        if (result.action) {
+          ctx.drawn = drawn
+          perform(result.action, ctx).then(say, crash)
+        }
         // Redraw before the next event: keys that arrive together each see the screen the
         // previous one left.
         paint()

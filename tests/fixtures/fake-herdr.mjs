@@ -2,15 +2,31 @@
 // A stand-in for the `herdr` CLI in the board tests (HERDR_BIN_PATH points here). It keeps its
 // state in the JSON file $FAKE_HERDR_STATE: { agents, panes, log }, logs every call, and answers
 // only the commands board.mjs uses.
-import { readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 
+// The pane runs several herdr calls at once: each call holds a lock while it reads, logs and
+// writes the state, and writes it with a temp file and a rename.
 const file = process.env.FAKE_HERDR_STATE
+const lock = `${file}.lock`
+for (let i = 0; ; i++) {
+  try {
+    mkdirSync(lock)
+    break
+  } catch {
+    if (i > 500) rmSync(lock, { recursive: true, force: true })
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5)
+  }
+}
+process.on("exit", () => rmSync(lock, { recursive: true, force: true }))
 const state = JSON.parse(readFileSync(file, "utf8"))
 state.panes ||= []
 state.log ||= []
 const args = process.argv.slice(2)
 state.log.push(args)
-const save = () => writeFileSync(file, JSON.stringify(state, null, 2))
+const save = () => {
+  writeFileSync(`${file}.${process.pid}.tmp`, JSON.stringify(state, null, 2))
+  renameSync(`${file}.${process.pid}.tmp`, file)
+}
 const ok = (result) => {
   save()
   process.stdout.write(JSON.stringify({ id: "fake", result }))
@@ -34,6 +50,7 @@ if (key === "agent prompt" && process.env.FAKE_HERDR_DELAY_MS) Atomics.wait(new 
 if (key === "agent list") ok({ agents: state.agents || [], type: "agent_list" })
 if (key === "workspace report-metadata") ok({ type: "ok" })
 if (key === "pane get") pane(target) ? ok({ pane: pane(target), type: "pane_info" }) : fail(`pane ${target} not found`)
+if (key === "tab list") ok({ tabs: (state.tabs || []).filter((t) => t.workspace_id === flag("--workspace")), type: "tab_list" })
 if (key === "pane list") ok({ panes: state.panes.filter((p) => p.workspace_id === flag("--workspace")), type: "pane_list" })
 if (key === "pane split") {
   const from = pane(flag("--pane"))

@@ -76,7 +76,9 @@ test("parseInput: keys, SGR mouse reports, and junk skipped", () => {
   ])
   // A left press is a click; its release, motion, and other buttons are not.
   assert.deepEqual(parseInput("\x1b[<0;3;4M\x1b[<0;3;4m\x1b[<32;3;4M\x1b[<2;3;4M"), [{ type: "click", x: 3, y: 4 }])
-  assert.deepEqual(parseInput("x\x1b\x1b[99Xz\x1b[?1;2c"), [], "unknown keys and sequences are skipped")
+  assert.deepEqual(parseInput("xz\x1b[99X\x1b[?1;2c\x1b]11;rgb:0000/0000/0000\x07\x1b[>0;95;0c"), [], "unknown keys and the terminal's replies are skipped whole")
+  assert.deepEqual(parseInput("\x1b").map((e) => e.name), ["escape"], "Esc on its own")
+  assert.deepEqual(parseInput("ctmo").map((e) => e.name), ["copy", "tab", "mouse", "other"])
 })
 
 test("viewport: markers count the cards above and below; the offset stops at the ends", () => {
@@ -99,7 +101,7 @@ test("viewport: markers count the cards above and below; the offset stops at the
   assert.equal(viewport([], 5, 0).lines.length, 0)
 })
 
-test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓, PgUp PgDn, g G scroll and stop at the ends", () => {
+test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓ select cards, the view follows; PgUp PgDn, g G scroll", () => {
   const s = state({ waiting: 2, doing: 2, todo: 12 })
   const sel = (events) => feed(s, events).drawn.scroll.selected
   assert.equal(sel([]), "waiting")
@@ -109,25 +111,38 @@ test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓, PgUp PgD
   assert.equal(sel([key("right"), key("right")]), "todo", "→ moves on when the card has no buttons")
   const { drawn } = feed(s, [key("next")])
   assert.match(drawn.text, /^▸ DOING \(2\)/m, "the selected section's header is marked")
+  assert.match(drawn.text, /^\s*\d+▸Job \d+: build/m, "and its first card")
 
-  // To do has 12 cards: scroll it.
+  // To do has 12 cards. ↑ ↓ move the selection; the view scrolls only when it leaves it.
   const todo = (events) => feed(s, [key("next"), key("next"), ...events]).drawn
   const offset = (d) => d.sections.todo.offset
-  assert.equal(offset(todo([key("up")])), 0, "↑ at the top stays at the top")
-  assert.equal(offset(todo([key("down"), key("down")])), 2)
+  const selected = (d) => d.scroll.card
+  const start = todo([])
+  const page = start.sections.todo.page
+  assert.ok(page >= 2)
+  assert.equal(selected(todo([key("up")])), selected(start), "↑ on the first card stays")
+  const two = todo([key("down"), key("down")])
+  assert.equal(selected(two), start.sections.todo.cards[2].key)
+  assert.equal(offset(two), Math.max(0, 3 - page), "still in view: no scroll unless needed")
+  const past = todo(Array.from({ length: page }, () => key("down")))
+  assert.ok(offset(past) >= 1, "one past the page: the view moves")
+  assert.match(past.text, new RegExp(`\\d+▸Later ${start.sections.todo.cards[page].key.slice(1)}\\b`), "and the selected card is in it")
+  // The least scroll: one card less and the selected card would be out of view again.
+  const fewer = draw(s, { scroll: { ...past.scroll, anchors: { ...past.scroll.anchors, todo: { key: past.sections.todo.blockKeys[offset(past) - 1], index: offset(past) - 1 } }, card: undefined, selected: "todo" } })
+  assert.ok(fewer.sections.todo.offset < offset(past))
   const bottom = todo([key("bottom")])
   assert.equal(offset(bottom), bottom.sections.todo.maxOffset)
-  assert.equal(offset(todo([key("bottom"), key("down"), key("down")])), bottom.sections.todo.maxOffset, "↓ at the bottom stays there")
+  assert.equal(selected(bottom), start.sections.todo.cards.at(-1).key, "G selects the last card")
+  assert.equal(selected(todo([key("bottom"), key("down"), key("down")])), selected(bottom), "↓ on the last card stays")
   assert.equal(offset(todo([key("bottom"), key("top")])), 0)
-  const page = todo([]).sections.todo.page
-  assert.ok(page >= 1)
   assert.equal(offset(todo([key("pagedown")])), Math.min(page, bottom.sections.todo.maxOffset))
   assert.equal(offset(todo([key("pagedown"), key("pageup")])), 0)
   // The markers say how many cards are hidden.
-  const two = todo([key("down"), key("down")])
-  assert.match(two.text, /↑ 2 above/)
-  const shown = two.sections.todo.page
-  assert.match(two.text, new RegExp(`↓ ${12 - 2 - shown} more`))
+  const paged = todo([key("pagedown")])
+  assert.match(paged.text, new RegExp(`↑ ${offset(paged)} above`))
+  const below = 12 - offset(paged) - paged.sections.todo.page
+  if (below > 0) assert.match(paged.text, new RegExp(`↓ ${below} more`))
+  else assert.doesNotMatch(paged.text.split("TO DO")[1] ?? "", /↓ \d+ more/)
 })
 
 test("mouse: the wheel scrolls the section under the pointer, a click selects it", () => {
@@ -146,7 +161,9 @@ test("mouse: the wheel scrolls the section under the pointer, a click selects it
 
 test("scroll position holds across redraws and new cards", () => {
   const s = state({ waiting: 2, todo: 12 })
-  const scrolled = feed(s, [key("next"), key("next"), key("down"), key("down"), key("down")]).drawn
+  const todoHeader = find(draw(s), "TO DO (12)")
+  const wheelTodo = { type: "wheel", dir: "down", x: todoHeader.x + 2, y: todoHeader.y + 3 }
+  const scrolled = feed(s, [wheelTodo, wheelTodo, wheelTodo]).drawn
   assert.equal(scrolled.sections.todo.offset, 3)
   const firstShown = scrolled.sections.todo.blockKeys[3]
   // The 3-second redraw, same data: same place.
@@ -172,17 +189,25 @@ test("scroll position holds across redraws and new cards", () => {
   assert.match(withBlocked.text, /↑ 3 above/, "one more card above now")
 })
 
-test("buttons: ← → select, Enter and o press, ↑ ↓ move between cards; a click on a button presses it (88 and 120)", () => {
+test("buttons: → chooses one (the suggested first), Enter presses it; Enter alone opens details; a click on a button presses it (88 and 120)", () => {
   const s = state({ waiting: 3, withOptions: [2, 3] })
-  // Card 1 has no buttons: Enter does nothing; ↓ goes to card 2 with its suggested answer chosen.
-  assert.deepEqual(feed(s, [key("enter")]).actions, [])
+  // Card 1 has no buttons: Enter opens its details, nothing is sent.
+  const open = feed(s, [key("enter")])
+  assert.deepEqual(open.actions, [])
+  assert.equal(open.drawn.scroll.detail.key, "#1")
   const onTwo = feed(s, [key("down")]).drawn
   assert.match(onTwo.text, /2▸Card 2: approve/)
-  assert.match(onTwo.text, /< Go ✓ >  \[ Not now \]  \[ Other… \]/)
-  assert.deepEqual(feed(s, [key("down"), key("enter")]).actions, [{ type: "send", id: 2, key: "#2", label: "Go" }])
-  assert.deepEqual(feed(s, [key("down"), key("right"), key("enter")]).actions, [{ type: "send", id: 2, key: "#2", label: "Not now" }])
-  assert.deepEqual(feed(s, [key("down"), key("right"), key("right"), key("right"), key("enter")]).actions, [{ type: "other", id: 2, key: "#2" }], "→ stops at Other…")
-  assert.deepEqual(feed(s, [key("down"), key("left"), key("left"), key("enter")]).actions[0].label, "Go", "← stops at the first")
+  assert.match(onTwo.text, /\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/, "no button is chosen in advance")
+  // Enter on a card with buttons, before choosing one: details, not an answer.
+  const details = feed(s, [key("down"), key("enter")])
+  assert.deepEqual(details.actions, [])
+  assert.equal(details.drawn.scroll.detail.key, "#2")
+  assert.match(feed(s, [key("down"), key("right")]).drawn.text, /< Go ✓ >  \[ Not now \]  \[ Other… \]/, "→ chooses the suggested one")
+  assert.deepEqual(feed(s, [key("down"), key("right"), key("enter")]).actions, [{ type: "send", id: 2, key: "#2", label: "Go" }])
+  assert.deepEqual(feed(s, [key("down"), key("right"), key("right"), key("enter")]).actions, [{ type: "send", id: 2, key: "#2", label: "Not now" }])
+  assert.deepEqual(feed(s, [key("down"), key("right"), key("right"), key("right"), key("right"), key("enter")]).actions, [{ type: "other", id: 2, key: "#2" }], "→ stops at Other…")
+  assert.deepEqual(feed(s, [key("down"), key("right"), key("left"), key("left"), key("enter")]).actions[0].label, "Go", "← stops at the first")
+  assert.equal(feed(s, [key("down"), key("right"), key("escape"), key("enter")]).drawn.scroll.detail.key, "#2", "Esc un-chooses the button")
   assert.deepEqual(feed(s, [key("down"), key("down"), key("other")]).actions, [{ type: "other", id: 3, key: "#3" }])
   assert.equal(feed(s, [key("down"), key("next")]).drawn.scroll.selected, "doing", "Tab still changes section")
 
@@ -280,7 +305,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
     assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
 
-    let r = pane("\r")
+    let r = pane("\x1b[C\r")
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (${title}): Go`]], "one argv element; no shell ever sees it")
     assert.ok(!existsSync(join(base, "pwned")) && !existsSync(join(base, "pwned2")), "nothing in the title ran")
@@ -288,10 +313,10 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     assert.match(r.stdout, /sent: Go · 10:30/)
 
     // Pressing again only asks; pressing twice sends again.
-    r = pane("\r")
+    r = pane("\x1b[C\r")
     assert.match(r.stdout, /send again\? "Go" was sent already/)
     assert.equal(log().length, 1)
-    pane("\r\r")
+    pane("\x1b[C\r\r")
     assert.equal(log().length, 2)
 
     // Other…: only focuses the coordinator; nothing is typed for the user.
@@ -302,14 +327,14 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     // The coordinator is gone, blocked on a question, or not started by Herdr: one red line,
     // nothing marked sent, and never anything typed into its pane.
     rearm()
-    r = pane("\r", "w9:p7")
+    r = pane("\x1b[C\r", "w9:p7")
     assert.match(r.stdout, /couldn't send: coordinator pane not found/)
     assert.equal(items()[0].sent, undefined)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
-    assert.match(flat(pane("\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
+    assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, interactive_ready: undefined }] }))
-    assert.match(flat(pane("\r")), /couldn't send: Herdr can only hand a message to an agent started with `herdr agent start`/)
-    assert.match(pane("\r", "").stdout, /couldn't send: no coordinator pane known/)
+    assert.match(flat(pane("\x1b[C\r")), /couldn't send: Herdr can only hand a message to an agent started with `herdr agent start`/)
+    assert.match(pane("\x1b[C\r", "").stdout, /couldn't send: no coordinator pane known/)
     assert.deepEqual(typed(), [], "no send-text, no send-keys, ever")
     assert.equal(items()[0].sent, undefined)
 
@@ -327,7 +352,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     hostile.items[0].id = "7\u001b]52;c;cHduZWQ=\u0007\u001b[2J"
     writeFileSync(file, JSON.stringify(hostile))
     writeFileSync(herdr, JSON.stringify({ agents, log: [] }))
-    r = pane("\r")
+    r = pane("\x1b[C\r")
     assert.match(r.stdout, /is not a job board \(every item id must be/)
     assert.doesNotMatch(r.stdout, /\u001b|\u0007/)
     assert.deepEqual(log(), [])

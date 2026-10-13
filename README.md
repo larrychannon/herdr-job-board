@@ -48,7 +48,7 @@ DOING (2)                     TO DO (4)                     DONE (1)
 
 
 
-Tab section · ↑↓ scroll · q quit
+Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit
 ```
 
 - **WAITING ON YOU** runs across the top: what needs you. Each card shows its title, a
@@ -63,21 +63,57 @@ Tab section · ↑↓ scroll · q quit
 - **Every section scrolls on its own**, and the place you scrolled to holds while the board
   redraws and new cards arrive. "↑ 2 above" and "↓ 3 more" say what is out of view; a card is
   never hidden without saying so.
+- **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
+  WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green; the agent's state green
+  (working), red (blocked), cyan (idle or done) or grey (no agent); the `→` line amber, the
+  suggested button highlighted, and a Waiting card's age red after a day. `NO_COLOR` turns
+  colour off.
 
 ### Keys and mouse
 
 | | |
 |---|---|
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸) |
-| `↑` `↓`, `j` `k` | scroll one card; in Waiting, select a card |
-| `←` `→` in Waiting | select one of the card's buttons |
-| `Enter`, `o` | press the selected button; `o` is Other… |
-| `PgUp` `PgDn`, `g` `G` | scroll a page; go to the top / bottom |
-| mouse wheel, click | scroll the section under the pointer; click a button to press it, elsewhere to select a section |
+| `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
+| `Enter` | open the selected card's details; `Esc` closes them |
+| `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it |
+| `o` | Other… on a card with buttons |
+| `c` | copy the card's first link, or its text |
+| `t` | go to the job's tab |
+| `m` | mouse capture off (select text in the terminal) and on again |
+| `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it |
 | `q`, `r` | quit; redraw |
 
-Mouse reporting (SGR 1006) is switched on while the board runs and off again when it quits,
-gets a signal or crashes. Hold Shift to select text with the mouse, as in other terminal apps.
+The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
+`mouse: select`), plus a short message after `c`, `t` or `m`.
+
+### Card details
+
+`Enter` (or a double click) opens the selected card over the lower half of the pane: its id and
+full title, where it is and for how long, its job with the agent's live state and the job's tab,
+the full description and ask, its buttons and what was last sent, the job's report (status,
+summary, what it needs from you, PR, branch and commit, read from the card's report file) and
+when the card was created and last changed. `↑` `↓` and `PgUp` `PgDn` scroll it, `c` copies, `t`
+goes to the job's tab, `Esc` closes it. A report that is missing or isn't a JSON object shows
+"report unavailable". Report text is written by agents: it is cleaned like card text (no control
+or bidirectional characters, cut to a fixed length) and only ever shown.
+
+### Links and copying
+
+- **Links.** `http://` and `https://` URLs in cards and reports are terminal hyperlinks (OSC 8)
+  whose visible text is the URL itself, never other words. In Herdr, Ctrl-click opens them
+  (Herdr's own `ui.mouse_capture` setting decides whether Herdr or your terminal handles it). A URL that the
+  pane had to cut short is plain text. Only `http` and `https` count: not `javascript:`,
+  `data:` or `file:`, and never a `user:password@` part.
+- **Copy.** `c` puts the selected card's first link on the clipboard, or the card's text when
+  it has no link (OSC 52, at most 8000 characters), and the key line says what was copied. It
+  happens only when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
+  your terminal must allow them (most do; some ask first or need a setting such as
+  "allow clipboard access").
+- **Select text yourself.** `m` turns the board's mouse capture off: Herdr's own drag-select
+  works again (`ui.copy_on_select` decides whether selecting copies). Scrolling and buttons then
+  need the keys; `m` gives the mouse back to the board.
 
 ### Answer buttons
 
@@ -95,10 +131,13 @@ node board.mjs add waiting "Release notes: approve" \
 5 Release notes: approve                                            12 min
   Draft notes for v1.4, written from the merged PRs.
   → Read the draft, then answer
-  < Approve ✓ >  [ Needs changes ]  [ Other… ]
+  [ Approve ✓ ]  [ Needs changes ]  [ Other… ]
 ```
 
-- Click a button, or select it and press Enter: the board hands
+Choose a button with `←` `→` (the suggested one, ✓, comes first; the chosen one shows as
+`< … >`) and press `Enter`, or click it.
+
+- Click a button, or choose it and press Enter: the board hands
   `Board card <id> (<title>): <label>` to the agent in the pane that opened the board, with
   `herdr agent prompt`. Nothing else from the card is sent.
 - **Other…** (`o`) switches to that pane so you can type your answer; nothing is typed for you.
@@ -357,9 +396,13 @@ another file.
   that can run commands as you can also write the file directly, or type into any pane with
   `herdr pane send-text`. Even then, a button only sends its own label, with the card's id and
   title, to the coordinator, and only when you press it.
-- **Enter sends the chosen answer at once.** When you select a Waiting card, one button is
-  already chosen: the suggested one, or the first button when the card has no `--suggest`. So
-  Tab into the board and Enter sends that answer. Move with ← → first if you want another one.
+- **No answer without choosing.** Enter on a card opens its details; it presses a button only
+  after you chose one with ← → (the first ← or → picks the suggested one, or the first button
+  when the card has no `--suggest`). A click on a button presses it at once.
+- **Links and the clipboard.** A hyperlink's target is exactly the URL shown, checked against a
+  strict pattern; nothing else from a card becomes a link. The board writes the clipboard only
+  when you press `c`, with only the selected card's link or text; it never reads the clipboard.
+  A card's text can still be anything an agent wrote: look at a link before you open it.
 - **Locks.** A lock left by a process that is gone is taken back at once, but if the system has
   already given that process id to a new process, the lock waits until that one ends too (the
   writer gives up after 10 s with "the board is locked by process N"; remove the `.lock`

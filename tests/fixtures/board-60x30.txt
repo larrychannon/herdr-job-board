@@ -27,4 +27,4 @@ TO DO (4)
 
 DONE (1)
 12 Nightly backup check                                07:30
-Tab section · ↑↓ scroll · q quit
+Tab · ↑↓ · Enter · c copy · mouse: board · q

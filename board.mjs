@@ -49,6 +49,8 @@ import { hostname } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { findUrls, osc8 } from "./links.mjs"
+
 export const COLUMNS = ["todo", "doing", "waiting", "done"]
 const HEADINGS = { waiting: "WAITING ON YOU", doing: "DOING", todo: "TO DO", done: "DONE" }
 const SCRIPTS = dirname(fileURLToPath(import.meta.url))
@@ -303,6 +305,7 @@ function addItem(state, column, title, opts, now) {
     column,
     job: clean(opts.job),
     ask: cleanLines(opts.ask),
+    created: at,
     since: at,
     updated: at,
   }
@@ -409,6 +412,27 @@ export function listAgentsAsync(env = process.env) {
   })
 }
 
+/** Tab labels in a workspace, { tab_id: label }, from `herdr tab list`; {} when unavailable. */
+export function listTabsAsync(env = process.env) {
+  if (!inHerdr(env) || !env.HERDR_WORKSPACE_ID) return Promise.resolve({})
+  return new Promise((done) => {
+    execFile(herdrBin(env), ["tab", "list", "--workspace", env.HERDR_WORKSPACE_ID], { env, timeout: 5000 }, (error, stdout) => {
+      try {
+        const tabs = error ? [] : JSON.parse(stdout).result?.tabs || []
+        done(Object.fromEntries(tabs.filter((t) => t?.tab_id).map((t) => [t.tab_id, String(t.label ?? "")])))
+      } catch {
+        done({})
+      }
+    })
+  })
+}
+
+/** Switch the user's view to a job's agent (its tab): `herdr agent focus <name>`, argv only. */
+export function focusAgent(name, env = process.env) {
+  if (!inHerdr(env)) return Promise.resolve("not inside Herdr")
+  return herdrCall(["agent", "focus", name], env)
+}
+
 /** Report the sidebar token, or clear it when the text is empty. Returns whether it ran. */
 export function reportToken(text, env = process.env, { wait = true } = {}) {
   if (!inHerdr(env) || !env.HERDR_WORKSPACE_ID) return false
@@ -438,7 +462,8 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
   const onBoard = new Set()
   const sorted = [...state.items].sort((a, b) => a.id - b.id)
   for (const item of sorted) {
-    const entry = { ...item, live: "", report: "", age: now - new Date(item.since || item.updated || now) }
+    // `report` stays the report's path; `reportStatus` is what it says, when final.
+    const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now) }
     if (item.column === "done") {
       if (new Date(item.since) >= startOfDay) view.doneToday.push(entry)
       continue
@@ -450,7 +475,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
     }
     if (item.column === "doing" && item.report) {
       const status = readJson(item.report)?.status
-      if (["done", "blocked", "failed"].includes(status)) entry.report = status
+      if (["done", "blocked", "failed"].includes(status)) entry.reportStatus = status
     }
     if (item.column === "doing" && entry.live === "blocked") view.waiting.push(entry)
     else view[item.column]?.push(entry)
@@ -458,7 +483,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
   for (const a of agents || []) {
     if (!a.name || onBoard.has(a.name) || a.agent_status !== "blocked") continue
     if (workspace && a.workspace_id !== workspace) continue
-    view.waiting.push({ id: null, title: a.name, desc: "", ask: "", job: a.name, live: "blocked", age: null, report: "" })
+    view.waiting.push({ id: null, title: a.name, desc: "", ask: "", job: a.name, live: "blocked", age: null, reportStatus: "" })
   }
   view.doneToday.sort((a, b) => new Date(b.since) - new Date(a.since))
   // Blocked agents first: a job is stuck until the user answers it.
@@ -480,7 +505,35 @@ export function tokenText(view) {
 
 // --- drawing ----------------------------------------------------------------------------------
 
-const STYLES = { title: "1", waiting: "1;33", head: "1", selected: "1;7", button: "1", dim: "2", ask: "33", working: "32", blocked: "1;31", done: "36", idle: "33" }
+// Only the standard 16-colour palette, so it follows the terminal's theme, dark or light; and only
+// SGR codes the renderer writes itself, never text from the board.
+const STYLES = {
+  title: "1",
+  dim: "2",
+  head: "1",
+  ask: "33",
+  button: "1",
+  suggested: "1;33",
+  selected: "1;7",
+  link: "4",
+  old: "31",
+  blocked: "1;31",
+  // Section headers, and the same when selected (reverse video).
+  waiting: "1;33",
+  doing: "1;34",
+  todo: "1",
+  done: "2;32",
+  "sel-waiting": "1;7;33",
+  "sel-doing": "1;7;34",
+  "sel-todo": "1;7",
+  "sel-done": "7;32",
+  // A job's agent.
+  working: "32",
+  idle: "36",
+  finished: "36",
+  gone: "90",
+}
+const STATUS_STYLE = { working: "working", blocked: "blocked", idle: "idle", done: "finished", "no agent": "gone", unknown: "gone" }
 // Wide characters (CJK, emoji) take two cells; combining marks none.
 const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u
 const ZERO = /[\p{Mn}\p{Me}\u200b-\u200f\ufe0f]/u
@@ -493,11 +546,14 @@ const printable = (text) =>
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
     .replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
 
-/** Segments [{t, s}] cut to `width` cells (an ellipsis marks the cut) and painted. */
-function paintLine(segments, width, color) {
+/**
+ * Segments [{t, s, link}] cut to `width` cells (an ellipsis marks the cut) and painted. With
+ * `links`, a link segment shown whole becomes a terminal hyperlink whose visible text is the URL.
+ */
+function paintLine(segments, width, color, links = false) {
   let out = ""
   let used = 0
-  for (const { t, s } of segments) {
+  for (const { t, s, link } of segments) {
     const text = printable(t)
     if (!text) continue
     let piece = ""
@@ -523,11 +579,30 @@ function paintLine(segments, width, color) {
         used += 1
       }
     }
-    out += color && s && STYLES[s] && piece ? `\x1b[${STYLES[s]}m${piece}\x1b[0m` : piece
+    const shown = links && link && !cut && piece === link ? osc8(link) : piece
+    out += color && s && STYLES[s] && piece ? `\x1b[${STYLES[s]}m${shown}\x1b[0m` : shown
     if (cut) break
   }
   return { text: out, width: used }
 }
+
+/**
+ * Text as segments in style `s`, with each URL that also appears whole in the source (`urls`)
+ * as its own link segment. A URL cut by wrapping or an ellipsis is plain text.
+ */
+function linkify(text, s, urls) {
+  const segs = []
+  let at = 0
+  for (const { url, index } of findUrls(text)) {
+    if (!urls.has(url)) continue
+    if (index > at) segs.push({ t: text.slice(at, index), s })
+    segs.push({ t: url, s: "link", link: url })
+    at = index + url.length
+  }
+  if (at < text.length) segs.push({ t: text.slice(at), s })
+  return segs.length ? segs : [{ t: text, s }]
+}
+const urlsIn = (...texts) => new Set(texts.flatMap((t) => findUrls(t).map((u) => u.url)))
 
 export function formatAge(ms) {
   const min = Math.floor(Math.max(0, ms) / 60_000)
@@ -609,6 +684,7 @@ function buttonLines(entry, width, indent, selected) {
   let used = textWidth(indent.t)
   for (const b of all) {
     const on = selected === b.index
+    const suggested = b.index < options.length && options[b.index].suggested
     const text = on ? `< ${b.text} >` : `[ ${b.text} ]`
     const w = textWidth(text)
     if (line.length > 1 && used + 2 + w > width) {
@@ -620,7 +696,7 @@ function buttonLines(entry, width, indent, selected) {
       line.push({ t: "  " })
       used += 2
     }
-    line.push({ t: text, s: on ? "selected" : "button", button: { key: keyOf(entry), id: entry.id, index: b.index, label: b.label } })
+    line.push({ t: text, s: on ? "selected" : suggested ? "suggested" : "button", button: { key: keyOf(entry), id: entry.id, index: b.index, label: b.label } })
     used += w
   }
   lines.push(line)
@@ -638,22 +714,23 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
   const inner = Math.max(4, width - idWidth - 1)
   const blocked = entry.live === "blocked"
   const mark = entry.id == null ? "•" : String(entry.id)
+  const urls = urlsIn(entry.title, entry.desc, entry.ask)
   const titles = wrap(entry.title, inner, 2)
   const lines = titles.map((t, i) => [
     i ? indent : { t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" },
-    { t, s: blocked ? "blocked" : "title" },
+    ...linkify(t, blocked ? "blocked" : "title", urls),
   ])
   if (blocked) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
-  } else if (column === "doing" && (entry.live || entry.report)) {
-    const status = entry.live && entry.report ? `${entry.live}, report ${entry.report}` : entry.live || `report ${entry.report}`
-    lines.push([indent, { t: status, s: STYLES[entry.live] ? entry.live : entry.report ? "done" : "dim" }])
+  } else if (column === "doing" && (entry.live || entry.reportStatus)) {
+    const status = entry.live && entry.reportStatus ? `${entry.live}, report ${entry.reportStatus}` : entry.live || `report ${entry.reportStatus}`
+    lines.push([indent, { t: status, s: entry.live ? STATUS_STYLE[entry.live] || "gone" : "finished" }])
   }
-  for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, { t }])
+  for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
   if (column === "waiting" || blocked) {
     const asks = asksOf(entry.ask)
     for (const ask of asks.slice(0, 2)) {
-      wrap(ask, inner - 2, 2).forEach((t, i) => lines.push([indent, { t: i ? "  " : "→ ", s: "ask" }, { t, s: "ask" }]))
+      wrap(ask, inner - 2, 2).forEach((t, i) => lines.push([indent, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
     }
     if (asks.length > 2) lines.push([indent, { t: `  +${asks.length - 2} more (board.mjs json)`, s: "dim" }])
   }
@@ -665,15 +742,16 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     lines.push(...buttonLines(entry, width, indent, ui.selected ? ui.button : -1))
   }
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
-  // The age, dimmed, on the right: of the title's last line, else of the card's last line, else
-  // on a line of its own.
+  // The age, dimmed (red on a Waiting card older than a day), on the right: of the title's last
+  // line, else of the card's last line, else on a line of its own.
   const age = entry.age == null ? "" : formatAge(entry.age)
   if (age) {
+    const style = column === "waiting" && entry.age > 24 * 3600_000 ? "old" : "dim"
     const used = (line) => line.reduce((w, seg) => w + textWidth(printable(seg.t)), 0)
     const room = (line) => width - used(line) - textWidth(age)
     const line = [lines[titles.length - 1], lines.at(-1)].find((l) => room(l) >= 2)
-    if (line) line.push({ t: " ".repeat(room(line)) }, { t: age, s: "dim" })
-    else lines.push([indent, { t: age, s: "dim" }])
+    if (line) line.push({ t: " ".repeat(room(line)) }, { t: age, s: style })
+    else lines.push([indent, { t: age, s: style }])
   }
   return lines
 }
@@ -687,11 +765,12 @@ const keyOf = (entry) => (entry.id == null ? `agent:${entry.job}` : `#${entry.id
 const entriesOf = (view, section) => (section === "done" ? view.doneToday : view[section])
 
 /** A finished card: the title, with the time it was finished on the right. */
-function doneCard(entry, width, idWidth) {
+function doneCard(entry, width, idWidth, ui = {}) {
   const indent = { t: " ".repeat(idWidth + 1) }
   const inner = Math.max(4, width - idWidth - 1)
   const titles = wrap(entry.title, inner, 2)
-  const lines = titles.map((t, i) => [i ? indent : { t: `${String(entry.id).padStart(idWidth)} `, s: "dim" }, { t }])
+  const urls = urlsIn(entry.title)
+  const lines = titles.map((t, i) => [i ? indent : { t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...linkify(t, "", urls)])
   const at = clockOf(new Date(entry.since))
   const room = inner - textWidth(titles.at(-1) || "") - at.length
   if (room >= 2) lines.at(-1).push({ t: " ".repeat(room) }, { t: at, s: "dim" })
@@ -706,7 +785,9 @@ function doneCard(entry, width, idWidth) {
 export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({})) {
   const entries = entriesOf(view, section)
   const idWidth = Math.max(1, ...entries.map((e) => (e.id == null ? 1 : String(e.id).length)))
-  const draw = (e, w) => (section === "done" ? doneCard(e, w, idWidth) : card(e, section, w, idWidth, DESC_LINES, uiOf(e)))
+  // Every segment of a card knows its card, so a click can find it.
+  const draw = (e, w) =>
+    (section === "done" ? doneCard(e, w, idWidth, uiOf(e)) : card(e, section, w, idWidth, DESC_LINES, uiOf(e))).map((l) => l.map((seg) => ({ ...seg, card: keyOf(e) })))
   if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width) }))
   const gap = 3
   const cw = Math.floor((width - gap * (perRow - 1)) / perRow)
@@ -790,72 +871,203 @@ function headerLine(view, section, selected) {
   const count = entriesOf(view, section).length
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
-  segs.push({ t: `${HEADINGS[section]} (${count})`, s: selected ? "selected" : section === "waiting" && count ? "waiting" : "head" })
+  segs.push({ t: `${HEADINGS[section]} (${count})`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
   if (section === "waiting" && !count) segs.push({ t: "  Nothing needs you", s: "dim" })
   return segs
 }
 
 const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - painted.width))
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
-export const HINT = "Tab section · ↑↓ scroll · q quit"
+const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · m mouse: ${mouse} · q quit`
+const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · mouse: ${mouse} · q`
+const DETAIL_HINT = "Esc close · ↑↓ scroll · c copy · t go to tab · q quit"
+const DETAIL_HINT_NARROW = "Esc close · ↑↓ · c copy · t tab · q"
+
+// --- card details -------------------------------------------------------------------------
+
+const capText = (text, max) => {
+  const chars = [...clean(text)]
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : chars.join("")
+}
+const stamp = (iso) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${clockOf(d)}`
+}
+
+/**
+ * What a card's report says, as data for the details panel: null when the card has no report,
+ * { unavailable } when it can't be read as a JSON object, else its status, summary, needs_user
+ * and ids, each cleaned like card text and cut to a fixed length. Nothing in it is run or
+ * followed.
+ */
+export function reportFacts(path) {
+  if (!path) return null
+  const r = readJson(path)
+  if (!r || typeof r !== "object" || Array.isArray(r)) return { unavailable: true }
+  const ids = r.ids && typeof r.ids === "object" ? r.ids : {}
+  return {
+    status: capText(r.status, 40),
+    summary: capText(r.summary, 2000),
+    needs: needsList(r.needs_user).slice(0, 20).map((n) => capText(n, 600)),
+    pr: capText(ids.pr, 300),
+    branch: capText(ids.branch, 200),
+    commit: capText(ids.commit, 80),
+  }
+}
+
+/** The agent behind a job card in this workspace, and its tab's label, from Herdr's lists. */
+function agentOf(entry, agents, workspace) {
+  if (!entry.job || !Array.isArray(agents)) return null
+  return agents.find((a) => a.name === entry.job && (!workspace || a.workspace_id === workspace)) || null
+}
+
+/**
+ * The details panel's lines: the full title, where the card is and since when, its job (live
+ * status, tab), the full description, the ask, the buttons, the report, and the times.
+ */
+export function detailLines(entry, width, { agents = null, tabs = {}, workspace = "", now = new Date() } = {}) {
+  const inner = Math.max(10, width - 2)
+  const ind = { t: "  " }
+  const report = reportFacts(entry.report)
+  const urls = urlsIn(entry.title, entry.desc, entry.ask, report?.summary, report?.pr, ...(report?.needs || []))
+  const lines = []
+  const para = (text, s = "", max = 4000) => {
+    for (const t of wrap(capText(text, max), inner, Infinity)) lines.push([ind, ...linkify(t, s, urls)])
+  }
+  const id = entry.id == null ? "•" : `#${entry.id}`
+  wrap(`${id} ${entry.title}`, width, Infinity).forEach((t) => lines.push(linkify(t, "title", urls)))
+  const where = { waiting: "Waiting on you", doing: "Doing", todo: "To do", done: "Done" }[entry.column] || "Waiting on you"
+  lines.push([ind, { t: `${where}${entry.age != null ? ` · ${formatAge(entry.age)}` : ""}`, s: "dim" }])
+  if (entry.job) {
+    const agent = agentOf(entry, agents, workspace)
+    const status = entry.live || (agent ? agent.agent_status : agents ? "no agent" : "")
+    const tab = agent && tabs[agent.tab_id] ? ` · tab "${capText(tabs[agent.tab_id], 60)}"` : ""
+    lines.push([ind, { t: `job ${entry.job}`, s: "" }, ...(status ? [{ t: " · " }, { t: status, s: STATUS_STYLE[status] || "gone" }] : []), { t: tab, s: "dim" }])
+  }
+  if (entry.desc) {
+    lines.push([])
+    para(entry.desc)
+  }
+  const asks = asksOf(entry.ask)
+  if (asks.length) {
+    lines.push([])
+    for (const ask of asks) {
+      wrap(capText(ask, 2000), inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
+    }
+  }
+  const options = optionsOf(entry)
+  if (options.length) {
+    const sent = entry.sent?.label ? `   sent: ${entry.sent.label}${stamp(entry.sent.at) ? ` · ${stamp(entry.sent.at)}` : ""}` : ""
+    lines.push([ind, { t: "buttons: ", s: "dim" }, { t: options.map((o) => (o.suggested ? `${o.label} ✓` : o.label)).join(" · ") }, { t: sent, s: "dim" }])
+  }
+  if (entry.report) {
+    lines.push([])
+    lines.push([ind, { t: "report ", s: "dim" }, { t: capText(entry.report, 300) }])
+    if (!report || report.unavailable) lines.push([ind, { t: "report unavailable", s: "dim" }])
+    else {
+      if (report.status) lines.push([ind, { t: "status ", s: "dim" }, { t: report.status, s: report.status === "done" ? "finished" : report.status === "running" ? "working" : "blocked" }])
+      if (report.summary) para(report.summary)
+      for (const need of report.needs) {
+        wrap(need, inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "• ", s: "ask" }, ...linkify(t, "", urls)]))
+      }
+      const ids = [["PR", report.pr], ["branch", report.branch], ["commit", report.commit]].filter(([, v]) => v)
+      for (const [label, value] of ids) lines.push([ind, { t: `${label} `, s: "dim" }, ...linkify(value, "", urls)])
+    }
+  }
+  lines.push([])
+  const times = [["created", entry.created], ["in this column since", entry.since], ["updated", entry.updated]].filter(([, v]) => stamp(v))
+  for (const t of wrap(times.map(([k, v]) => `${k} ${stamp(v)}`).join(" · "), inner, Infinity)) lines.push([ind, { t, s: "dim" }])
+  return lines
+}
+
+/**
+ * What c copies for a card: its first link (in the title, description, ask, then the report),
+ * else the card as plain text. { text, what: "link" | "card" }.
+ */
+export function copyPayload(entry) {
+  const report = reportFacts(entry.report)
+  const sources = [entry.title, entry.desc, entry.ask, report?.pr, report?.summary, ...(report?.needs || [])]
+  for (const text of sources) {
+    const [first] = findUrls(text)
+    if (first) return { text: first.url, what: "link" }
+  }
+  const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, clean(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
+  const options = optionsOf(entry).map((o) => o.label)
+  if (options.length) parts.push(`buttons: ${options.join(" · ")}`)
+  return { text: parts.filter(Boolean).join("\n\n"), what: "card" }
+}
+
+// --- the board -----------------------------------------------------------------------------
 
 /**
  * Lay the board out in `width` × `height` cells (height Infinity: everything, no scrolling).
  * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING | TO DO | DONE in
  * three columns below. Waiting takes what it needs up to half the height (more only when the
  * bottom doesn't need it) and shrinks to one line when empty. Under STACK_BELOW cells the four
- * sections stack. Each section scrolls on its own; `scroll` is { selected, anchors } where an
- * anchor is the first visible card of a section, so the view holds still as cards come and go.
- * Returns { text, sections (per section: blockKeys, offset, maxOffset, page), regions (screen
- * rectangles, 1-based, for the mouse), scroll (with the anchors as drawn) }.
+ * sections stack. Each section scrolls on its own and has a selected card; `scroll` is
+ * { selected, anchors, card, button, detail } where an anchor is a section's first visible card,
+ * so the view holds still as cards come and go, and `detail` ({ key, offset }) opens a card's
+ * details over the lower half. `links` turns whole URLs into terminal hyperlinks; `footer`
+ * ({ message, mouse }) adds to the key hint line.
+ * Returns { text, sections (per section: blockKeys, offset, maxOffset, page, cards), regions
+ * (screen rectangles, 1-based), buttons and cardHits (where each button and card is, for the
+ * mouse), entries (by key), scroll (as drawn) }.
  */
 export function renderBoard(view, opts = {}) {
-  const { height = Infinity, color = false, now = new Date(), repo = "", error = "", interactive = false } = opts
+  const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
   const width = Math.max(20, Math.floor(opts.width ?? 100))
   const scroll = { ...(opts.scroll || {}), selected: opts.scroll?.selected || "waiting", anchors: { ...(opts.scroll?.anchors || {}) } }
   const notes = opts.notes || {}
   const finite = Number.isFinite(height)
-  const paint = (segs, w = width) => paintLine(segs, w, color)
+  const paint = (segs, w = width) => paintLine(segs, w, color, links)
 
   const clock = clockOf(now)
   const name = `Job board${repo ? ` · ${repo}` : ""}`
   const out = [pad(paint([{ t: name, s: "title" }], width - clock.length - 1), width - clock.length) + paint([{ t: clock, s: "dim" }], clock.length).text]
   if (error) out.push(paint([{ t: error, s: "blocked" }]).text)
   out.push("")
-  const hint = interactive ? paint([{ t: HINT, s: "dim" }]).text : null
   const sections = {}
   const regions = {}
   const buttons = []
-  // Where each button lands on the screen (1-based), for clicks.
+  const cardHits = []
+  const entries = Object.fromEntries(SECTIONS.flatMap((s) => entriesOf(view, s).map((e) => [keyOf(e), { ...e, column: e.column ?? s }])))
+  // Paint a line at screen row `row` from column `left`, noting where its buttons and cards are.
   const emit = (segs, row, left, w) => {
     let x = left
     for (const seg of segs) {
       const sw = textWidth(printable(seg.t))
-      if (seg.button && x < left + w) buttons.push({ ...seg.button, y: row, x0: x, x1: Math.min(x + sw, left + w) - 1 })
+      const x1 = Math.min(x + sw, left + w) - 1
+      if (sw && x < left + w) {
+        if (seg.button) buttons.push({ ...seg.button, y: row, x0: x, x1 })
+        if (seg.card) {
+          const last = cardHits.at(-1)
+          if (last && last.key === seg.card && last.y === row && last.x1 >= x - 1) last.x1 = x1
+          else cardHits.push({ key: seg.card, y: row, x0: x, x1 })
+        }
+      }
       x += sw
     }
-    return paint(segs, w).text.trimEnd()
+    return paint(segs, w)
   }
-  // The Waiting card that has the keyboard: the one chosen with ↑ ↓, else the first one shown.
-  const waitingCards = view.waiting.map((e) => ({ key: keyOf(e), entry: e, buttons: e.id != null && optionsOf(e).length ? optionsOf(e).length + 1 : 0 }))
-  const waitingUi = (perRow, w, h) => {
-    const plain = sectionBlocks(view, "waiting", w, perRow, (e) => ({ note: notes[keyOf(e)] }))
-    if (!interactive || scroll.selected !== "waiting" || !waitingCards.length) return plain
-    const anchor = scroll.anchors.waiting
+
+  // Cards carry their notes everywhere, so heights are the same before and after selection.
+  const noted = (e) => ({ note: notes[keyOf(e)] })
+  // The selected section's selected card: the one chosen, else the first one in view. Its
+  // button is chosen only with ← →, never in advance.
+  const uiFor = (section, perRow, w, h) => {
+    const plain = sectionBlocks(view, section, w, perRow, noted)
+    const list = entriesOf(view, section)
+    if (!interactive || scroll.selected !== section || !list.length) return plain
+    const anchor = scroll.anchors[section]
     const at = anchor ? Math.max(0, plain.findIndex((b) => b.keys.includes(anchor.key))) : 0
     const v = viewport(plain, h, at)
-    let current = waitingCards.find((c) => c.key === scroll.card)
-    if (!current) current = waitingCards.find((c) => c.key === plain[v.offset]?.keys[0]) || waitingCards[0]
-    if (scroll.card !== current.key || !(scroll.button >= 0 && scroll.button < current.buttons)) {
-      const suggested = optionsOf(current.entry).findIndex((o) => o.suggested)
-      scroll.button = current.buttons ? Math.max(0, suggested) : -1
-    }
-    scroll.card = current.key
-    return sectionBlocks(view, "waiting", w, perRow, (e) => ({
-      selected: keyOf(e) === current.key,
-      button: keyOf(e) === current.key ? scroll.button : -1,
-      note: notes[keyOf(e)],
-    }))
+    let current = list.find((e) => keyOf(e) === scroll.card)
+    if (!current) current = list.find((e) => keyOf(e) === plain[v.offset]?.keys[0]) || list[0]
+    const count = section === "waiting" && current.id != null && optionsOf(current).length ? optionsOf(current).length + 1 : 0
+    if (scroll.card !== keyOf(current) || !(scroll.button >= 0 && scroll.button < count)) scroll.button = -1
+    scroll.card = keyOf(current)
+    return sectionBlocks(view, section, w, perRow, (e) => ({ ...noted(e), selected: keyOf(e) === scroll.card, button: keyOf(e) === scroll.card ? scroll.button : -1 }))
   }
 
   // Where a section's anchor (its first visible card) is now.
@@ -868,22 +1080,43 @@ export function renderBoard(view, opts = {}) {
   // Lines a section really uses in `h` lines (whole cards only, so often fewer).
   const used = (section, blocks, h) => (blocks.length ? 1 + viewport(blocks, h - 1, offsetOf(section, blocks)).lines.length : Math.min(h, section === "waiting" ? 1 : 2))
   const place = (section, blocks, h) => {
-    const v = viewport(blocks, h, offsetOf(section, blocks))
-    sections[section] = { blockKeys: blocks.map((b) => b.keys[0]), blockCards: blocks.map((b) => b.keys), offset: v.offset, maxOffset: v.maxOffset, page: v.page }
+    let v = viewport(blocks, h, offsetOf(section, blocks))
+    // The selected card stays in view: scroll the least that shows it.
+    if (interactive && section === scroll.selected && scroll.card && Number.isFinite(h)) {
+      const b = blocks.findIndex((x) => x.keys.includes(scroll.card))
+      if (b >= 0 && b < v.offset) v = viewport(blocks, h, b)
+      while (b >= 0 && b >= v.offset + v.page && v.offset < v.maxOffset) v = viewport(blocks, h, v.offset + 1)
+    }
+    const blockCards = blocks.map((b) => b.keys)
+    sections[section] = {
+      blockKeys: blocks.map((b) => b.keys[0]),
+      blockCards,
+      offset: v.offset,
+      maxOffset: v.maxOffset,
+      page: v.page,
+      cards: entriesOf(view, section).map((e) => ({
+        key: keyOf(e),
+        id: e.id,
+        buttons: section === "waiting" && e.id != null && optionsOf(e).length ? optionsOf(e).length + 1 : 0,
+        labels: optionsOf(e).map((o) => o.label),
+        suggested: Math.max(0, optionsOf(e).findIndex((o) => o.suggested)),
+        block: Math.max(0, blockCards.findIndex((keys) => keys.includes(keyOf(e)))),
+      })),
+    }
     if (blocks.length) scroll.anchors[section] = { key: blocks[v.offset].keys[0], index: v.offset }
     else delete scroll.anchors[section]
     return blocks.length ? v.lines : [[{ t: "nothing", s: "dim" }]]
   }
   const header = (section) => headerLine(view, section, interactive && scroll.selected === section)
-  const room = finite ? height - out.length - (hint ? 1 : 0) : Infinity
+  const room = finite ? height - out.length - (interactive ? 1 : 0) : Infinity
 
   if (width >= STACK_BELOW) {
     const gap = 3
     const cw = Math.floor((width - 2 * gap) / 3)
     const perRow = width >= 110 ? 2 : 1
-    let wBlocks = sectionBlocks(view, "waiting", width, perRow, (e) => ({ note: notes[keyOf(e)] }))
+    let wBlocks = sectionBlocks(view, "waiting", width, perRow, noted)
     const bottom = ["doing", "todo", "done"]
-    const bBlocks = bottom.map((c) => sectionBlocks(view, c, cw))
+    const bBlocks = bottom.map((c) => sectionBlocks(view, c, cw, 1, noted))
     const wWant = wBlocks.length ? 1 + contentHeight(wBlocks) : 1
     const bWant = 1 + Math.max(...bBlocks.map(contentHeight))
     let wH = wWant
@@ -896,30 +1129,30 @@ export function renderBoard(view, opts = {}) {
     const wTop = out.length + 1
     out.push(paint(header("waiting")).text)
     if (wBlocks.length) {
-      wBlocks = waitingUi(perRow, width, wH - 1)
+      wBlocks = uiFor("waiting", perRow, width, wH - 1)
       // Lines Waiting can't fill with whole cards go to the bottom.
       if (finite) {
         wH = used("waiting", wBlocks, wH)
         bH = Math.max(2, room - 1 - wH)
       }
-      for (const l of place("waiting", wBlocks, wH - 1)) out.push(emit(l, out.length + 1, 1, width))
+      for (const l of place("waiting", wBlocks, wH - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
     } else place("waiting", wBlocks, 0)
     regions.waiting = { top: wTop, bottom: out.length, left: 1, right: width }
     out.push("")
     const bTop = out.length + 1
-    const bodies = bottom.map((c, i) => place(c, bBlocks[i], bH - 1))
-    const row = (cells) => cells.map((segs, i) => (i < 2 ? pad(paint(segs, cw), cw + gap) : paint(segs, cw).text)).join("").trimEnd()
-    out.push(row(bottom.map(header)))
+    const bodies = bottom.map((c, i) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
+    const row = (cells, y) => cells.map((segs, i) => (i < 2 ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
+    out.push(row(bottom.map(header), out.length + 1))
     const rows = finite ? bH - 1 : Math.max(...bodies.map((b) => b.length))
-    for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || [])))
+    for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || []), out.length + 1))
     bottom.forEach((c, i) => {
       regions[c] = { top: bTop, bottom: bTop + rows, left: 1 + i * (cw + gap), right: i * (cw + gap) + cw }
     })
   } else {
-    const all = SECTIONS.map((s) => sectionBlocks(view, s, width, 1, (e) => ({ note: notes[keyOf(e)] })))
+    let all = SECTIONS.map((s) => sectionBlocks(view, s, width, 1, noted))
     const wants = all.map((blocks, i) => (blocks.length ? 1 + contentHeight(blocks) : SECTIONS[i] === "waiting" ? 1 : 2))
     const heights = finite ? share(wants, room - (SECTIONS.length - 1)) : wants
-    if (all[0].length) all[0] = waitingUi(1, width, heights[0] - 1)
+    all = all.map((blocks, i) => (blocks.length ? uiFor(SECTIONS[i], 1, width, heights[i] - 1) : blocks))
     if (finite) {
       // Each section keeps the lines it fills with whole cards; the rest goes to the first one
       // (Waiting, then Doing, To do, Done) that shows more cards with it.
@@ -942,28 +1175,51 @@ export function renderBoard(view, opts = {}) {
       if (i) out.push("")
       const sTop = out.length + 1
       out.push(paint(header(s)).text)
-      if (s !== "waiting" || all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width))
+      if (s !== "waiting" || all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
       else place(s, all[i], 0)
       regions[s] = { top: sTop, bottom: out.length, left: 1, right: width }
     })
   }
 
-  const lines = finite ? out.slice(0, height - (hint ? 1 : 0)) : out
-  if (hint) {
+  const lines = finite ? out.slice(0, height - (interactive ? 1 : 0)) : out
+
+  // A card's details, over the lower half.
+  const detailEntry = interactive && scroll.detail ? entries[scroll.detail.key] : null
+  if (scroll.detail && !detailEntry) delete scroll.detail
+  if (detailEntry) {
     if (finite) while (lines.length < height - 1) lines.push("")
-    lines.push(hint)
+    const top = finite ? Math.floor(height / 2) : lines.length
+    const body = detailLines(detailEntry, width, { agents: opts.agents, tabs: opts.tabs, workspace: opts.workspace, now })
+    const room2 = finite ? height - 1 - top - 1 : body.length
+    const maxOffset = Math.max(0, body.length - room2)
+    const offset = Math.max(0, Math.min(scroll.detail.offset || 0, maxOffset))
+    scroll.detail = { key: scroll.detail.key, offset, maxOffset, page: Math.max(1, room2 - 1) }
+    const label = ` card ${detailEntry.id ?? detailEntry.job} ${offset ? `· ↑ ${offset} lines above ` : ""}${offset < maxOffset ? `· ↓ ${maxOffset - offset} more ` : ""}`
+    const rule = [{ t: "──", s: "dim" }, { t: label, s: "head" }, { t: "─".repeat(Math.max(0, width - 2 - textWidth(label))), s: "dim" }]
+    const panel = [rule, ...body.slice(offset, offset + room2)]
+    for (let i = 0; i < panel.length; i++) lines[top + i] = emit(panel[i], top + i + 1, 1, width).text.trimEnd()
+    if (finite) lines.length = height - 1
+    regions.detail = { top: top + 1, bottom: top + panel.length, left: 1, right: width }
   }
-  // The Waiting cards in order, for the keyboard: which block each is in, and its buttons.
-  if (sections.waiting) {
-    sections.waiting.cards = waitingCards.map((c) => ({
-      key: c.key,
-      id: c.entry.id,
-      buttons: c.buttons,
-      labels: optionsOf(c.entry).map((o) => o.label),
-      block: Math.max(0, sections.waiting.blockCards.findIndex((keys) => keys.includes(c.key))),
-    }))
+  // Nothing under the details panel can be clicked.
+  const covered = (y) => regions.detail && y >= regions.detail.top
+  if (interactive) {
+    if (finite) while (lines.length < height - 1) lines.push("")
+    const mouse = opts.footer?.mouse || "board"
+    const wide = width >= 80
+    const keys = detailEntry ? (wide ? DETAIL_HINT : DETAIL_HINT_NARROW) : wide ? HINT(mouse) : HINT_NARROW(mouse)
+    const message = opts.footer?.message
+    lines.push(paint([...(message ? [{ t: message, s: "ask" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
-  return { text: lines.join("\n"), sections, regions, buttons: buttons.filter((b) => b.y <= lines.length), scroll }
+  return {
+    text: lines.join("\n"),
+    sections,
+    regions,
+    buttons: buttons.filter((b) => b.y <= lines.length && !covered(b.y)),
+    cardHits: cardHits.filter((c) => c.y <= lines.length && !covered(c.y)),
+    entries,
+    scroll,
+  }
 }
 
 /** The board as text, everything shown (for `ls`), or as the pane draws it. */
@@ -975,12 +1231,28 @@ export function render(view, opts = {}) {
 
 const LETTER_KEYS = { A: "up", B: "down", C: "right", D: "left", Z: "prev", H: "top", F: "bottom" }
 const TILDE_KEYS = { 1: "top", 7: "top", 4: "bottom", 8: "bottom", 5: "pageup", 6: "pagedown" }
-const CHAR_KEYS = { "\t": "next", j: "down", k: "up", g: "top", G: "bottom", q: "quit", "\x03": "quit", r: "redraw", "\r": "enter", "\n": "enter", o: "other" }
+const CHAR_KEYS = {
+  "\t": "next",
+  j: "down",
+  k: "up",
+  g: "top",
+  G: "bottom",
+  q: "quit",
+  "\x03": "quit",
+  r: "redraw",
+  "\r": "enter",
+  "\n": "enter",
+  o: "other",
+  c: "copy",
+  t: "tab",
+  m: "mouse",
+}
 
 /**
  * Terminal input as events: { type: "key", name } (next and prev for Tab and Shift-Tab, left,
- * right, up, down, pageup, pagedown, top, bottom, enter, other, quit, redraw), { type: "wheel", dir: "up" | "down", x, y } and
- * { type: "click", x, y } from SGR (1006) mouse reports. Anything else is skipped.
+ * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, tab, mouse, quit,
+ * redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
+ * (1006) mouse reports. Anything else is skipped.
  */
 export function parseInput(text) {
   const events = []
@@ -995,11 +1267,27 @@ export function parseInput(text) {
       i += m[0].length
       continue
     }
-    m = /^\x1b[[O]([0-9;]*)([@-~])/.exec(rest)
+    // Keys are CSI or SS3 sequences with plain numeric parameters. Anything else that starts
+    // a control sequence (a terminal's replies such as ESC [?1;2c or ESC ]11;…BEL, other
+    // private sequences) is skipped whole, so none of its characters is read as a key.
+    m = /^\x1b(?:\[([0-9;?<>=]*)[ -\/]*([@-~])|O([@-~]))/.exec(rest)
     if (m) {
-      const name = m[2] === "~" ? TILDE_KEYS[m[1].split(";")[0]] : LETTER_KEYS[m[2]]
+      const params = m[1] ?? ""
+      const final = m[2] ?? m[3]
+      const name = /[?<>=]/.test(params) ? null : final === "~" ? TILDE_KEYS[params.split(";")[0]] : LETTER_KEYS[final]
       if (name) events.push({ type: "key", name })
       i += m[0].length
+      continue
+    }
+    m = /^\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)?/.exec(rest)
+    if (m && rest.length > 1) {
+      i += m[0].length
+      continue
+    }
+    // Escape on its own (not the start of a sequence) is the Esc key.
+    if (text[i] === "\x1b") {
+      events.push({ type: "key", name: "escape" })
+      i += 1
       continue
     }
     const name = CHAR_KEYS[text[i]]
@@ -1011,26 +1299,35 @@ export function parseInput(text) {
 
 const sectionAt = (regions, x, y) =>
   SECTIONS.find((s) => regions[s] && y >= regions[s].top && y <= regions[s].bottom && x >= regions[s].left && x <= regions[s].right)
+const DOUBLE_CLICK_MS = 400
 
 /**
  * One input event against the screen the user sees (`drawn`, from renderBoard): the new state
- * ({ selected, anchors, card, button }) and maybe an action for the pane to carry out:
- * { type: "send", id, key, label } or { type: "other", id, key }.
- * - Tab / Shift-Tab, ← → select a section; ↑ ↓ scroll it, PgUp PgDn a page, g G to the ends,
- *   the mouse wheel the section under the pointer. Scrolling stops at the ends.
- * - In Waiting, ↑ ↓ select a card (scrolling to keep it in view), ← → select one of its
- *   buttons, Enter presses it, o is Other…; a click on a button presses it.
+ * and maybe an action for the pane to carry out: { type: "send", id, key, label },
+ * { type: "other", id, key }, { type: "copy", key }, { type: "tab", key } or { type: "mouse" }.
+ * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them; ↑ ↓ select a
+ *   card in the section, scrolling to keep it in view; PgUp PgDn scroll a page, g G go to the
+ *   ends; the mouse wheel scrolls the section under the pointer.
+ * - Enter opens the selected card's details (Esc closes them), or, once ← → chose one of its
+ *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
+ *   mouse capture. A click selects a card, a double click opens it, a click on a button
+ *   presses it.
+ * Events may carry `at` (ms), used for double clicks.
  */
 export function handleInput(scroll, event, drawn) {
   const next = { ...scroll, selected: scroll.selected || "waiting", anchors: { ...(scroll.anchors || {}) } }
   let action = null
+  const name = event.type === "key" ? event.name : event.type
+  const s = next.selected
+  const cards = drawn.sections[s]?.cards || []
+  const current = cards.find((c) => c.key === next.card) || null
   const scrollTo = (section, to) => {
     const info = drawn.sections[section]
     if (!info || !info.blockKeys.length) return
     const o = Math.max(0, Math.min(to, info.maxOffset))
     next.anchors[section] = { key: info.blockKeys[o], index: o }
-    // Scrolling Waiting moves its keyboard to the first card in view.
-    if (section === "waiting") {
+    // Scrolling the selected section moves its selection to the first card in view.
+    if (section === next.selected) {
       delete next.card
       next.button = -1
     }
@@ -1042,48 +1339,92 @@ export function handleInput(scroll, event, drawn) {
     const label = index < card.labels.length ? card.labels[index] : null
     return label === null ? { type: "other", id: card.id, key: card.key } : { type: "send", id: card.id, key: card.key, label }
   }
-  const s = next.selected
-  const cards = drawn.sections.waiting?.cards || []
-  const current = s === "waiting" ? cards.find((c) => c.key === next.card) : null
-  const name = event.type === "key" ? event.name : event.type
+  const selectSection = (section) => {
+    if (section !== next.selected) {
+      next.selected = section
+      delete next.card
+      next.button = -1
+    }
+  }
+  const detail = next.detail ? { ...next.detail } : null
+
+  // With the details open, keys work on them.
+  if (detail && event.type === "key") {
+    const page = detail.page || 1
+    if (name === "escape" || name === "enter") delete next.detail
+    else if (name === "up") next.detail = { ...detail, offset: Math.max(0, detail.offset - 1) }
+    else if (name === "down") next.detail = { ...detail, offset: Math.min(detail.maxOffset ?? 0, detail.offset + 1) }
+    else if (name === "pageup") next.detail = { ...detail, offset: Math.max(0, detail.offset - page) }
+    else if (name === "pagedown") next.detail = { ...detail, offset: Math.min(detail.maxOffset ?? 0, detail.offset + page) }
+    else if (name === "top") next.detail = { ...detail, offset: 0 }
+    else if (name === "bottom") next.detail = { ...detail, offset: detail.maxOffset ?? 0 }
+    else if (name === "copy") action = { type: "copy", key: detail.key }
+    else if (name === "tab") action = { type: "tab", key: detail.key }
+    else if (name === "mouse") action = { type: "mouse" }
+    return { scroll: next, action }
+  }
+  if (detail && event.type === "wheel" && drawn.regions.detail && event.y >= drawn.regions.detail.top) {
+    const offset = Math.max(0, Math.min(detail.maxOffset ?? 0, detail.offset + (event.dir === "up" ? -1 : 1)))
+    return { scroll: { ...next, detail: { ...detail, offset } }, action }
+  }
+  if (detail && event.type === "click") {
+    if (drawn.regions.detail && event.y >= drawn.regions.detail.top) return { scroll: next, action }
+    delete next.detail
+  }
 
   if (event.type === "click") {
     const hit = (drawn.buttons || []).find((b) => b.y === event.y && event.x >= b.x0 && event.x <= b.x1)
+    const onCard = (drawn.cardHits || []).find((c) => c.y === event.y && event.x >= c.x0 && event.x <= c.x1)
+    const section = sectionAt(drawn.regions, event.x, event.y)
     if (hit) {
-      next.selected = "waiting"
+      selectSection("waiting")
       next.card = hit.key
       next.button = hit.index
-      action = press(cards.find((c) => c.key === hit.key), hit.index)
-    } else next.selected = sectionAt(drawn.regions, event.x, event.y) || next.selected
+      action = press((drawn.sections.waiting?.cards || []).find((c) => c.key === hit.key), hit.index)
+    } else if (onCard && section) {
+      selectSection(section)
+      const double = next.lastClick && next.lastClick.key === onCard.key && (event.at ?? 0) - (next.lastClick.at ?? 0) <= DOUBLE_CLICK_MS
+      if (next.card !== onCard.key) next.button = -1
+      next.card = onCard.key
+      if (double) next.detail = { key: onCard.key, offset: 0 }
+    } else if (section) selectSection(section)
+    next.lastClick = onCard && !hit ? { key: onCard.key, at: event.at ?? 0 } : null
   } else if (event.type === "wheel") {
     const target = sectionAt(drawn.regions, event.x, event.y)
     if (target) scrollTo(target, at(target) + (event.dir === "up" ? -1 : 1))
   } else if (current && (name === "up" || name === "down")) {
+    // The view follows the selection (renderBoard keeps the selected card in view).
     const i = Math.max(0, Math.min(cards.indexOf(current) + (name === "up" ? -1 : 1), cards.length - 1))
     next.card = cards[i].key
     next.button = -1
-    const info = drawn.sections.waiting
-    const block = cards[i].block
-    if (block < info.offset) scrollTo("waiting", block)
-    else if (block >= info.offset + info.page) scrollTo("waiting", block - info.page + 1)
   } else if (current && current.buttons && (name === "left" || name === "right")) {
-    next.button = Math.max(0, Math.min((scroll.button ?? 0) + (name === "right" ? 1 : -1), current.buttons - 1))
+    // The first ← or → chooses the suggested button (or the first); then they move.
+    const b = scroll.button ?? -1
+    next.button = b < 0 ? current.suggested || 0 : Math.max(0, Math.min(b + (name === "right" ? 1 : -1), current.buttons - 1))
   } else if (name === "enter") {
-    if (current) action = press(current, scroll.button ?? 0)
+    if (current && current.buttons && (scroll.button ?? -1) >= 0) action = press(current, scroll.button)
+    else if (current) next.detail = { key: current.key, offset: 0 }
+  } else if (name === "escape") {
+    next.button = -1
   } else if (name === "other") {
     if (current?.buttons) action = press(current, current.buttons - 1)
-  } else if (name === "next" || name === "right") next.selected = step(1)
-  else if (name === "prev" || name === "left") next.selected = step(-1)
+  } else if (name === "copy") {
+    if (current) action = { type: "copy", key: current.key }
+  } else if (name === "tab") {
+    if (current) action = { type: "tab", key: current.key }
+  } else if (name === "mouse") action = { type: "mouse" }
+  else if (name === "next" || name === "right") selectSection(step(1))
+  else if (name === "prev" || name === "left") selectSection(step(-1))
   else if (name === "up") scrollTo(s, at(s) - 1)
   else if (name === "down") scrollTo(s, at(s) + 1)
   else if (name === "pageup") scrollTo(s, at(s) - (drawn.sections[s]?.page || 1))
   else if (name === "pagedown") scrollTo(s, at(s) + (drawn.sections[s]?.page || 1))
   else if (name === "top") {
     scrollTo(s, 0)
-    if (current) next.card = cards[0].key
+    if (cards.length) next.card = cards[0].key
   } else if (name === "bottom") {
     scrollTo(s, Infinity)
-    if (current) next.card = cards.at(-1).key
+    if (cards.length) next.card = cards.at(-1).key
   }
   return { scroll: next, action }
 }

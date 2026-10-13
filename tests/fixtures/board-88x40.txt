@@ -37,4 +37,4 @@ DOING (2)                     TO DO (4)                     DONE (1)
 
 
 
-Tab section · ↑↓ scroll · q quit
+Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit
