@@ -90,6 +90,10 @@ export function readBoard(file) {
   if (!isObject(state) || !Array.isArray(state.items) || !state.items.every(isObject)) {
     throw new Error(`${file} is not a job board (it needs an "items" list of objects)`)
   }
+  // An id goes into what a button sends: only positive whole numbers.
+  if (!state.items.every((i) => Number.isSafeInteger(i.id) && i.id > 0)) {
+    throw new Error(`${file} is not a job board (every item id must be a positive whole number)`)
+  }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}
   return state
@@ -726,32 +730,40 @@ const cardsIn = (blocks, from, to) => blocks.slice(from, to).reduce((n, b) => n 
 
 /**
  * The blocks that show in `height` lines starting at block `offset`, with "↑ N above" and
- * "↓ N more" lines at the edges, so no card is ever hidden without saying so. The offset is
- * clamped: the last page is full, not one card and empty space. A card taller than the space
- * is cut, never skipped.
+ * "↓ N more" lines at the edges, so no card is ever hidden without being counted. The offset is
+ * clamped: the last page is full, not one card and empty space. When no card fits whole, the
+ * first one is shown cut; when not even that fits, it is counted in "↓ N more". Every card is
+ * either above, shown or below: above + shown cards + below is always the total.
  */
 export function viewport(blocks, height, offset = 0) {
   const n = blocks.length
-  if (!Number.isFinite(height)) return { lines: linesOf(blocks, 0, n), offset: 0, maxOffset: 0, page: Math.max(1, n), above: 0, below: 0 }
+  if (!Number.isFinite(height)) return { lines: linesOf(blocks, 0, n), offset: 0, maxOffset: 0, page: Math.max(1, n), shown: n, above: 0, below: 0 }
   let maxOffset = 0
   while (maxOffset < n - 1 && heightOf(blocks, maxOffset, n) > height - (maxOffset > 0 ? 1 : 0)) maxOffset++
   const o = Math.max(0, Math.min(offset, maxOffset))
   const top = o > 0 ? 1 : 0
   let shown = n - o
-  let bottom = 0
   if (heightOf(blocks, o, n) > height - top) {
-    bottom = 1
+    // Whole cards, keeping a line for "↓ N more"; else the first one cut, if a line is left for it.
     shown = 0
-    while (o + shown < n && heightOf(blocks, o, o + shown + 1) <= height - top - bottom) shown++
-    shown = Math.max(1, Math.min(shown, n - o))
+    while (o + shown < n && heightOf(blocks, o, o + shown + 1) <= height - top - 1) shown++
+    if (shown === 0 && o < n && height - top - (o + 1 < n ? 1 : 0) > 0) shown = 1
   }
+  const bottom = o + shown < n ? 1 : 0
   const above = cardsIn(blocks, 0, o)
-  const below = bottom ? cardsIn(blocks, o + shown, n) : 0
+  const below = cardsIn(blocks, o + shown, n)
+  const result = { offset: o, maxOffset, page: Math.max(1, shown), shown: cardsIn(blocks, o, o + shown), above, below }
+  if (height <= 0) return { ...result, lines: [], shown: 0, below: cardsIn(blocks, o, n) }
+  // Too short for both markers: one line that says both.
+  if (top + bottom > height) {
+    const both = [above ? `↑ ${above} above` : "", below ? `↓ ${below} more` : ""].filter(Boolean).join(" · ")
+    return { ...result, lines: [[{ t: both, s: "dim" }]] }
+  }
   const lines = []
   if (top) lines.push([{ t: `↑ ${above} above`, s: "dim" }])
-  lines.push(...linesOf(blocks, o, o + shown).slice(0, Math.max(0, height - top - bottom)))
+  lines.push(...linesOf(blocks, o, o + shown).slice(0, height - top - bottom))
   if (bottom) lines.push([{ t: `↓ ${below} more`, s: "dim" }])
-  return { lines: lines.slice(0, Math.max(0, height)), offset: o, maxOffset, page: Math.max(1, shown), above, below }
+  return { ...result, lines }
 }
 
 /** Share `total` lines between sections that want `wants` lines: a fair share each, any spare to who needs it. */
@@ -1080,7 +1092,10 @@ export const applyInput = (scroll, event, drawn) => handleInput(scroll, event, d
 // --- answering from the board -------------------------------------------------------------------
 
 /** Exactly what a button sends to the coordinator: nothing else from the card goes. */
-export const answerText = (item, label) => `Board card ${item.id} (${clean(item.title)}): ${clean(label)}`
+export function answerText(item, label) {
+  if (!Number.isSafeInteger(item?.id) || item.id <= 0) throw new Error("the card has no valid id")
+  return `Board card ${item.id} (${clean(item.title)}): ${clean(label)}`
+}
 
 /**
  * Whether pressing `label` on `item` sends now. A card already answered asks first ("send
@@ -1100,10 +1115,12 @@ export function sendDecision(item, label, confirm, nowMs) {
 const HERDR_ERRORS = {
   agent_not_found: "coordinator pane not found",
   pane_not_found: "coordinator pane not found",
-  agent_blocked: "the coordinator is waiting on a question in its pane",
+  agent_blocked: "the coordinator is waiting on a question in its pane; answer it there, then press again",
+  agent_not_ready:
+    "Herdr can only hand a message to an agent started with `herdr agent start` (see README); type your answer in the coordinator's chat",
 }
 
-/** Run herdr; resolves to null, or to { code, message } when it failed. */
+/** Run herdr; resolves to null, or to an error message when it failed. */
 function herdrCall(args, env) {
   return new Promise((done) => {
     execFile(herdrBin(env), args, { env, timeout: 10_000 }, (error, stdout, stderr) => {
@@ -1112,54 +1129,82 @@ function herdrCall(args, env) {
       try {
         e = JSON.parse(stderr || stdout).error || {}
       } catch {}
-      const message = clean(HERDR_ERRORS[e.code] || e.message || stderr || error.message).slice(0, 120) || "herdr failed"
-      done({ code: e.code || "", message })
-    })
-  })
-}
-
-/** The agent in a pane: { status } when Herdr sees one there, else { error }. */
-function agentIn(pane, env) {
-  return new Promise((done) => {
-    execFile(herdrBin(env), ["agent", "get", pane], { env, timeout: 10_000 }, (error, stdout) => {
-      let agent = null
-      try {
-        agent = JSON.parse(stdout).result?.agent
-      } catch {}
-      done(!error && agent?.agent ? { status: agent.agent_status || "unknown" } : { error: HERDR_ERRORS.agent_not_found })
+      done(clean(HERDR_ERRORS[e.code] || e.message || stderr || error.message).slice(0, 160) || "herdr failed")
     })
   })
 }
 
 /**
  * Carry out a button press. "send": `herdr agent prompt <origin> <text>` (argv only, never a
- * shell). Herdr prompts only agents it started by name; a coordinator the user started has
- * none, so then the answer is typed in as the user would (`pane send-text`, then Enter), but
- * only when Herdr sees an agent in that pane (never a shell, where text could run as a command)
- * that isn't waiting on a question (where Enter could approve something). "other": focus the
- * pane and type "Board card <id>: " without Enter. Resolves to an error message, or null.
+ * shell), and nothing else: Herdr checks the agent's state itself and refuses an agent that is
+ * waiting on a question, so a button can never press Enter on someone else's prompt. "other":
+ * `herdr agent focus <origin>`, so the user can type the answer; nothing is typed for them.
+ * Resolves to an error message, or null.
  */
 export async function deliver(action, item, origin, env = process.env) {
   if (!inHerdr(env)) return "not inside Herdr"
   if (!origin) return "no coordinator pane known; open the board with board.mjs open"
-  if (action.type === "send") {
-    const text = answerText(item, action.label)
-    const prompted = await herdrCall(["agent", "prompt", origin, text], env)
-    if (!prompted) return null
-    if (prompted.code !== "agent_not_ready") return prompted.message
-    const agent = await agentIn(origin, env)
-    if (agent.error) return agent.error
-    if (agent.status === "blocked") return HERDR_ERRORS.agent_blocked
-    const typed = (await herdrCall(["pane", "send-text", origin, text], env)) || (await herdrCall(["pane", "send-keys", origin, "enter"], env))
-    return typed ? typed.message : null
+  if (action.type === "send") return herdrCall(["agent", "prompt", origin, answerText(item, action.label)], env)
+  return herdrCall(["agent", "focus", origin], env)
+}
+
+/**
+ * Button presses, one at a time. A press on a card that is still sending is ignored, so a
+ * double click sends once; a card answered already asks "send again?" first (sendDecision).
+ * Every failure becomes a note on the card; nothing here can stop the pane. `notes` maps a
+ * card's key to the line shown on it.
+ */
+export function createAnswerer({ file, origin = "", env = process.env, now = () => new Date(), send = deliver, onChange = () => {} }) {
+  const notes = {}
+  const sending = new Set()
+  let confirm = null
+  let chain = Promise.resolve()
+  const run = async (action) => {
+    const item = readBoard(file).items.find((i) => i.id === action.id)
+    if (!item || item.column !== "waiting") return
+    if (action.type === "send") {
+      const decision = sendDecision(item, action.label, confirm, now().getTime())
+      confirm = decision.confirm
+      if (!decision.send) {
+        notes[action.key] = decision.note
+        return
+      }
+    }
+    notes[action.key] = { t: action.type === "send" ? `sending: ${clean(action.label)}…` : "opening the chat…", s: "dim" }
+    onChange()
+    const error = await send(action, item, origin, env)
+    if (error) {
+      notes[action.key] = { t: `${action.type === "send" ? "couldn't send" : "couldn't open the chat"}: ${error}`, s: "blocked" }
+      return
+    }
+    if (action.type === "other") {
+      notes[action.key] = { t: `type your answer for card ${item.id} in the coordinator's chat`, s: "dim" }
+      return
+    }
+    delete notes[action.key]
+    try {
+      markSent(file, item.id, action.label, now())
+    } catch (e) {
+      notes[action.key] = { t: `sent, but couldn't note it on the card: ${clean(e.message)}`, s: "blocked" }
+    }
   }
-  const agent = await agentIn(origin, env)
-  if (agent.error) return agent.error
-  const focused = await herdrCall(["agent", "focus", origin], env)
-  if (focused) return focused.message
-  if (agent.status === "blocked") return `${HERDR_ERRORS.agent_blocked}; answer that first`
-  const typed = await herdrCall(["pane", "send-text", origin, `Board card ${item.id}: `], env)
-  return typed ? typed.message : null
+  return {
+    notes,
+    press(action) {
+      if (sending.has(action.key)) return chain
+      sending.add(action.key)
+      chain = chain
+        .then(() => run(action))
+        .catch((e) => {
+          notes[action.key] = { t: `couldn't send: ${clean(e?.message || e)}`, s: "blocked" }
+        })
+        .finally(() => {
+          sending.delete(action.key)
+          onChange()
+        })
+      return chain
+    },
+  }
 }
 
 /** Note on the card that `label` was sent, so it isn't sent twice by accident. */

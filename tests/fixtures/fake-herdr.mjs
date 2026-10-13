@@ -29,6 +29,8 @@ const pane = (id) => state.panes.find((p) => p.pane_id === id)
 
 const [group, command, target] = args
 const key = `${group} ${command}`
+// FAKE_HERDR_DELAY_MS slows `agent prompt` down, to test presses that overlap a send.
+if (key === "agent prompt" && process.env.FAKE_HERDR_DELAY_MS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_HERDR_DELAY_MS))
 if (key === "agent list") ok({ agents: state.agents || [], type: "agent_list" })
 if (key === "workspace report-metadata") ok({ type: "ok" })
 if (key === "pane get") pane(target) ? ok({ pane: pane(target), type: "pane_info" }) : fail(`pane ${target} not found`)
@@ -49,13 +51,13 @@ if (key === "pane run") {
   ok({ type: "ok" })
 }
 if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
-  // A target is an agent's name or the pane that hosts it. Like Herdr, `agent prompt` takes
-  // only named agents (ones `agent start` started).
+  // A target is an agent's name or the pane that hosts it. Like Herdr 0.9.3, `agent prompt`
+  // refuses a blocked agent first, then any agent `agent start` didn't start (interactive_ready).
   const host = (state.agents || []).find((a) => a.pane_id === target || (a.name && a.name === target))
   if (!host) fail(`agent target ${target} not found`, "agent_not_found")
   if (key === "agent get") ok({ agent: { agent: host.agent || "dummy", ...host }, type: "agent_info" })
-  if (key === "agent prompt" && !host.name) fail(`agent ${target} is not an active named agent`, "agent_not_ready")
   if (key === "agent prompt" && host.agent_status === "blocked") fail("agent is blocked", "agent_blocked")
+  if (key === "agent prompt" && !host.interactive_ready) fail(`agent ${target} is not an active named agent`, "agent_not_ready")
   ok({ type: "ok" })
 }
 if (key === "pane send-keys") ok({ type: "ok" })

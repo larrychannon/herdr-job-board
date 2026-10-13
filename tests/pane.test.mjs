@@ -4,12 +4,12 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { hostname, tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { buildView, handleInput, makeOptions, optionsOf, parseInput, renderBoard, sendDecision, viewport } from "../board.mjs"
+import { answerText, buildView, createAnswerer, handleInput, makeOptions, optionsOf, parseInput, renderBoard, sendDecision, viewport } from "../board.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
@@ -263,19 +263,26 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
   try {
     spawnSync("git", ["-C", base, "init", "-q"])
     const herdr = join(base, "herdr.json")
-    const agents = [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1" }]
+    // A coordinator started with `herdr agent start`: Herdr can prompt it.
+    const agents = [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1", interactive_ready: true }]
     writeFileSync(herdr, JSON.stringify({ agents }))
     const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW.toISOString(), NO_COLOR: "1", TZ: "UTC" }
     const board = (...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
     const pane = (keys, origin = "w9:p1") =>
       spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "30", "--origin", origin, "--keys", keys], { cwd: base, env, encoding: "utf8" })
-    const log = () => JSON.parse(readFileSync(herdr, "utf8")).log.filter((a) => (a[0] === "agent" && a[1] !== "list") || a[1] === "send-text" || a[1] === "send-keys")
+    // A card's note can wrap: read it as one line.
+    const flat = (r) => r.stdout.replace(/\n +/g, " ")
+    const calls = () => JSON.parse(readFileSync(herdr, "utf8")).log.filter((a) => a[0] !== "agent" || a[1] !== "list")
+    const log = () => calls().filter((a) => a[0] === "agent")
+    const typed = () => calls().filter((a) => a[1] === "send-text" || a[1] === "send-keys")
     const items = () => JSON.parse(readFileSync(join(base, ".git", "job-board.json"), "utf8")).items
-    assert.equal(board("add", "waiting", `Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\``, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
+    const title = `Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\``
+    const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
+    assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
 
     let r = pane("\r")
     assert.equal(r.status, 0, r.stderr)
-    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\`): Go`]], "one argv element; no shell ever sees it")
+    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (${title}): Go`]], "one argv element; no shell ever sees it")
     assert.ok(!existsSync(join(base, "pwned")) && !existsSync(join(base, "pwned2")), "nothing in the title ran")
     assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString() })
     assert.match(r.stdout, /sent: Go · 10:30/)
@@ -287,46 +294,118 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     pane("\r\r")
     assert.equal(log().length, 2)
 
-    // Other…: focus the coordinator and type "Board card 1: " without Enter.
-    pane("o")
-    assert.deepEqual(log().slice(-2), [["agent", "focus", "w9:p1"], ["pane", "send-text", "w9:p1", "Board card 1: "]])
+    // Other…: only focuses the coordinator; nothing is typed for the user.
+    r = pane("o")
+    assert.deepEqual(log().at(-1), ["agent", "focus", "w9:p1"])
+    assert.match(r.stdout, /type your answer for card 1 in the coordinator's chat/)
 
-    // The coordinator is gone, or blocked on a question: one red line, nothing marked sent.
-    board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
+    // The coordinator is gone, blocked on a question, or not started by Herdr: one red line,
+    // nothing marked sent, and never anything typed into its pane.
+    rearm()
     r = pane("\r", "w9:p7")
     assert.match(r.stdout, /couldn't send: coordinator pane not found/)
     assert.equal(items()[0].sent, undefined)
-    // (No name, so it doesn't also show as a blocked card of its own.)
-    writeFileSync(herdr, JSON.stringify({ ...JSON.parse(readFileSync(herdr, "utf8")), agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
-    r = pane("\r")
-    assert.match(r.stdout, /couldn't send: the coordinator is waiting on a question in its pane/)
-    r = pane("\r", "")
-    assert.match(r.stdout, /couldn't send: no coordinator pane known/)
-    // A coordinator the user started has no Herdr name, so `agent prompt` refuses it: the answer
-    // is typed in as the user would, but only when Herdr sees an agent there.
-    writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined }], log: [] }))
-    board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
-    r = pane("\r")
-    assert.doesNotMatch(r.stdout, /couldn't send/)
-    assert.deepEqual(log().slice(-3), [
-      ["agent", "get", "w9:p1"],
-      ["pane", "send-text", "w9:p1", `Board card 1 (Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\`): Go`],
-      ["pane", "send-keys", "w9:p1", "enter"],
-    ])
-    // A shell there (no agent): nothing is typed.
-    writeFileSync(herdr, JSON.stringify({ agents: [], log: [] }))
-    board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
-    r = pane("\r")
-    assert.match(r.stdout, /couldn't send: coordinator pane not found/)
-    assert.deepEqual(JSON.parse(readFileSync(herdr, "utf8")).log.filter((a) => a[1] === "send-text" || a[1] === "send-keys"), [])
+    writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
+    assert.match(flat(pane("\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
+    writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, interactive_ready: undefined }] }))
+    assert.match(flat(pane("\r")), /couldn't send: Herdr can only hand a message to an agent started with `herdr agent start`/)
+    assert.match(pane("\r", "").stdout, /couldn't send: no coordinator pane known/)
+    assert.deepEqual(typed(), [], "no send-text, no send-keys, ever")
+    assert.equal(items()[0].sent, undefined)
+
     // A click on a button sends too.
     writeFileSync(herdr, JSON.stringify({ agents, log: [] }))
     const screen = pane("").stdout.split("\n")
     const y = screen.findIndex((l) => l.includes("[ Not now ]"))
     const x = [...screen[y].slice(0, screen[y].indexOf("[ Not now ]"))].length + 1
     pane(`\x1b[<0;${x + 3};${y + 1}M`)
-    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\`): Not now`])
+    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (${title}): Not now`])
+
+    // A hand-written board with a hostile id: refused when read, so nothing is ever sent.
+    const file = join(base, ".git", "job-board.json")
+    const hostile = JSON.parse(readFileSync(file, "utf8"))
+    hostile.items[0].id = "7\u001b]52;c;cHduZWQ=\u0007\u001b[2J"
+    writeFileSync(file, JSON.stringify(hostile))
+    writeFileSync(herdr, JSON.stringify({ agents, log: [] }))
+    r = pane("\r")
+    assert.match(r.stdout, /is not a job board \(every item id must be/)
+    assert.doesNotMatch(r.stdout, /\u001b|\u0007/)
+    assert.deepEqual(log(), [])
+    const ls = board("ls")
+    assert.equal(ls.status, 1)
+    assert.match(ls.stderr, /every item id must be a positive whole number/)
   } finally {
     rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test("answerText: only a positive whole id, the cleaned title and the cleaned label", () => {
+  assert.equal(answerText({ id: 3, title: "Ship\u001b[2J it\u0007" }, "Go\u009b"), "Board card 3 (Ship[2J it): Go")
+  for (const id of ["3", "7\u001b]52;c;x\u0007", 0, -1, 1.5, null, undefined, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => answerText({ id, title: "x" }, "Go"), /no valid id/, String(id))
+  }
+})
+
+test("presses run one at a time: a double press sends once; failures become notes, never a crash", async () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "board-answerer-")))
+  const file = join(base, "board.json")
+  const item = { id: 1, title: "Ship it?", column: "waiting", since: NOW.toISOString(), options: [{ label: "Go", suggested: true }] }
+  const write = (extra = {}) => writeFileSync(file, JSON.stringify({ version: 1, next_id: 2, items: [{ ...item, ...extra }], panes: {} }))
+  const go = { type: "send", id: 1, key: "#1", label: "Go" }
+  try {
+    write()
+    const sent = []
+    const slow = (action) => new Promise((done) => setTimeout(() => done(sent.push(action) && null), 50))
+    const answers = createAnswerer({ file, origin: "w9:p1", now: () => NOW, send: slow })
+    // A double click: the second press arrives while the first is still sending.
+    await Promise.all([answers.press(go), answers.press(go)])
+    assert.equal(sent.length, 1, "one send")
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).items[0].sent.label, "Go")
+    // A later press asks first.
+    await answers.press(go)
+    assert.equal(sent.length, 1)
+    assert.match(answers.notes["#1"].t, /send again\?/)
+
+    // The send fails: a note, and the next press still works.
+    write()
+    const failing = createAnswerer({ file, origin: "w9:p1", now: () => NOW, send: async () => "coordinator pane not found" })
+    await failing.press(go)
+    assert.equal(failing.notes["#1"].t, "couldn't send: coordinator pane not found")
+    const throwing = createAnswerer({ file, origin: "w9:p1", now: () => NOW, send: async () => { throw new Error("boom") } })
+    await throwing.press(go)
+    assert.equal(throwing.notes["#1"].t, "couldn't send: boom")
+    // Sent, but the board is locked by a live process: said on the card, the pane goes on.
+    mkdirSync(`${file}.lock`)
+    writeFileSync(join(`${file}.lock`, "owner"), `${process.pid} ${hostname()} x`)
+    process.env.JOB_BOARD_LOCK_WAIT_MS = "200"
+    const locked = createAnswerer({ file, origin: "w9:p1", now: () => NOW, send: async () => null })
+    await locked.press(go)
+    assert.match(locked.notes["#1"].t, /^sent, but couldn't note it on the card: the board is locked by process/)
+    // An unreadable board: a note.
+    rmSync(`${file}.lock`, { recursive: true })
+    writeFileSync(file, "not json")
+    const broken = createAnswerer({ file, origin: "w9:p1", now: () => NOW, send: async () => null })
+    await broken.press(go)
+    assert.match(broken.notes["#1"].t, /^couldn't send: .*not valid JSON/)
+  } finally {
+    delete process.env.JOB_BOARD_LOCK_WAIT_MS
+    rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test("viewport: every card is above, shown or below, at any height", () => {
+  const sizes = [1, 3, 5, 2, 4, 6, 1, 1, 7, 2]
+  const blocks = sizes.map((h, i) => ({ keys: [`#${i + 1}`], lines: Array.from({ length: h }, (_, j) => [{ t: `card ${i + 1} line ${j + 1}` }]) }))
+  for (let height = 0; height <= 30; height++) {
+    for (let offset = 0; offset <= blocks.length; offset++) {
+      const v = viewport(blocks, height, offset)
+      assert.ok(v.lines.length <= height, `${height}/${offset}: ${v.lines.length} lines`)
+      assert.equal(v.above + v.shown + v.below, blocks.length, `${height}/${offset}: ${v.above} + ${v.shown} + ${v.below}`)
+      const text = v.lines.map((l) => l.map((s) => s.t).join("")).join("\n")
+      if (v.above && height > 0) assert.match(text, new RegExp(`↑ ${v.above} above`), `${height}/${offset}`)
+      if (v.below && height > 0) assert.match(text, new RegExp(`↓ ${v.below} more`), `${height}/${offset}`)
+      // A card counted as shown has at least one line on screen.
+      for (let k = v.offset; k < v.offset + v.shown; k++) assert.ok(text.includes(`card ${k + 1} line 1`), `${height}/${offset}: card ${k + 1}`)
+    }
   }
 })

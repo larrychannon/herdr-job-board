@@ -19,8 +19,8 @@
 //   q quit, r redraw
 // Waiting cards can carry answer buttons (board.mjs add … --option): in Waiting, ↑ ↓ select a
 // card, ← → a button, Enter (or a click) sends "Board card <id> (<title>): <label>" to the
-// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane and types
-// "Board card <id>: " for the user to finish. A card answered already asks before sending again.
+// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane for the user to type.
+// Presses run one at a time; a card answered already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // when the text changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
 // signal and on a crash.
@@ -36,17 +36,15 @@ import { basename, dirname, resolve, sep } from "node:path"
 import {
   boardPath,
   buildView,
-  deliver,
+  createAnswerer,
   emptyBoard,
   handleInput,
   listAgentsAsync,
-  markSent,
   parseInput,
   readBoard,
   renderBoard,
   repoName,
   reportToken,
-  sendDecision,
   textWidth,
   tokenText,
 } from "./board.mjs"
@@ -93,33 +91,6 @@ function compose(data, file, env, layout) {
   return { drawn, token: data.error ? null : tokenText(view) }
 }
 
-/**
- * A button press: send the answer (or for Other…, open the chat) unless the card was answered
- * already and this is the first press since ("send again?"). `ctx` holds the data, the notes
- * shown on cards and the pending confirmation; it is updated in place.
- */
-async function act(action, ctx) {
-  const item = ctx.data.state.items.find((i) => i.id === action.id)
-  if (!item || item.column !== "waiting") return
-  if (action.type === "send") {
-    const decision = sendDecision(item, action.label, ctx.confirm, Date.now())
-    ctx.confirm = decision.confirm
-    if (!decision.send) {
-      ctx.notes[action.key] = decision.note
-      return
-    }
-  }
-  ctx.notes[action.key] = { t: action.type === "send" ? `sending: ${action.label}…` : "opening the chat…", s: "dim" }
-  ctx.redraw()
-  const error = await deliver(action, item, ctx.origin, ctx.env)
-  if (error) ctx.notes[action.key] = { t: `${action.type === "send" ? "couldn't send" : "couldn't open the chat"}: ${error}`, s: "blocked" }
-  else {
-    delete ctx.notes[action.key]
-    if (action.type === "send") markSent(ctx.file, item.id, action.label, clockNow(ctx.env))
-  }
-  ctx.data = await load(ctx.file, ctx.env)
-}
-
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 async function main(argv = process.argv.slice(2), env = process.env) {
@@ -137,14 +108,18 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
 
   if (opts.once) {
-    const ctx = { data: await load(file, env), file, env, origin: opts.origin, notes: {}, confirm: null, redraw: () => {} }
+    let data = await load(file, env)
+    const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
     const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true }
-    const draw = (scroll) => compose(ctx.data, file, env, { ...layout, scroll, notes: ctx.notes }).drawn
+    const draw = (scroll) => compose(data, file, env, { ...layout, scroll, notes: answers.notes }).drawn
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
       const { scroll, action } = handleInput(drawn.scroll, event, drawn)
-      if (action) await act(action, ctx)
+      if (action) {
+        await answers.press(action)
+        data = await load(file, env)
+      }
       drawn = draw(scroll)
     }
     process.stdout.write(`${drawn.text}\n`)
@@ -153,7 +128,19 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 
   const out = process.stdout
   const color = opts.color ?? !env.NO_COLOR
-  const ctx = { data: await load(file, env), file, env, origin: opts.origin, notes: {}, confirm: null, redraw: () => paint() }
+  let data = await load(file, env)
+  // Presses run one at a time and never stop the pane. Each change shows its note at once and
+  // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
+  const answers = createAnswerer({
+    file,
+    origin: opts.origin,
+    env,
+    now: () => clockNow(env),
+    onChange: () => {
+      paint()
+      refresh()
+    },
+  })
   let scroll = { selected: "waiting", anchors: {} }
   let drawn = null
   let last = ""
@@ -163,7 +150,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   // full last column never wraps. Synchronised update (ignored by terminals that lack it).
   const paint = () => {
     const cols = out.columns || 80
-    const result = compose(ctx.data, file, env, { width: cols - 1, height: out.rows || 24, color, scroll, notes: ctx.notes })
+    const result = compose(data, file, env, { width: cols - 1, height: out.rows || 24, color, scroll, notes: answers.notes })
     drawn = result.drawn
     scroll = drawn.scroll
     if (drawn.text !== last) {
@@ -184,7 +171,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     if (loading) return
     loading = true
     try {
-      ctx.data = await load(file, env)
+      data = await load(file, env)
       paint()
     } finally {
       loading = false
@@ -230,7 +217,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         if (!drawn) continue
         const result = handleInput(scroll, event, drawn)
         scroll = result.scroll
-        if (result.action) act(result.action, ctx).then(paint, crash)
+        if (result.action) answers.press(result.action)
         // Redraw before the next event: keys that arrive together each see the screen the
         // previous one left.
         paint()

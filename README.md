@@ -98,25 +98,25 @@ node board.mjs add waiting "Release notes: approve" \
   < Approve ✓ >  [ Needs changes ]  [ Other… ]
 ```
 
-- Click a button, or select it and press Enter: the board sends
-  `Board card <id> (<title>): <label>` to the pane that opened the board, as if you had typed
-  it there (`herdr agent prompt`). Nothing else from the card is sent.
-- **Other…** (`o`) switches to that pane and types `Board card <id>: ` for you to finish;
-  nothing is sent until you press Enter there.
-- The card then shows `sent: Approve · 10:42`. Pressing a button again asks "send again?" first.
-  The coordinator moves or closes the card when it acts on your answer.
-- If the coordinator's pane is gone, or busy with a question of its own, the card says
-  `couldn't send: …` in red.
+- Click a button, or select it and press Enter: the board hands
+  `Board card <id> (<title>): <label>` to the agent in the pane that opened the board, with
+  `herdr agent prompt`. Nothing else from the card is sent.
+- **Other…** (`o`) switches to that pane so you can type your answer; nothing is typed for you.
+- The card then shows `sent: Approve · 10:42`. Pressing a button again asks "send again?" first;
+  presses run one at a time, so a double click sends once. The coordinator moves or closes the
+  card when it acts on your answer.
+- If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
+  sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
+  then press again), or Herdr can't prompt it (next point).
+- **Herdr only hands messages to agents it started.** Buttons work when the coordinator was
+  started with `herdr agent start`, for example from another pane:
+  `herdr agent start coordinator --kind claude --pane <a pane at a shell prompt>` (with Claude
+  Code, `-- --continue` picks up the last conversation in that folder). A coordinator you
+  started by typing `claude` gets the message "Herdr can only hand a message to an agent
+  started with `herdr agent start`"; renaming it with `herdr agent rename` doesn't change that.
+  Use Other… and type the answer instead.
 - Up to 4 buttons of up to 24 characters; `--clear-options` removes them. They are for Waiting
   cards only and go away when the card leaves Waiting.
-
-**Who can add buttons.** A button sends text into the coordinator's chat, so only the
-coordinator should add them. Cards that come from a job (`job-start`, `job-report`) never get
-buttons, whatever the job's report says. Anything that can write the board file could add
-buttons, though: the file is in `.git/` (readable only by you), so that means programs running
-as you in that repo. If you run other agents as workers, stop them from using `--option` and
-`--suggest` (a pre-tool hook can block that command). Even then, a button only sends its own
-label, with the card's id and title, to the coordinator; it never runs anything.
 
 ## Install
 
@@ -199,8 +199,9 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    `add waiting "<title>: <action>" --desc "<what and why>" --ask "<exactly what to do>"`, and
    when the answers are clear, buttons for them, the suggested one first:
    `--option "Go" --option "Not now" --suggest "Go"`. A pressed button arrives in your chat as
-   `Board card <id> (<title>): <label>`; "Other…" means the user types the answer. When they
-   have answered: `done <id>`, or `move` the card.
+   `Board card <id> (<title>): <label>` (only if Herdr started you, with `herdr agent start`);
+   "Other…" means the user types the answer. When they have answered: `done <id>`, or `move`
+   the card.
 4. **A job starts**: a job is an agent you started in another pane under a Herdr agent name
    (`herdr agent start <slug> …`) that ends by writing a JSON report.
    `job-start <slug> --title "…" --desc "…" --report <report path>`. The pane then shows that
@@ -296,9 +297,35 @@ another file.
   `\u` escapes), so text an agent writes can't change your terminal.
 - It types into its own pane: `open` runs the board there only while the pane is at a shell
   prompt, and sends `q` only to a board it finds running there.
-- Answer buttons send exactly `Board card <id> (<title>): <label>`, through
-  `herdr agent prompt` as one argument, to the pane that opened the board; Other… types
-  `Board card <id>: ` there without pressing Enter. See "Who can add buttons" above.
+- Answer buttons send exactly `Board card <id> (<title>): <label>` (the id a whole number,
+  title and label cleaned), only through `herdr agent prompt`, as one argument, to the pane
+  that opened the board. Herdr checks the agent's state itself and refuses one that is waiting
+  on a question, so a button never presses Enter on someone else's prompt. The board never
+  types into another pane: Other… only switches to it.
+
+## Limits and threat model
+
+- **Who can add buttons.** A button puts text into the coordinator's chat, so only the
+  coordinator should add them. Cards that come from a job (`job-start`, `job-report`) never get
+  buttons, whatever the job's report says. Anything that can write the board file can add
+  buttons, though. The file is in `.git/` and readable only by you, so that means programs
+  running as you in that repo. If you run other agents as workers, a pre-tool hook that blocks
+  `--option` and `--suggest` helps, but it matches command text, so it is best-effort: a worker
+  that can run commands as you can also write the file directly, or type into any pane with
+  `herdr pane send-text`. Even then, a button only sends its own label, with the card's id and
+  title, to the coordinator, and only when you press it.
+- **Enter sends the suggested answer.** When you select a Waiting card, its suggested button
+  is already chosen, so Tab into the board and Enter sends that answer. Move with ← → first if
+  you want another one.
+- **Locks.** A lock left by a process that is gone is taken back at once, but if the system has
+  already given that process id to a new process, the lock waits until that one ends too (the
+  writer gives up after 10 s with "the board is locked by process N"; remove the `.lock`
+  folder if nothing is writing). Taking back a stale lock checks it is the same one, but two
+  writers racing for it within the same instant could still overlap; it needs a crashed writer
+  plus two writers within microseconds.
+- **A killed board** (`kill -9`) can't switch mouse reporting off: that pane then prints
+  mouse codes until you run `reset`. Any other way out (q, Ctrl-C, closing the pane, a crash)
+  switches it off.
 
 ## Tests
 
