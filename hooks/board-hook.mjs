@@ -116,10 +116,10 @@ const quote = (path) => `"${path.replace(/(["\\$`])/g, "\\$1")}"`
 
 // A title as data: no control or bidirectional characters, one line, at most 80 characters, in
 // double quotes with any inner quote escaped (JSON string syntax).
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\p{Cf}]/gu
 const MAX_TITLE = 80
 export function titleAsData(title) {
-  const text = [...String(title ?? "").replace(CONTROLS, " ").replace(/\s+/g, " ").trim()]
+  const text = [...(typeof title === "string" ? title : "").replace(/\p{Cf}/gu, "").replace(CONTROLS, " ").replace(/\s+/g, " ").trim()]
   return JSON.stringify(text.length > MAX_TITLE ? `${text.slice(0, MAX_TITLE - 1).join("")}…` : text.join(""))
 }
 

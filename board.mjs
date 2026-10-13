@@ -98,6 +98,15 @@ export function readBoard(file) {
   if (!state.items.every((i) => Number.isSafeInteger(i.id) && i.id > 0)) {
     throw new Error(`board file is not a job board (every item id must be a positive whole number): ${file}`)
   }
+  // Text fields are text: a hand-edited value of another type becomes asText's version of it
+  // (numbers written out, anything else "(not text)"), so nothing downstream stringifies an
+  // object or array.
+  for (const item of state.items) {
+    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported"]) {
+      if (item[key] != null && typeof item[key] !== "string") item[key] = asText(item[key])
+    }
+    if (item.sent != null && !(isObject(item.sent) && typeof item.sent.label === "string")) delete item.sent
+  }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}
   return state
@@ -218,11 +227,22 @@ export function updateBoard(file, change, now = new Date()) {
 // Text from people, agents and reports is stored without control characters (escape sequences,
 // BEL, C1 codes) or bidirectional controls, so nothing that prints it can drive a terminal.
 // `clean` makes one line; `cleanLines` keeps line breaks (an ask has one line per thing to do).
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
-const clean = (text) => String(text ?? "").replace(/\s+/g, " ").replace(CONTROLS, "").trim()
-const cleanLines = (text) => String(text ?? "").split(/\r?\n/).map(clean).filter(Boolean).join("\n")
+// Format characters (Unicode Cf: zero-width spaces and joiners, word joiner, BOM, soft hyphen,
+// bidirectional controls) are invisible: they go too, so nothing can hide in a title or a link.
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\p{Cf}]/gu
+/**
+ * A value as text: strings as they are, numbers and booleans written out, nothing for null,
+ * and "(not text)" for anything else. It never calls String() on an object or array, whose
+ * toString can recurse without end (a report nested thousands of arrays deep).
+ */
+export const asText = (value) =>
+  typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : value == null ? "" : "(not text)"
+// Format characters go first (JavaScript counts U+FEFF as whitespace), then whitespace becomes
+// single spaces, then any control character left goes.
+const clean = (text) => asText(text).replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").replace(CONTROLS, "").trim()
+const cleanLines = (text) => asText(text).split(/\r?\n/).map(clean).filter(Boolean).join("\n")
 /** Output that echoes stored or reported text: line breaks kept, every other control removed. */
-export const safeText = (text) => String(text ?? "").split("\n").map((l) => l.replace(CONTROLS, "")).join("\n")
+export const safeText = (text) => asText(text).split("\n").map((l) => l.replace(CONTROLS, "")).join("\n")
 
 export function columnOf(name) {
   const column = String(name ?? "").toLowerCase()
@@ -347,8 +367,10 @@ function editItem(item, opts, now) {
 /** needs_user from a report, as a list of plain lines. */
 function needsList(needs) {
   const list = Array.isArray(needs) ? needs : needs ? [needs] : []
+  const textField = (n) => [n.what, n.ask, n.text, n.command].find((v) => typeof v === "string" && v.trim())
   return list
-    .map((n) => (typeof n === "string" ? n : n?.what || n?.ask || n?.text || n?.command || JSON.stringify(n)))
+    .slice(0, 100)
+    .map((n) => (n && typeof n === "object" && !Array.isArray(n) ? (textField(n) ?? "(not text)") : asText(n)))
     .map(clean)
     .filter(Boolean)
 }
@@ -363,6 +385,35 @@ export function reportOutcome(report) {
     return ["waiting", [`${status}: ${reason}`, ...needs].join("\n")]
   }
   return null
+}
+
+// Parsed reports by path, kept while the file's mtime and size stay the same: the pane redraws
+// every few seconds and on every key, and the details panel shouldn't re-read the file each time.
+const reportCache = new Map()
+const REPORT_CACHE_MAX = 64
+export const reportCacheStats = { hits: 0, reads: 0 }
+
+/** A job report, parsed, through the cache. Same rules as readJson. */
+function readReport(path) {
+  if (!path) return { report: null, entry: null }
+  let stat
+  try {
+    stat = statSync(path)
+  } catch {
+    reportCache.delete(path)
+    return { report: null, entry: null }
+  }
+  const known = reportCache.get(path)
+  if (known && known.mtimeMs === stat.mtimeMs && known.size === stat.size) {
+    reportCacheStats.hits++
+    return { report: known.report, entry: known }
+  }
+  reportCacheStats.reads++
+  const entry = { mtimeMs: stat.mtimeMs, size: stat.size, report: readJson(path) }
+  reportCache.delete(path)
+  reportCache.set(path, entry)
+  if (reportCache.size > REPORT_CACHE_MAX) reportCache.delete(reportCache.keys().next().value)
+  return { report: entry.report, entry }
 }
 
 /** A job report: a regular file of at most 1 MB, else null (a FIFO would block the pane). */
@@ -474,7 +525,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
       entry.live = agent ? agent.agent_status || "unknown" : item.column === "doing" ? "no agent" : ""
     }
     if (item.column === "doing" && item.report) {
-      const status = readJson(item.report)?.status
+      const status = readReport(item.report).report?.status
       if (["done", "blocked", "failed"].includes(status)) entry.reportStatus = status
     }
     if (item.column === "doing" && entry.live === "blocked") view.waiting.push(entry)
@@ -542,9 +593,9 @@ export const textWidth = (text) => [...text].reduce((w, ch) => w + cellWidth(ch)
 // Board text comes from agents and reports: never let it carry escape sequences, newlines or
 // bidirectional controls (which would show text in a different order than it is stored).
 const printable = (text) =>
-  String(text ?? "")
+  asText(text)
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/\p{Cf}/gu, "")
 
 /**
  * Segments [{t, s, link}] cut to `width` cells (an ellipsis marks the cut) and painted. With
@@ -903,17 +954,26 @@ const stamp = (iso) => {
  */
 export function reportFacts(path) {
   if (!path) return null
-  const r = readJson(path)
+  const { report: r, entry } = readReport(path)
   if (!r || typeof r !== "object" || Array.isArray(r)) return { unavailable: true }
-  const ids = r.ids && typeof r.ids === "object" ? r.ids : {}
-  return {
-    status: capText(r.status, 40),
-    summary: capText(r.summary, 2000),
-    needs: needsList(r.needs_user).slice(0, 20).map((n) => capText(n, 600)),
-    pr: capText(ids.pr, 300),
-    branch: capText(ids.branch, 200),
-    commit: capText(ids.commit, 80),
+  if (entry?.facts) return entry.facts
+  // Only text, numbers and booleans are shown; anything else reads "(not text)" (asText).
+  let facts
+  try {
+    const ids = r.ids && typeof r.ids === "object" && !Array.isArray(r.ids) ? r.ids : {}
+    facts = {
+      status: capText(r.status, 40),
+      summary: capText(r.summary, 2000),
+      needs: needsList(r.needs_user).slice(0, 20).map((n) => capText(n, 600)),
+      pr: capText(ids.pr, 300),
+      branch: capText(ids.branch, 200),
+      commit: capText(ids.commit, 80),
+    }
+  } catch {
+    facts = { unavailable: true }
   }
+  if (entry) entry.facts = facts
+  return facts
 }
 
 /** The agent behind a job card in this workspace, and its tab's label, from Herdr's lists. */
@@ -1189,7 +1249,12 @@ export function renderBoard(view, opts = {}) {
   if (detailEntry) {
     if (finite) while (lines.length < height - 1) lines.push("")
     const top = finite ? Math.floor(height / 2) : lines.length
-    const body = detailLines(detailEntry, width, { agents: opts.agents, tabs: opts.tabs, workspace: opts.workspace, now })
+    let body
+    try {
+      body = detailLines(detailEntry, width, { agents: opts.agents, tabs: opts.tabs, workspace: opts.workspace, now })
+    } catch (e) {
+      body = [[{ t: "  " }, { t: `details unavailable: ${clean(e?.message).slice(0, 120)}`, s: "blocked" }]]
+    }
     const room2 = finite ? height - 1 - top - 1 : body.length
     const maxOffset = Math.max(0, body.length - room2)
     const offset = Math.max(0, Math.min(scroll.detail.offset || 0, maxOffset))
@@ -1284,8 +1349,14 @@ export function parseInput(text) {
       i += m[0].length
       continue
     }
-    // Escape on its own (not the start of a sequence) is the Esc key.
+    // Escape followed by another character in the same read is an Alt chord (Alt+c is ESC c):
+    // skipped whole, so it never acts as that key. Escape on its own, or before another
+    // escape, is the Esc key.
     if (text[i] === "\x1b") {
+      if (i + 1 < text.length && text[i + 1] !== "\x1b") {
+        i += [...text.slice(i + 1, i + 3)][0].length + 1
+        continue
+      }
       events.push({ type: "key", name: "escape" })
       i += 1
       continue

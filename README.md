@@ -78,7 +78,7 @@ Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q qui
 | `Enter` | open the selected card's details; `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it |
 | `o` | Other… on a card with buttons |
-| `c` | copy the card's first link, or its text |
+| `c` | copy the card's first link, or its text (Alt+c does nothing) |
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
@@ -97,7 +97,9 @@ summary, what it needs from you, PR, branch and commit, read from the card's rep
 when the card was created and last changed. `↑` `↓` and `PgUp` `PgDn` scroll it, `c` copies, `t`
 goes to the job's tab, `Esc` closes it. A report that is missing or isn't a JSON object shows
 "report unavailable". Report text is written by agents: it is cleaned like card text (no control
-or bidirectional characters, cut to a fixed length) and only ever shown.
+or invisible characters, cut to a fixed length) and only ever shown; a field that isn't text, a
+number or true/false shows as "(not text)". The report is read again only when the file
+changes.
 
 ### Links and copying
 
@@ -105,7 +107,7 @@ or bidirectional characters, cut to a fixed length) and only ever shown.
   whose visible text is the URL itself, never other words. In Herdr, Ctrl-click opens them
   (Herdr's own `ui.mouse_capture` setting decides whether Herdr or your terminal handles it). A URL that the
   pane had to cut short is plain text. Only `http` and `https` count: not `javascript:`,
-  `data:` or `file:`, and never a `user:password@` part.
+  `data:` or `file:`, never a `user:password@` part, and never an invisible character.
 - **Copy.** `c` puts the selected card's first link on the clipboard, or the card's text when
   it has no link (OSC 52, at most 8000 characters), and the key line says what was copied. It
   happens only when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
@@ -374,7 +376,8 @@ another file.
 - It runs only `git rev-parse` and the `herdr` CLI, with argument lists and no shell, except
   `herdr pane run` to start the board in its pane (paths are single-quoted). No network, no
   dependencies.
-- Text is stored without control characters, escape sequences or bidirectional controls, and
+- Text is stored without control characters, escape sequences, bidirectional controls or other
+  invisible format characters (zero-width spaces and joiners, word joiner, BOM, soft hyphen), and
   everything the board or the CLI prints is cleaned again (`json` writes such characters as
   `\u` escapes), so text an agent writes can't change your terminal.
 - It types into its own pane: `open` runs the board there only while the pane is at a shell

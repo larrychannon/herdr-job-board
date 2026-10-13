@@ -126,9 +126,13 @@ async function perform(action, ctx) {
   const entry = ctx.drawn?.entries?.[action.key]
   if (!entry) return null
   if (action.type === "copy") {
-    const { text, what } = copyPayload(entry)
-    ctx.write(osc52(text))
-    return what === "link" ? `copied ${text}` : `copied card ${entry.id ?? entry.job}`
+    try {
+      const { text, what } = copyPayload(entry)
+      ctx.write(osc52(text))
+      return what === "link" ? `copied ${text}` : `copied card ${entry.id ?? entry.job}`
+    } catch (e) {
+      return `couldn't copy: ${String(e?.message ?? "").slice(0, 100)}`
+    }
   }
   if (action.type === "tab") {
     if (!entry.job) return "this card has no job, so no tab"

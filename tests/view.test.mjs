@@ -8,7 +8,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { buildView, handleInput, renderBoard } from "../board.mjs"
+import { asText, buildView, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -305,4 +305,96 @@ test("renderBoard: hyperlinks only with links on; the details panel covers the c
   // A click inside the panel does nothing; outside, it closes the panel.
   assert.ok(handleInput(opened.scroll, { type: "click", x: 5, y: opened.regions.detail.top + 1 }, opened).scroll.detail)
   assert.equal(handleInput(opened.scroll, { type: "click", x: 5, y: 3 }, opened).scroll.detail, undefined)
+})
+
+test("a report nested 10,000 arrays deep, or such a title, never crashes: it reads \"(not text)\"", () => {
+  const t = setup({ agents, tabs })
+  try {
+    const report = seed(t)
+    const deep = `${"[".repeat(10_000)}"x"${"]".repeat(10_000)}`
+    writeFileSync(report, `{"status":"done","summary":${deep},"needs_user":[${deep}],"ids":{"pr":${deep},"branch":${deep}}}`)
+    for (const keys of ["\t\r", "\t\rG", "\tc", "\t\rc"]) {
+      const r = t.pane([], keys)
+      assert.equal(r.status, 0, `${JSON.stringify(keys)}: ${r.stderr}`)
+      assert.doesNotMatch(r.stdout + r.stderr, /RangeError|Maximum call stack/)
+    }
+    const shown = t.pane(["--height", "80"], "\t\r").stdout
+    assert.match(shown, /\(not text\)/)
+    assert.ok(/status done/.test(shown), "the text fields still show")
+    // job-report reads the same report: needs_user that isn't text becomes "(not text)".
+    t.board(NOW, "job-report", "search-ui", report)
+    const card = JSON.parse(readFileSync(t.file, "utf8")).items.find((i) => i.job === "search-ui")
+    assert.deepEqual([card.column, card.ask], ["waiting", "(not text)"])
+    // A hand-edited board with such a title and a job that is an object.
+    const board = JSON.parse(readFileSync(t.file, "utf8"))
+    writeFileSync(t.file, JSON.stringify(board).replace('"title":"Export to CSV"', `"title":${deep}`).replace('"job":"docs-links"', '"job":{"a":1}'))
+    const ls = spawnSync(process.execPath, [BOARD, "ls", "--width", "88"], { cwd: t.base, env: { ...t.env, HERDR_ENV: "0" }, encoding: "utf8" })
+    assert.equal(ls.status, 0, ls.stderr)
+    assert.match(ls.stdout, /\(not text\)/)
+    assert.equal(t.pane([], "\t\t\r").status, 0)
+    assert.equal(asText([[["x"]]]), "(not text)")
+    assert.equal(asText(7), "7")
+    assert.equal(asText(null), "")
+  } finally {
+    t.done()
+  }
+})
+
+test("format characters (zero-width and the like) are stripped when stored and never part of a link", () => {
+  const hidden = "\u200b\u200c\u200d\u2060\ufeff\u00ad\u202e"
+  assert.deepEqual(findUrls(`https://a.example/pa\u200bth`).map((u) => u.url), ["https://a.example/pa"])
+  assert.deepEqual(findUrls(`https://a.example/x\ufeffy and https://b.example/\u2060z`).map((u) => u.url), ["https://a.example/x", "https://b.example/"])
+  const t = setup()
+  try {
+    t.board(NOW, "add", "waiting", `Re${hidden}view`, "--desc", `See https://a.example/pa${hidden}th`, "--ask", `Say${hidden} go`, "--option", `G${hidden}o`)
+    const [item] = JSON.parse(readFileSync(t.file, "utf8")).items
+    assert.equal(item.title, "Review")
+    assert.equal(item.desc, "See https://a.example/path")
+    assert.equal(item.ask, "Say go")
+    assert.equal(item.options[0].label, "Go")
+    // A hand-written board: the pane doesn't show them either.
+    writeFileSync(t.file, JSON.stringify({ version: 1, next_id: 2, items: [{ id: 1, title: `x${hidden}y https://c.example/p${hidden}q`, column: "todo", since: NOW, updated: NOW }] }))
+    const r = t.pane(["--links"])
+    assert.doesNotMatch(r.stdout, /[\u200b-\u200d\u2060\ufeff\u00ad\u202e]/u)
+  } finally {
+    t.done()
+  }
+})
+
+test("Alt+c (ESC c in one read) is not c: no copy; Esc on its own is still Esc", () => {
+  assert.deepEqual(parseInput("\x1bc"), [])
+  assert.deepEqual(parseInput("\x1bc\x1bm\x1bt\x1bq"), [], "no Alt chord acts as its key")
+  assert.deepEqual(parseInput("\x1b").map((e) => e.name), ["escape"])
+  assert.deepEqual(parseInput("\x1b\x1b").map((e) => e.name), ["escape", "escape"])
+  assert.deepEqual(parseInput("\x1b\x1b[A").map((e) => e.name), ["escape", "up"])
+  assert.deepEqual(parseInput("\x1bé c").map((e) => e.name), ["copy"], "a multi-byte Alt chord is skipped whole")
+  const t = setup({ agents, tabs })
+  try {
+    seed(t)
+    assert.deepEqual(decode52(t.pane([], "\x1b[B\x1bc").stdout), [])
+    assert.deepEqual(decode52(t.pane([], "\x1b[Bc").stdout), ["http://localhost:3000/invoices"])
+  } finally {
+    t.done()
+  }
+})
+
+test("the report is read once while it doesn't change (cached by mtime and size)", () => {
+  const t = setup()
+  try {
+    const path = join(t.base, "cached.json")
+    writeFileSync(path, JSON.stringify({ status: "done", summary: "first" }))
+    const before = { ...reportCacheStats }
+    assert.equal(reportFacts(path).summary, "first")
+    assert.equal(reportFacts(path).summary, "first")
+    assert.equal(reportFacts(path).summary, "first")
+    assert.equal(reportCacheStats.reads - before.reads, 1, "one read")
+    assert.equal(reportCacheStats.hits - before.hits, 2, "two hits")
+    writeFileSync(path, JSON.stringify({ status: "done", summary: "second, longer" }))
+    assert.equal(reportFacts(path).summary, "second, longer", "a changed file is read again")
+    assert.equal(reportCacheStats.reads - before.reads, 2)
+    rmSync(path)
+    assert.deepEqual(reportFacts(path), { unavailable: true }, "a removed file is unavailable, not cached")
+  } finally {
+    t.done()
+  }
 })
