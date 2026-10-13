@@ -219,7 +219,9 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
 
    A script that waits for the report can do this for you: call
    `job-report <slug> <report> --if-final` whenever the report file changes. It does nothing
-   until the report is final, and calling it again with the same report changes nothing.
+   until the report is final. Calling it again with the same report changes nothing: no second
+   card, no new `updated` time, and edits you made to the card since stay. A report rewritten
+   with a different outcome moves the same card again.
 
 ### Keep the board current: hooks for Claude Code
 
@@ -229,7 +231,9 @@ that catch that:
 
 - **When you send a message** (UserPromptSubmit), the coordinator is reminded of the cards
   waiting on you (id and title, up to 8) and asked to close or update any you just answered.
-  The hook also notes where the board stood, for the next check.
+  Titles are cleaned, cut to 80 characters, quoted and marked as data written by agents, not
+  instructions; a card's description and ask are never passed on. The hook also notes where
+  the board stood, for the next check.
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and no
   Waiting card was added, moved to Waiting or changed during that turn, the hook sends it back
   once: "add or update a Waiting card first". It never does so twice in a row, nor more than
@@ -316,6 +320,8 @@ another file.
   `ask` holds one line per thing to do. `report` is optional (set by `job-start --report`).
 - `options` (Waiting cards) are the answer buttons; `sent` is the last answer sent from the
   board. Both go away when the card leaves Waiting.
+- `reported` marks which report outcome `job-report` already applied to the card, so a repeat
+  call changes nothing.
 - `panes` remembers the board pane of each Herdr tab.
 - Done cards are kept for 14 days (the Done column shows today's), then dropped.
 - Only `board.mjs` writes the file (the pane, through it, writes `sent`). It takes a lock

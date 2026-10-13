@@ -43,7 +43,7 @@
 // Exit: 0 ok, 1 error (unknown item, unreadable board, Herdr failed), 2 bad usage.
 
 import { execFile, spawnSync } from "node:child_process"
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { hostname } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
@@ -1474,13 +1474,30 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return 1
         }
         const [column, ask] = outcome
+        // The job's card: its open one, else the one this report file already moved. A card
+        // remembers which outcome it got (`reported`), so a repeat call (a watcher firing twice,
+        // the same report read again) changes nothing, not even the coordinator's later edits;
+        // a report rewritten with a different outcome applies again, to the same card.
+        const reported = createHash("sha256").update(JSON.stringify([path, column, ask])).digest("hex").slice(0, 16)
+        const cardFor = (list) => jobItem(list, slug) || list.findLast((i) => i.job === slug && i.report === path)
+        const settled = (it) => it && it.reported === reported
+        const before = cardFor(readBoard(file).items)
+        if (settled(before)) {
+          // Already where this report puts it: nothing is written, `updated` stays.
+          if (!quiet) out(`${before.id} unchanged (${label(column)}): ${before.title}`)
+          return 0
+        }
         const item = change((s) => {
-          const it = jobItem(s.items, slug) || addItem(s, column, slug, { job: slug, report: path }, now)
+          const found = cardFor(s.items)
+          if (settled(found)) return found
+          const it = found || addItem(s, column, slug, { job: slug, report: path }, now)
           moveItem(it, column, now)
           // A worker's report never puts answer buttons on the board.
           dropOptions(it)
           it.ask = ask
           it.report = path
+          it.reported = reported
+          it.updated = now.toISOString()
           return it
         })
         out(`${item.id} → ${label(column)}: ${item.title}${ask ? `\n  ask: ${ask.replace(/\n/g, "\n  ask: ")}` : ""}`)
