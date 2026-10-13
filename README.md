@@ -149,13 +149,12 @@ Choose a button with `←` `→` (the suggested one, ✓, comes first; the chose
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
   sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
   then press again), or Herdr can't prompt it (next point).
-- **Which coordinators can receive a button.** With Herdr 0.9.3, `herdr agent prompt` to a
-  Claude Code session started by typing `claude` returned `agent_not_ready`, and renaming it
-  with `herdr agent rename` didn't change that; a coordinator started with `herdr agent start`
-  receives it. To start one that way, run from another pane:
-  `herdr agent start coordinator --kind claude --pane <a pane at a shell prompt>`. Arguments for
-  the agent go after `--`, e.g. `-- --continue` to pick up the last conversation in that
-  folder. When the board can't hand an answer over, the card says so; use Other… and type it.
+- **Which coordinators can receive a button.** Any coordinator Herdr sees as an agent in that
+  pane, including a Claude Code session started by typing `claude`: the board sends to the pane
+  id, and Herdr 0.9.3 delivered there both while the session was idle and while it was working
+  (checked 2026-10-13). Herdr declines (`agent_not_ready`) while the agent shows a prompt or is
+  otherwise not ready for input, and refuses one that is blocked on a question; the card then
+  says so, and you press again later or use Other… and type the answer.
 - Up to 4 buttons of up to 24 characters; `--clear-options` removes them. They are for Waiting
   cards only and go away when the card leaves Waiting.
 
@@ -240,8 +239,8 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    `add waiting "<title>: <action>" --desc "<what and why>" --ask "<exactly what to do>"`, and
    when the answers are clear, buttons for them, the suggested one first:
    `--option "Go" --option "Not now" --suggest "Go"`. A pressed button arrives in your chat as
-   `Board card <id> (<title>): <label>` (only if Herdr started you, with `herdr agent start`);
-   "Other…" means the user types the answer. When they have answered: `done <id>`, or `move`
+   `Board card <id> (<title>): <label>`, typed into your pane by Herdr; "Other…" means the
+   user types the answer. When they have answered: `done <id>`, or `move`
    the card.
 4. **A job starts**: a job is an agent you started in another pane under a Herdr agent name
    (`herdr agent start <slug> …`) that ends by writing a JSON report.

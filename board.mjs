@@ -1530,8 +1530,8 @@ const HERDR_ERRORS = {
   agent_not_found: "coordinator pane not found",
   pane_not_found: "coordinator pane not found",
   agent_blocked: "the coordinator is waiting on a question in its pane; answer it there, then press again",
-  agent_not_ready:
-    "Herdr can only hand a message to an agent started with `herdr agent start` (see README); type your answer in the coordinator's chat",
+  // Herdr declines while the agent shows a prompt or is otherwise not ready for input.
+  agent_not_ready: "the coordinator isn't taking input right now (a prompt may be open in its pane); press again in a moment, or type the answer there",
 }
 
 /** Run herdr; resolves to null, or to an error message when it failed. */

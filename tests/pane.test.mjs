@@ -288,7 +288,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
   try {
     spawnSync("git", ["-C", base, "init", "-q"])
     const herdr = join(base, "herdr.json")
-    // A coordinator started with `herdr agent start`: Herdr can prompt it.
+    // A coordinator Herdr can prompt (ready for input).
     const agents = [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1", interactive_ready: true }]
     writeFileSync(herdr, JSON.stringify({ agents }))
     const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW.toISOString(), NO_COLOR: "1", TZ: "UTC" }
@@ -333,7 +333,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
     assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, interactive_ready: undefined }] }))
-    assert.match(flat(pane("\x1b[C\r")), /couldn't send: Herdr can only hand a message to an agent started with `herdr agent start`/)
+    assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator isn't taking input right now \(a prompt may be open in its pane\); press again in a moment/)
     assert.match(pane("\x1b[C\r", "").stdout, /couldn't send: no coordinator pane known/)
     assert.deepEqual(typed(), [], "no send-text, no send-keys, ever")
     assert.equal(items()[0].sent, undefined)
