@@ -1,0 +1,30 @@
+Job board · my-app                                     10:30
+
+▸ WAITING ON YOU (5)
+1▸Login page redesign: approve                    2 h 20 min
+  New sign-in screen with SSO buttons and a clearer error
+  message. 3 small choices to confirm.
+  → Open the mockup, reply ok or change
+
+2 Search filters mockup: approve                  1 h 30 min
+  Filter panel for the search page with saved filters. 4
+  choices, e.g. whether saved filters are per user.
+  → Reply ok or change
+↓ 3 more
+
+DOING (2)
+6 Search filters: build                               25 min
+  working
+  The filter panel from the approved mockup, with saved
+  filters per user.
+↓ 1 more
+
+TO DO (4)
+ 8 Export to CSV                                       1 min
+   Let people download any table as CSV. Three customers
+   asked for it.
+↓ 3 more
+
+DONE (1)
+12 Nightly backup check                                07:30
+Tab section · ↑↓ scroll · q quit

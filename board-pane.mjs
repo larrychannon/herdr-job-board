@@ -1,35 +1,67 @@
 #!/usr/bin/env node
-// The board pane: draws the job board (board.mjs) and redraws it every 3 s, and at once when the
-// board file changes or the pane is resized. It only reads the board; board.mjs writes it.
+// The board pane: draws the job board (board.mjs), redraws it every 3 s, and at once when the
+// board file changes, the pane is resized or a key is pressed. It only reads the board;
+// board.mjs writes it.
 //
-//   node board-pane.mjs [--board <file>] [--interval <s>]
-//   node board-pane.mjs --once [--width N] [--height N] [--color]
+//   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
+//   node board-pane.mjs --once [--width N] [--height N] [--color] [--keys <input>] [--origin <pane>]
 //
-// `board.mjs open` starts it in a split right of the calling pane. Three
-// columns, WAITING ON YOU, DOING and TO DO, with "Done today" at the bottom; under 70 cells
-// wide the columns stack. Each card: the title, the description over up to 3 lines, for
-// Waiting the ask ("→ …"), and the age. Doing items show their agent's live status from
-// `herdr agent list`; a blocked agent shows under Waiting. It also keeps the sidebar's $board
-// token current.
+// `board.mjs open` starts it in a split right of the calling pane. WAITING ON YOU across the
+// top; DOING, TO DO and DONE (today, newest first) in three columns below; under 70 cells wide
+// the four stack. Each card: the title, the description over up to 3 lines, for Waiting the
+// ask ("→ …"), and the age; Doing shows its agent's live status from `herdr agent list`, and a
+// blocked agent shows under Waiting. It also keeps the sidebar's $board token current.
+//
+// Every section scrolls on its own, and the position holds across redraws and new cards.
+//   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   scroll one card
+//   PgUp PgDn               scroll a page           g G        top / bottom
+//   mouse wheel             scroll the section under the pointer (a click selects it)
+//   q quit, r redraw
+// Waiting cards can carry answer buttons (board.mjs add … --option): in Waiting, ↑ ↓ select a
+// card, ← → a button, Enter (or a click) sends "Board card <id> (<title>): <label>" to the
+// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane and types
+// "Board card <id>: " for the user to finish. A card answered already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
-// when the text changed. Keys: q quits, r redraws.
+// when the text changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
+// signal and on a crash.
 //
-// --once prints one frame (no colour unless --color) and exits: for tests and a quick look.
+// --once prints one frame and exits (no colour unless --color): for tests and a quick look.
+// --keys feeds it input first, e.g. --keys $'\t\e[B' (next section, then one card down); a
+// button pressed there is really sent.
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
 
 import { watch } from "node:fs"
 import { basename, dirname, resolve, sep } from "node:path"
 
-import { boardPath, buildView, emptyBoard, listAgentsAsync, readBoard, render, repoName, reportToken, textWidth, tokenText } from "./board.mjs"
+import {
+  boardPath,
+  buildView,
+  deliver,
+  emptyBoard,
+  handleInput,
+  listAgentsAsync,
+  markSent,
+  parseInput,
+  readBoard,
+  renderBoard,
+  repoName,
+  reportToken,
+  sendDecision,
+  textWidth,
+  tokenText,
+} from "./board.mjs"
+
+const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
+const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null }
+  const opts = { interval: 3, once: false, color: null, keys: "", origin: "" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
     else if (a === "--color") opts.color = true
     else if (a === "--no-color") opts.color = false
-    else if (["--board", "--interval", "--width", "--height"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
+    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
   return opts
@@ -42,18 +74,50 @@ function locate(opts, env) {
   return boardPath(process.cwd(), env)
 }
 
-async function frame(file, env, { width, height, color }) {
-  const now = env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date()
+/** The board's data and live agents, read fresh; drawing then works from this cache. */
+async function load(file, env) {
   const agents = await listAgentsAsync(env)
-  let state = emptyBoard()
-  let error = ""
   try {
-    state = readBoard(file)
+    return { state: readBoard(file), agents, error: "" }
   } catch (e) {
-    error = e.message
+    return { state: emptyBoard(), agents, error: e.message }
   }
-  const view = buildView(state, agents, { now, workspace: env.HERDR_WORKSPACE_ID || "" })
-  return { text: render(view, { width, height, color, now, repo: repoName(file), error }), token: error ? null : tokenText(view) }
+}
+
+const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date())
+
+function compose(data, file, env, layout) {
+  const now = clockNow(env)
+  const view = buildView(data.state, data.agents, { now, workspace: env.HERDR_WORKSPACE_ID || "" })
+  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true })
+  return { drawn, token: data.error ? null : tokenText(view) }
+}
+
+/**
+ * A button press: send the answer (or for Other…, open the chat) unless the card was answered
+ * already and this is the first press since ("send again?"). `ctx` holds the data, the notes
+ * shown on cards and the pending confirmation; it is updated in place.
+ */
+async function act(action, ctx) {
+  const item = ctx.data.state.items.find((i) => i.id === action.id)
+  if (!item || item.column !== "waiting") return
+  if (action.type === "send") {
+    const decision = sendDecision(item, action.label, ctx.confirm, Date.now())
+    ctx.confirm = decision.confirm
+    if (!decision.send) {
+      ctx.notes[action.key] = decision.note
+      return
+    }
+  }
+  ctx.notes[action.key] = { t: action.type === "send" ? `sending: ${action.label}…` : "opening the chat…", s: "dim" }
+  ctx.redraw()
+  const error = await deliver(action, item, ctx.origin, ctx.env)
+  if (error) ctx.notes[action.key] = { t: `${action.type === "send" ? "couldn't send" : "couldn't open the chat"}: ${error}`, s: "blocked" }
+  else {
+    delete ctx.notes[action.key]
+    if (action.type === "send") markSent(ctx.file, item.id, action.label, clockNow(ctx.env))
+  }
+  ctx.data = await load(ctx.file, ctx.env)
 }
 
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
@@ -68,79 +132,110 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
   const file = locate(opts, env)
   if (!file) {
-    process.stderr.write(
-      "board-pane: no board here. Run `node board.mjs open` from the repo, or pass --board <file>.\n",
-    )
+    process.stderr.write("board-pane: no board here. Run `node board.mjs open` from the repo, or pass --board <file>.\n")
     return 2
   }
 
   if (opts.once) {
-    const size = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity }
-    const { text } = await frame(file, env, { ...size, color: opts.color === true })
-    process.stdout.write(`${text}\n`)
+    const ctx = { data: await load(file, env), file, env, origin: opts.origin, notes: {}, confirm: null, redraw: () => {} }
+    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true }
+    const draw = (scroll) => compose(ctx.data, file, env, { ...layout, scroll, notes: ctx.notes }).drawn
+    let drawn = draw()
+    for (const event of parseInput(opts.keys)) {
+      if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
+      const { scroll, action } = handleInput(drawn.scroll, event, drawn)
+      if (action) await act(action, ctx)
+      drawn = draw(scroll)
+    }
+    process.stdout.write(`${drawn.text}\n`)
     return 0
   }
 
   const out = process.stdout
   const color = opts.color ?? !env.NO_COLOR
+  const ctx = { data: await load(file, env), file, env, origin: opts.origin, notes: {}, confirm: null, redraw: () => paint() }
+  let scroll = { selected: "waiting", anchors: {} }
+  let drawn = null
   let last = ""
   let lastToken
-  let busy = false
-  let again = false
-  // Synchronised update (ignored by terminals that lack it), cursor home, then each line in place.
-  const paint = (text) => {
+
+  // Draw from the cache: instant for keys and resizes. One cell of margin on the right, so a
+  // full last column never wraps. Synchronised update (ignored by terminals that lack it).
+  const paint = () => {
     const cols = out.columns || 80
-    const lines = text.split("\n")
-    const body = lines.map((l) => (textWidth(l.replace(ANSI, "")) < cols ? `${l}\x1b[K` : l)).join("\r\n")
-    out.write(`\x1b[?2026h\x1b[H${body}\x1b[J\x1b[?2026l`)
-  }
-  const draw = async () => {
-    if (busy) {
-      again = true
-      return
+    const result = compose(ctx.data, file, env, { width: cols - 1, height: out.rows || 24, color, scroll, notes: ctx.notes })
+    drawn = result.drawn
+    scroll = drawn.scroll
+    if (drawn.text !== last) {
+      const body = drawn.text
+        .split("\n")
+        .map((l) => (textWidth(l.replace(ANSI, "")) < cols ? `${l}\x1b[K` : l))
+        .join("\r\n")
+      out.write(`\x1b[?2026h\x1b[H${body}\x1b[J\x1b[?2026l`)
+      last = drawn.text
     }
-    busy = true
+    if (result.token !== null && result.token !== lastToken) {
+      reportToken(result.token, env, { wait: false })
+      lastToken = result.token
+    }
+  }
+  let loading = false
+  const refresh = async () => {
+    if (loading) return
+    loading = true
     try {
-      // One cell of margin on the right, so a full last column never wraps.
-      const { text, token } = await frame(file, env, { width: (out.columns || 80) - 1, height: out.rows || 24, color })
-      if (text !== last) {
-        paint(text)
-        last = text
-      }
-      if (token !== null && token !== lastToken) {
-        reportToken(token, env, { wait: false })
-        lastToken = token
-      }
+      ctx.data = await load(file, env)
+      paint()
     } finally {
-      busy = false
-      if (again) {
-        again = false
-        draw()
-      }
+      loading = false
     }
   }
 
-  const restore = () => out.write("\x1b[?25h\x1b[?1049l")
-  const quit = () => {
-    restore()
-    process.exit(0)
+  // Leave the terminal as it was, whatever the way out.
+  let restored = false
+  const restore = () => {
+    if (restored) return
+    restored = true
+    out.write(`${MOUSE_OFF}\x1b[?25h\x1b[?1049l`)
   }
-  out.write("\x1b[?1049h\x1b[?25l\x1b[2J")
+  const quit = (code = 0) => {
+    restore()
+    process.exit(code)
+  }
   process.on("exit", restore)
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, quit)
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => quit(0))
+  const crash = (error) => {
+    restore()
+    process.stderr.write(`board-pane: ${error?.stack || error}\n`)
+    process.exit(1)
+  }
+  process.on("uncaughtException", crash)
+  process.on("unhandledRejection", crash)
+
+  out.write(`\x1b[?1049h\x1b[?25l${MOUSE_ON}\x1b[2J`)
   out.on("resize", () => {
     last = ""
-    draw()
+    paint()
   })
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true)
-    process.stdin.on("data", (key) => {
-      const k = key.toString()
-      if (k === "q" || k === "\x03") quit()
-      if (k === "r") {
-        last = ""
-        draw()
+    process.stdin.on("data", (chunk) => {
+      for (const event of parseInput(chunk.toString("utf8"))) {
+        if (event.type === "key" && event.name === "quit") quit(0)
+        if (event.type === "key" && event.name === "redraw") {
+          last = ""
+          refresh()
+          continue
+        }
+        if (!drawn) continue
+        const result = handleInput(scroll, event, drawn)
+        scroll = result.scroll
+        if (result.action) act(result.action, ctx).then(paint, crash)
+        // Redraw before the next event: keys that arrive together each see the screen the
+        // previous one left.
+        paint()
       }
+      paint()
     })
   }
   // The file is replaced by a rename on every write, so watch its folder, not the file.
@@ -149,11 +244,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     watch(dirname(file), (_, name) => {
       if (name && name !== basename(file)) return
       clearTimeout(pending)
-      pending = setTimeout(draw, 100)
+      pending = setTimeout(refresh, 100)
     })
   } catch {}
-  setInterval(draw, Math.max(1, Number(opts.interval) || 3) * 1000)
-  await draw()
+  setInterval(refresh, Math.max(1, Number(opts.interval) || 3) * 1000)
+  paint()
   return null
 }
 

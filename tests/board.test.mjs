@@ -3,7 +3,7 @@
 // fixtures/fake-herdr.mjs; the real one is never called.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -143,6 +143,7 @@ function seedDemo(dir) {
     ["Deploy v1.4: go", "After #12 and #14 merge: tag v1.4 and deploy it to production.", "Say go once merged", "10:00"],
   ]
   for (const [title, desc, ask, at] of waiting) add(["add", "waiting", title, "--desc", desc, "--ask", ask], `2026-10-13T${at}:00Z`)
+  add(["edit", "5", "--option", "Go", "--option", "Not now", "--suggest", "Go"], "2026-10-13T10:00:00Z")
   add(["job-start", "search-ui", "--title", "Search filters: build", "--desc", "The filter panel from the approved mockup, with saved filters per user."], "2026-10-13T10:05:00Z")
   add(["job-start", "docs-links", "--title", "Docs site: fix broken links", "--desc", "Check every link on the new docs site and fix the ones that 404."], "2026-10-13T10:28:00Z")
   const todo = [
@@ -158,42 +159,52 @@ function seedDemo(dir) {
 
 const agent = (name, status, workspace = "w9") => ({ name, agent_status: status, workspace_id: workspace, pane_id: `${workspace}:p${name.length}` })
 
-test("board-pane: renders three columns at 120 and 88, stacked at 60 (snapshots)", () => {
+test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (snapshots)", () => {
   const { base, done } = temp()
   try {
     const dir = repo(base, "my-app")
     seedDemo(dir)
     const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working"), agent("docs-links", "working")] })
-    const frame = (width, height) => {
-      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height)], { cwd: dir, env: envFor({ herdr }), encoding: "utf8" })
+    const frame = (width, height, cwd = dir, keys = "") => {
+      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height), "--keys", keys], { cwd, env: envFor({ herdr }), encoding: "utf8" })
       assert.equal(r.status, 0, r.stderr)
       const lines = r.stdout.replace(/\n$/, "").split("\n")
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
-      assert.ok(lines.length <= height, `no more than ${height} lines`)
+      assert.equal(lines.length, height, `exactly ${height} lines`)
+      assert.equal(lines.at(-1), "Tab section · ↑↓ scroll · q quit", "the key hint is the last line")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
-    for (const width of [120, 88, 60]) {
-      const text = frame(width, 40)
-      const snap = join(FIXTURES, `board-${width}.txt`)
+    for (const [width, height] of [[120, 40], [88, 40], [60, 30]]) {
+      const text = frame(width, height)
+      const snap = join(FIXTURES, `board-${width}x${height}.txt`)
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, text)
       assert.equal(text, readFileSync(snap, "utf8"), `snapshot ${snap} (UPDATE_SNAPSHOTS=1 to rewrite)`)
+      assert.match(text, /DONE \(1\)[\s\S]*12 Nightly backup check/, "Done: today's cards")
+      assert.match(text, /\b07:30\b/, "with the time they finished")
     }
+    assert.match(frame(120, 40), /\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/, "answer buttons")
+    // Waiting doesn't fit at 88 x 40: it scrolls, says how many cards are below, and leaves the
+    // bottom half for the other sections.
+    const narrow = frame(88, 40).split("\n")
+    const more = narrow.findIndex((l) => /^↓ \d+ more$/.test(l))
+    const bottom = narrow.findIndex((l) => l.startsWith("DOING (2)"))
+    assert.ok(more > 0 && more < bottom, "a ↓ marker at the end of Waiting")
+    assert.ok(bottom <= 22, `Waiting takes about half the height (Doing starts on line ${bottom + 1})`)
+    // G scrolls Waiting to its end: the last card, its buttons (the suggested one selected), and
+    // how many cards are above.
+    const end = frame(88, 40, dir, "G")
+    assert.match(end, /^↑ 2 above$/m)
+    assert.match(end, /5▸Deploy v1\.4: go[\s\S]*< Go ✓ >  \[ Not now \]  \[ Other… \]/)
+    assert.doesNotMatch(end.split("DOING")[0], /↓ \d+ more/)
 
-    // Short of room, To do goes first: its descriptions, then its cards.
-    const tall = frame(60, 52)
-    assert.match(tall, /TO DO \(4\)\n\n 8 Export to CSV +1 min\n\n 9 Dark mode +1 min\n/, "To do keeps titles, no descriptions")
-    assert.match(tall, /2 Search filters mockup: approve +1 h 30 min\n  Filter panel for the search page with saved filters\. 4\n  choices, e\.g\. whether saved filters are per user\.\n  → Reply ok or change/)
-    const short = frame(60, 40)
-    assert.match(short, /TO DO \(4\)\n\n\+4 more\n/)
-    // Then the descriptions of Doing and Waiting, before any of their cards.
-    const shorter = frame(60, 32)
-    for (const title of ["Login page redesign: approve", "Deploy v1.4: go", "Docs site: fix broken links"]) assert.ok(shorter.includes(title), title)
-    assert.doesNotMatch(shorter, /New sign-in screen/)
-    assert.match(shorter, /→ Try the invoice page on :3000, then say merge/, "the ask stays")
-    const tiny = frame(60, 20)
-    assert.match(tiny, /WAITING ON YOU \(5\)[\s\S]*\+\d more/)
-    assert.match(tiny.trimEnd().split("\n").at(-1), /^Done today: Nightly backup check$/)
+    // With nothing waiting, Waiting is one line and the rest goes to the bottom.
+    const calm = repo(base, "calm")
+    ok(calm, ["add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV."])
+    const quiet = frame(88, 20, calm).split("\n")
+    assert.equal(quiet[2], "▸ WAITING ON YOU (0)  Nothing needs you")
+    assert.equal(quiet[3], "")
+    assert.match(quiet[4], /^DOING \(0\) +TO DO \(1\) +DONE \(0\)$/)
   } finally {
     done()
   }
@@ -238,7 +249,7 @@ test("board: a blocked agent shows under Waiting, even when the board doesn't sa
     assert.match(waiting, /Search filters: build +just now\n\s+blocked: answer it in tab search-ui/)
     assert.match(waiting, /• stray\n\s+blocked: answer it in tab stray/, "a blocked named agent not on the board")
     assert.doesNotMatch(text, /elsewhere|idle-one/, "other workspaces and idle agents stay out")
-    assert.match(text, /DOING \(1\)\n\n2 Review PR #31 +just now\n\s+working/)
+    assert.match(text, /DOING \(1\)\n2 Review PR #31 +just now\n\s+working/)
 
     const view = buildView({ items: items(dir) }, null)
     assert.equal(view.counts.waiting, 0, "without Herdr there is no live status")
@@ -344,7 +355,7 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.ok(split.includes("--no-focus"))
     assert.deepEqual(log.find((a) => a[1] === "rename"), ["pane", "rename", "w9:p101", "board"])
     const run = log.find((a) => a[1] === "run")
-    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\.git\/job-board\.json'$/)
+    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\.git\/job-board\.json' --origin 'w9:p1'$/)
     assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": "w9:p101" })
 
     assert.match(ok(dir, ["open"], { herdr }), /already open in pane w9:p101/)
@@ -377,28 +388,126 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.match(switched.filter((a) => a[1] === "run").at(-1)[3], new RegExp(`^node '${BOARD.replace(/board\.mjs$/, "board-pane\\.mjs")}'`))
     assert.equal(switched.filter((a) => a[1] === "split").length, 1)
 
+    // The board sends its answers elsewhere (opened from another pane): restarted for this one.
+    const elsewhere = JSON.parse(readFileSync(herdr, "utf8"))
+    elsewhere.panes.find((p) => p.pane_id === "w9:p101").running = `node '${PANE}' --board x --origin 'w9:p7'`
+    writeFileSync(herdr, JSON.stringify(elsewhere))
+    assert.match(ok(dir, ["open"], { herdr }), /board restarted in pane w9:p101; its answers now go to w9:p1/)
+    assert.match(herdrLog(herdr).filter((a) => a[1] === "run").at(-1)[3], /--origin 'w9:p1'$/)
+
     assert.match(board(dir, ["open"]).stderr, /needs Herdr/)
   } finally {
     done()
   }
 })
 
-test("board-pane: wide characters and escape sequences stay inside the width", () => {
+test("board: no control characters reach a terminal, from the pane or the CLI", () => {
   const { base, done } = temp()
   try {
     const dir = repo(base)
-    ok(dir, ["add", "todo", "日本語のタイトルがとても長いのでここで切れるはずです", "--desc", "説明もかなり長いので切れるはずです、たぶん"])
-    ok(dir, ["add", "waiting", "evil \u001b[2J\u001b]0;pwned\u0007 title", "--ask", "line one\nline two"])
+    const nasty = "evil \u001b]52;c;aGk=\u0007 \u001b[2J\u009b31m\u009d0;x\u0007\r title \u202eabc"
+    const outputs = []
+    const keep = (r) => {
+      outputs.push(r.stdout, r.stderr)
+      return r
+    }
+    keep(board(dir, ["add", "todo", "日本語のタイトルがとても長いのでここで切れるはずです", "--desc", "説明もかなり長いので切れるはずです、たぶん"]))
+    keep(board(dir, ["add", "waiting", nasty, "--desc", nasty, "--ask", `line one ${nasty}\nline two`, "--option", `Go\u001b[2J`]))
+    keep(board(dir, ["edit", "2", "--title", nasty]))
+    keep(board(dir, ["move", "2", "waiting"]))
+    keep(board(dir, ["job-start", "evil", "--title", nasty]))
+    const report = join(base, "r.json")
+    writeFileSync(report, JSON.stringify({ status: `don\u001b[2Je`, summary: nasty, needs_user: [nasty, { what: nasty }] }))
+    keep(board(dir, ["job-report", "evil", report]))
+    writeFileSync(report, JSON.stringify({ status: "done", summary: nasty, needs_user: [nasty] }))
+    keep(board(dir, ["job-report", "evil", report]))
+    keep(board(dir, ["move", `x\u001b[2J`, "done"]))
+    keep(board(dir, ["ls", "--width", "60"]))
+    keep(board(dir, ["json"]))
+    for (const width of [120, 60]) keep(spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", "30"], { cwd: dir, env: envFor(), encoding: "utf8" }))
+    const all = outputs.join("")
+    assert.doesNotMatch(all, /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/, "no C0 (but newline and tab), DEL or C1 character in any output")
+    assert.doesNotMatch(all, /[\u202a-\u202e\u2066-\u2069]/, "no bidirectional control")
+    // Stored clean, too: a later reader (another tool, an older board) is safe.
+    const stored = readFileSync(fileOf(dir), "utf8")
+    assert.doesNotMatch(JSON.parse(stored).items.map((i) => [i.title, i.desc, i.ask, ...(i.options || []).map((o) => o.label)].join("")).join(""), /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202e]/)
+    assert.equal(items(dir)[1].options[0].label, "Go[2J")
+
+    // A board written by hand, with a C1 control: `json` escapes it.
+    writeFileSync(fileOf(dir), JSON.stringify({ version: 1, next_id: 2, items: [{ id: 1, title: "csi \u009b here", column: "todo", since: "2026-10-13T10:00:00Z" }] }))
+    const json = board(dir, ["json"]).stdout
+    assert.ok(!json.includes("\u009b") && json.includes("\\u009b"), "C1 written as an escape")
+    assert.equal(JSON.parse(json).items[0].title, "csi \u009b here", "and the JSON still reads back the same")
+
+    // Wide characters stay inside the width.
     for (const width of [120, 60]) {
-      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width)], { cwd: dir, env: envFor(), encoding: "utf8" })
-      assert.equal(r.status, 0, r.stderr)
-      assert.doesNotMatch(r.stdout, /\u001b/, "no escape sequence from board text reaches the terminal")
+      ok(dir, ["add", "todo", "日本語のタイトルがとても長いのでここで切れるはずです"])
+      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", "30"], { cwd: dir, env: envFor(), encoding: "utf8" })
       for (const line of r.stdout.replace(/\n$/, "").split("\n")) {
-        const cells = [...line].reduce((w, ch) => w + (/[　-ヿ一-鿿]/.test(ch) ? 2 : 1), 0)
+        const cells = [...line].reduce((w, ch) => w + (/[\u3000-\u30ff\u4e00-\u9fff]/.test(ch) ? 2 : 1), 0)
         assert.ok(cells <= width, `${cells} > ${width}: ${line}`)
       }
-      assert.ok(r.stdout.includes("→ line one") && r.stdout.includes("→ line two"), "each line of the ask")
     }
+  } finally {
+    done()
+  }
+})
+
+test("board: a hand-edited board with odd items says so, not a TypeError", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    for (const content of ['{"items":[null]}', '{"items":[1]}', '{"items":"x"}', "[]", "null", "not json"]) {
+      writeFileSync(fileOf(dir), content)
+      const r = board(dir, ["ls"])
+      assert.equal(r.status, 1, content)
+      assert.match(r.stderr, /is not (a job board|valid JSON)/, content)
+      assert.doesNotMatch(r.stderr, /TypeError|Cannot read/, content)
+    }
+  } finally {
+    done()
+  }
+})
+
+test("board: the lock is taken back from a dead process, never from a live one", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    const lock = `${fileOf(dir)}.lock`
+    const host = spawnSync("hostname", { encoding: "utf8" }).stdout.trim() || "localhost"
+    // A lock left by a process that is gone: taken back at once.
+    const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" }).stdout
+    mkdirSync(lock)
+    writeFileSync(join(lock, "owner"), `${dead} ${host} abc`)
+    ok(dir, ["add", "todo", "after a dead owner"])
+    assert.ok(!existsSync(lock), "released after the write")
+    // A live owner (this test) keeps it, however long it takes: the writer gives up instead.
+    mkdirSync(lock)
+    writeFileSync(join(lock, "owner"), `${process.pid} ${host} abc`)
+    const r = board(dir, ["add", "todo", "x"], { extra: { JOB_BOARD_LOCK_WAIT_MS: "300" } })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, new RegExp(`the board is locked by process ${process.pid}`))
+    assert.ok(existsSync(join(lock, "owner")), "the live owner's lock is left alone")
+    rmSync(lock, { recursive: true })
+    // No owner written and old: stale.
+    mkdirSync(lock)
+    utimesSync(lock, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000))
+    ok(dir, ["add", "todo", "after an old lock"])
+    assert.deepEqual(readdirSync(join(dir, ".git")).filter((f) => f.startsWith("job-board.json.")), [], "no lock, temp or stale file left")
+    assert.equal((statSync(fileOf(dir)).mode & 0o777).toString(8), "600", "the board file is private to its owner")
+  } finally {
+    done()
+  }
+})
+
+test("board: a Doing card shows its own workspace's agent, not a namesake elsewhere", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    ok(dir, ["job-start", "search-ui", "--title", "Search filters: build"])
+    const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working", "w2")] })
+    const text = ok(dir, ["ls", "--width", "60"], { herdr })
+    assert.match(text, /1 Search filters: build +just now\n\s+no agent/)
   } finally {
     done()
   }

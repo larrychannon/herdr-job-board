@@ -16,9 +16,9 @@ const ok = (result) => {
   process.stdout.write(JSON.stringify({ id: "fake", result }))
   process.exit(0)
 }
-const fail = (message) => {
+const fail = (message, code = "fake_error") => {
   save()
-  process.stderr.write(JSON.stringify({ error: { message } }))
+  process.stderr.write(JSON.stringify({ error: { code, message } }))
   process.exit(1)
 }
 const flag = (name) => {
@@ -48,6 +48,17 @@ if (key === "pane run") {
   pane(target).running = args[3]
   ok({ type: "ok" })
 }
+if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
+  // A target is an agent's name or the pane that hosts it. Like Herdr, `agent prompt` takes
+  // only named agents (ones `agent start` started).
+  const host = (state.agents || []).find((a) => a.pane_id === target || (a.name && a.name === target))
+  if (!host) fail(`agent target ${target} not found`, "agent_not_found")
+  if (key === "agent get") ok({ agent: { agent: host.agent || "dummy", ...host }, type: "agent_info" })
+  if (key === "agent prompt" && !host.name) fail(`agent ${target} is not an active named agent`, "agent_not_ready")
+  if (key === "agent prompt" && host.agent_status === "blocked") fail("agent is blocked", "agent_blocked")
+  ok({ type: "ok" })
+}
+if (key === "pane send-keys") ok({ type: "ok" })
 if (key === "pane send-text") {
   // The board quits on "q".
   if (args[3] === "q" && pane(target)?.running?.includes("board-pane.mjs")) delete pane(target).running

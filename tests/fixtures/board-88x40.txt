@@ -1,0 +1,40 @@
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (5)
+1▸Login page redesign: approve                                                2 h 20 min
+  New sign-in screen with SSO buttons and a clearer error message. 3 small choices to
+  confirm.
+  → Open the mockup, reply ok or change
+
+2 Search filters mockup: approve                                              1 h 30 min
+  Filter panel for the search page with saved filters. 4 choices, e.g. whether saved
+  filters are per user.
+  → Reply ok or change
+
+3 Billing fix (PR #12): review                                                    50 min
+  Invoices now round each line, not the total. Fixes the one-cent differences customers
+  reported.
+  → Try the invoice page on :3000, then say merge
+↓ 2 more
+
+DOING (2)                     TO DO (4)                     DONE (1)
+6 Search filters: build        8 Export to CSV      1 min   12 Nightly backup check
+  working                        Let people download any       07:30
+  The filter panel from the      table as CSV. Three
+  approved mockup, with          customers asked for it.
+  saved filters per user.
+  25 min                       9 Dark mode          1 min
+                                 Follow the system theme.
+7 Docs site: fix broken          The colour tokens are
+  links               2 min      already in place.
+  working
+  Check every link on the     10 Pick next: onboarding or
+  new docs site and fix the      settings           1 min
+  ones that 404.                 From the roadmap: an
+                                 onboarding tour or a new
+                                 settings page. You pick.
+                              ↓ 1 more
+
+
+
+Tab section · ↑↓ scroll · q quit
