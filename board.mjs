@@ -17,10 +17,12 @@
 //   job-start <slug> [--id N] [--title T] [--desc D] [--report path]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
 //                           Doing item, else a new one)
-//   job-report <slug> [report.json]
+//   job-report <slug> [report.json] [--if-final]
 //                           a job's report landed (default: the --report given at job-start):
 //                           done → Done; done with needs_user → Waiting, asking needs_user;
-//                           blocked / failed → Waiting with the reason
+//                           blocked / failed → Waiting with the reason. --if-final: a missing,
+//                           unreadable or non-final report is a quiet no-op (exit 0), for wait
+//                           scripts that call it whenever the report file changes
 //   open [--share 0.3]      open the board pane right of this pane, once per tab; its answer
 //                           buttons send to this pane
 //   token                   print the sidebar text, and report it to Herdr as $board
@@ -1324,7 +1326,7 @@ function usage(message) {
 }
 
 const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest"])
-const SWITCHES = new Set(["clear-options"])
+const SWITCHES = new Set(["clear-options", "if-final"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -1450,16 +1452,24 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "job-report": {
-        only(opts, [], command)
-        if (rest.length < 1 || rest.length > 2) throw usage("usage: board.mjs job-report <slug> [report.json]")
+        only(opts, ["if-final"], command)
+        if (rest.length < 1 || rest.length > 2) throw usage("usage: board.mjs job-report <slug> [report.json] [--if-final]")
         const [slug, given] = rest
+        const quiet = Boolean(opts["if-final"])
         const items = readBoard(file).items
         const path = given ? resolve(given) : (jobItem(items, slug) || items.findLast((i) => i.job === slug))?.report
-        if (!path) throw new Error(`no report path for job ${slug}: pass it, or give --report to job-start`)
+        if (!path) {
+          if (quiet) return 0
+          throw new Error(`no report path for job ${slug}: pass it, or give --report to job-start`)
+        }
         const report = readJson(path)
-        if (!report) throw new Error(`can't read the report ${path}`)
+        if (!report) {
+          if (quiet) return 0
+          throw new Error(`can't read the report ${path}`)
+        }
         const outcome = reportOutcome(report)
         if (!outcome) {
+          if (quiet) return 0
           err(`report status is "${clean(report.status).slice(0, 40)}", not final; the board is unchanged`)
           return 1
         }

@@ -181,7 +181,7 @@ rows = [
 | `ls [--width N]` | Print the board as the pane shows it, with live agent status. |
 | `json` | Print the board file. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one). |
-| `job-report <slug> [report.json]` | A job's report landed (default: the `--report` given at `job-start`). See below. |
+| `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
 | `open [--share 0.3]` | Open the board pane right of this pane. |
 | `token` | Print the sidebar text and report it to Herdr. |
 | `path` | Print the board file's path. |
@@ -216,6 +216,43 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `→` line each).
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
+
+   A script that waits for the report can do this for you: call
+   `job-report <slug> <report> --if-final` whenever the report file changes. It does nothing
+   until the report is final, and calling it again with the same report changes nothing.
+
+### Keep the board current: hooks for Claude Code
+
+A coordinator that asks you something in the chat but forgets the card leaves the board stale.
+`hooks/board-hook.mjs` is a pair of [Claude Code hooks](https://code.claude.com/docs/en/hooks)
+that catch that:
+
+- **When you send a message** (UserPromptSubmit), the coordinator is reminded of the cards
+  waiting on you (id and title, up to 8) and asked to close or update any you just answered.
+  The hook also notes where the board stood, for the next check.
+- **When the coordinator finishes its reply** (Stop): if the reply asks you something and no
+  Waiting card was added, moved to Waiting or changed during that turn, the hook sends it back
+  once: "add or update a Waiting card first". It never does so twice in a row, nor more than
+  once in a turn.
+
+A reply "asks something" when its last paragraph ends with `?`, or a sentence near the end
+starts like a request for a decision: "Want me to …", "Should I …", "Shall I …", "OK to …",
+"Go?". Code blocks, inline code, quotes, block quotes and links don't count. It is a heuristic:
+a question it misses goes unchecked, and when it fires without need, the coordinator says so
+in one line and stops.
+
+The hooks only act inside Herdr, for the coordinator (the role variable, `JOB_AGENT_ROLE` by
+default, unset or `coordinator`; `--role-env NAME` picks another), never for subagents, and only
+in a repo that has a board. Anywhere else they print nothing. To install them, print the
+settings and merge them into `.claude/settings.json` (this project) or
+`~/.claude/settings.json` (everywhere):
+
+```sh
+node "$(herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-job-board") | .plugin_root')/hooks/board-hook.mjs" --print-settings
+```
+
+Each session's turn record is kept next to the board, in `.git/job-board.turns/`, and removed
+after 7 days.
 
 ### Writing cards
 
