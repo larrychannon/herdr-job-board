@@ -1,0 +1,13 @@
+{
+  "name": "herdr-job-board",
+  "version": "0.1.0",
+  "description": "A To do / Doing / Waiting-on-you board for agent jobs, in a Herdr split pane.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

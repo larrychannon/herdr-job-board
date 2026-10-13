@@ -1,0 +1,35 @@
+Job board · my-app                                                                                                 10:30
+
+WAITING ON YOU (5)                       DOING (2)                                TO DO (4)
+
+1 Login page redesign: approve           6 Search filters: build         25 min    8 Export to CSV                 1 min
+  New sign-in screen with SSO buttons      working                                   Let people download any table as
+  and a clearer error message. 3 small     The filter panel from the approved        CSV. Three customers asked for it.
+  choices to confirm.                      mockup, with saved filters per user.
+  → Open the mockup, reply ok or                                                   9 Dark mode                     1 min
+    change                  2 h 20 min   7 Docs site: fix broken links    2 min      Follow the system theme. The colour
+                                           working                                   tokens are already in place.
+2 Search filters mockup: approve           Check every link on the new docs
+  Filter panel for the search page         site and fix the ones that 404.        10 Pick next: onboarding or settings
+  with saved filters. 4 choices, e.g.                                                From the roadmap: an onboarding
+  whether saved filters are per user.                                                tour or a new settings page. You
+  → Reply ok or change      1 h 30 min                                               pick.                         1 min
+
+3 Billing fix (PR #12): review  50 min                                            11 Upgrade the test runner       1 min
+  Invoices now round each line, not                                                  The current version reaches end of
+  the total. Fixes the one-cent                                                      life next month.
+  differences customers reported.
+  → Try the invoice page on :3000,
+    then say merge
+
+4 Docs move (PR #14): merge     45 min
+  The docs move to the shared site. No
+  content changes.
+  → Say merge (after #12)
+
+5 Deploy v1.4: go               30 min
+  After #12 and #14 merge: tag v1.4
+  and deploy it to production.
+  → Say go once merged
+
+Done today: Nightly backup check

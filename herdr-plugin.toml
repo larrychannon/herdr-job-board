@@ -1,0 +1,28 @@
+# herdr-job-board: a To do / Doing / Waiting-on-you board in a split beside your pane.
+#
+#   herdr plugin install larrychannon/herdr-job-board
+#
+# Commands are argv lists without a shell and start in the plugin folder; `sh -c` finds the
+# scripts through $HERDR_PLUGIN_ROOT, so they work whatever the working directory is.
+
+id = "herdr-job-board"
+name = "Job board"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "A To do / Doing / Waiting-on-you board for agent jobs, in a split beside the current pane."
+platforms = ["linux", "macos"]
+
+# Open the board right of the pane you are in (30% wide), once per tab. The board is the one of
+# the git repo that pane is in. Bind it to a key: command = "herdr-job-board.open".
+[[actions]]
+id = "open"
+title = "Open job board"
+command = ["sh", "-c", "exec node \"$HERDR_PLUGIN_ROOT/board.mjs\" open"]
+
+# For `herdr plugin pane open --plugin herdr-job-board --entrypoint board --placement split
+# --direction right --cwd <repo>`: the board of the repo given as --cwd.
+[[panes]]
+id = "board"
+title = "board"
+placement = "split"
+command = ["sh", "-c", "exec node \"$HERDR_PLUGIN_ROOT/board-pane.mjs\""]
