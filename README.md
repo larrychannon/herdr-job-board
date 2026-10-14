@@ -77,7 +77,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   colour off.
 - **The working bar** ticks about 6 times a second, and only while one is on screen: with no
   working card in view (none working, scrolled away, or under the details) there is no timer at
-  all. Each tick rewrites only that card's line, and the layout, the selection and the scroll
+  all. Each tick rewrites only the bar's cells, and the layout, the selection and the scroll
   position never move with it. `JOB_BOARD_ANIMATION=0` (or a `TERM=dumb` terminal) keeps it
   still; with `NO_COLOR` it moves uncoloured.
 
@@ -285,7 +285,7 @@ rows = [
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]` | Change a card. New `--option`s replace the old ones. |
 | `done <ref>` | Same as `move <ref> done`. |
 | `rm <ref>` | Remove a card. |
-| `ls [--width N]` | Print the board as the pane shows it, with live agent status. |
+| `ls [--width N]` | Print the board as the pane shows it, with live agent status, but with Done open: today's finished cards and the time they finished. |
 | `json` | Print the board file. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one). |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |

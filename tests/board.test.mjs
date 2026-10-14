@@ -217,6 +217,34 @@ test("board-pane: Waiting on top, Doing | To do below, Done folded to one line; 
   }
 })
 
+test("board ls: everything, with Done open: today's finished cards and their times, not older ones", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    ok(dir, ["add", "todo", "Yesterday's thing"], { now: "2026-10-12T09:00:00Z" })
+    ok(dir, ["done", "1"], { now: "2026-10-12T09:30:00Z" })
+    ok(dir, ["add", "todo", "Nightly backup check"], { now: "2026-10-13T07:00:00Z" })
+    ok(dir, ["done", "2"], { now: "2026-10-13T07:30:00Z" })
+    ok(dir, ["add", "todo", "Release notes: draft"], { now: "2026-10-13T08:00:00Z" })
+    ok(dir, ["done", "3"], { now: "2026-10-13T09:15:00Z" })
+    ok(dir, ["add", "todo", "Export to CSV"])
+    for (const width of ["120", "88", "60"]) {
+      const text = ok(dir, ["ls", "--width", width])
+      assert.match(text, /DONE \(2\)$/m, `${width}: Done's header, open (no ▾: there's nothing to click)`)
+      assert.doesNotMatch(text, /DONE · /, `${width}: not folded`)
+      // Newest first, each with the time it finished (beside it, or under it in a narrow column).
+      const newest = text.search(/\b3 Release notes: draft\b/)
+      assert.ok(newest >= 0 && newest < text.search(/\b2 Nightly backup check\b/), `${width}: today's cards, newest first`)
+      assert.match(text, /\b09:15\b/)
+      assert.match(text, /\b07:30\b/)
+      assert.doesNotMatch(text, /Yesterday's thing/, `${width}: today's only`)
+      assert.match(text, /Export to CSV/)
+    }
+  } finally {
+    done()
+  }
+})
+
 test("board: a card shows the title, the description over up to 3 lines, and the ask", () => {
   const { base, done } = temp()
   try {

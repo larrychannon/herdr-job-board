@@ -12,7 +12,8 @@
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //   done <ref>                                                 same as move <ref> done
 //   rm <ref>
-//   ls [--width N]          the board as text: the pane's view, with live agent status
+//   ls [--width N]          the board as text: the pane's view with Done open (today's finished
+//                           cards), with live agent status
 //   json                    the board file as it is
 //   job-start <slug> [--id N] [--title T] [--desc D] [--report path]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
@@ -968,12 +969,12 @@ function share(wants, total) {
   return got
 }
 
-function headerLine(view, section, selected) {
+function headerLine(view, section, selected, interactive) {
   const count = entriesOf(view, section).length
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
-  // Done open: ▾, for "d or a click here folds it again".
-  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" ? " ▾" : ""}`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
+  // Done open in the pane: ▾, for "d or a click here folds it again".
+  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
   if (section === "waiting" && !count) segs.push({ t: "  Nothing needs you", s: "dim" })
   return segs
 }
@@ -1519,7 +1520,7 @@ export function renderBoard(view, opts = {}) {
     else delete scroll.anchors[section]
     return blocks.length ? v.lines : [[{ t: "nothing", s: "dim" }]]
   }
-  const header = (section) => headerLine(view, section, interactive && scroll.selected === section)
+  const header = (section) => headerLine(view, section, interactive && scroll.selected === section, interactive)
   const room = finite ? height - out.length - (interactive ? 1 : 0) : Infinity
   // Done folded: its line, on the last row of the lower area (after a blank line when nothing
   // limits the height); a click anywhere on it opens Done.
@@ -1710,7 +1711,11 @@ export function barTick(drawn, frame, color) {
   return (drawn?.bars || []).map(({ y, x }) => `\x1b[${y};${x}H${painted}`).join("")
 }
 
-/** The board as text, everything shown (for `ls`), or as the pane draws it. */
+/**
+ * The board as text, laid out by renderBoard with `opts`. `ls` shows everything: no height limit
+ * and Done open (scroll { doneOpen: true }), as folding saves nothing there; the pane draws it
+ * through renderBoard with its own size, scroll and frame.
+ */
 export function render(view, opts = {}) {
   return renderBoard(view, opts).text
 }
@@ -2400,7 +2405,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const view = buildView(readBoard(file), listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
         const width = Number(opts.width) || process.stdout.columns || 100
         const color = !env.NO_COLOR && Boolean(process.stdout.isTTY) && !io.out
-        raw(render(view, { width, color, now, repo: repoName(file) }))
+        // Everything, Done open with today's finished cards: no height limit, so folding saves nothing.
+        raw(render(view, { width, color, now, repo: repoName(file), scroll: { doneOpen: true } }))
         return 0
       }
       case "json": {
