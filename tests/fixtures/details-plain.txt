@@ -1,0 +1,328 @@
+===== card 1 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  → Open the canvas, then OK all suggestions or comment        → Pick one
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+                                                               [ Not now ]  [ Other… ]                       7 h 47 min
+
+DOING (1)                                TO DO (3)                                DONE (7)
+3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
+  working                                  From the roadmap.                         #48): try it, then merge      09:10
+  The order list and filters from the
+  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
+                                           From the roadmap.         3 h 29 min
+                                                                                  12 DONE-MARK shipped thing 5     05:40
+                                         7 TODO-MARK Rotate the API keys
+                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Checkout redesign mockup: approve
+  Waiting on you for 7 h 30 min
+
+  What it is
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.
+
+  What you need to do
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+  From the job
+  Job checkout-mockup finished · its tab: checkout-mockup (press t)
+
+  What the job reported
+  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
+  has 12 boards, before and after, e.g. Cart, Address and the payment step.
+  Needs you:
+── ↓ 10 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
+===== card 2 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1 Checkout redesign mockup: approve             7 h 30 min   2▸Coupons AND gift cards discount an order twice: fix?
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  → Open the canvas, then OK all suggestions or comment        → Pick one
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+                                                               [ Not now ]  [ Other… ]                       7 h 47 min
+
+DOING (1)                                TO DO (3)                                DONE (7)
+3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
+  working                                  From the roadmap.                         #48): try it, then merge      09:10
+  The order list and filters from the
+  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
+                                           From the roadmap.         3 h 29 min
+                                                                                  12 DONE-MARK shipped thing 5     05:40
+                                         7 TODO-MARK Rotate the API keys
+                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+── card 2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Coupons AND gift cards discount an order twice: fix?
+  Waiting on you for 7 h 47 min
+
+  What it is
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then
+  go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.
+
+  What you need to do
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+  Added 02:43 · last changed 03:17
+
+
+
+
+
+── end of card 2 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
+===== card 3 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+WAITING ON YOU (2)
+1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  → Open the canvas, then OK all suggestions or comment        → Pick one
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+                                                               [ Not now ]  [ Other… ]                       7 h 47 min
+
+▸ DOING (1)                              TO DO (3)                                DONE (7)
+3▸Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
+  working                                  From the roadmap.                         #48): try it, then merge      09:10
+  The order list and filters from the
+  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
+                                           From the roadmap.         3 h 29 min
+                                                                                  12 DONE-MARK shipped thing 5     05:40
+                                         7 TODO-MARK Rotate the API keys
+                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+── card 3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Order history UI: build
+  Doing for 12 min
+
+  What it is
+  The order list and filters from the approved mockup.
+
+  From the job
+  Job orders-ui is working · 12 min · its tab: orders-ui (press t)
+
+  What the job reported
+  Nothing yet: the job hasn't written its report.
+
+  Added 10:18
+
+
+
+
+── end of card 3 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · c copy · t go to tab · q quit
+===== card 4 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+WAITING ON YOU (2)
+1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  → Open the canvas, then OK all suggestions or comment        → Pick one
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+                                                               [ Not now ]  [ Other… ]                       7 h 47 min
+
+DOING (1)                                TO DO (3)                                ▸ DONE (7)
+3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4▸CSV export on the Orders page (PR
+  working                                  From the roadmap.                         #48): try it, then merge      09:10
+  The order list and filters from the
+  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
+                                           From the roadmap.         3 h 29 min
+                                                                                  12 DONE-MARK shipped thing 5     05:40
+                                         7 TODO-MARK Rotate the API keys
+                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+── card 4 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+CSV export on the Orders page (PR #48): try it, then merge
+  Done at 09:10
+
+  From the job
+  Job csv-export finished; its agent is closed
+
+  What the job reported
+  CSV export is on the Orders page. Merged as https://github.com/example/app/pull/48 after review.
+  Links:
+  PR #48      https://github.com/example/app/pull/48
+  Dev server  http://localhost:3101/orders
+  12 things checked · 3 skipped
+
+  ▸ More… (f or Enter)  checks, skips
+
+  Added 08:00 · last changed 09:10
+
+── end of card 4 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit
+===== card 1 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Checkout redesign mockup: approve                                           7 h 30 min
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+DOING (1)                     TO DO (3)                     DONE (7)
+3 Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
+  working                       From the roadmap.              page (PR #48): try it, …
+  The order list and            3 h 30 min                     09:10
+── card 1 ──────────────────────────────────────────────────────────────────────────────
+Checkout redesign mockup: approve
+  Waiting on you for 7 h 30 min
+
+  What it is
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+
+  What you need to do
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+  From the job
+  Job checkout-mockup finished · its tab: checkout-mockup (press t)
+
+  What the job reported
+  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
+  'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address
+── ↓ 13 more lines ─────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
+===== card 2 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1 Checkout redesign mockup: approve                                           7 h 30 min
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+2▸Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+DOING (1)                     TO DO (3)                     DONE (7)
+3 Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
+  working                       From the roadmap.              page (PR #48): try it, …
+  The order list and            3 h 30 min                     09:10
+── card 2 ──────────────────────────────────────────────────────────────────────────────
+Coupons AND gift cards discount an order twice: fix?
+  Waiting on you for 7 h 47 min
+
+  What it is
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+
+  What you need to do
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+  Added 02:43 · last changed 03:17
+
+
+
+
+── end of card 2 ───────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
+===== card 3 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+WAITING ON YOU (2)
+1 Checkout redesign mockup: approve                                           7 h 30 min
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+▸ DOING (1)                   TO DO (3)                     DONE (7)
+3▸Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
+  working                       From the roadmap.              page (PR #48): try it, …
+  The order list and            3 h 30 min                     09:10
+── card 3 ──────────────────────────────────────────────────────────────────────────────
+Order history UI: build
+  Doing for 12 min
+
+  What it is
+  The order list and filters from the approved mockup.
+
+  From the job
+  Job orders-ui is working · 12 min · its tab: orders-ui (press t)
+
+  What the job reported
+  Nothing yet: the job hasn't written its report.
+
+  Added 10:18
+
+
+
+
+── end of card 3 ───────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · c copy · t go to tab · q quit
+===== card 4 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+WAITING ON YOU (2)
+1 Checkout redesign mockup: approve                                           7 h 30 min
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  → Pick one
+  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+
+DOING (1)                     TO DO (3)                     ▸ DONE (7)
+3 Order history UI: build     5 TODO-MARK Export to PDF      4▸CSV export on the Orders
+  working                       From the roadmap.              page (PR #48): try it, …
+  The order list and            3 h 30 min                     09:10
+── card 4 ──────────────────────────────────────────────────────────────────────────────
+CSV export on the Orders page (PR #48): try it, then merge
+  Done at 09:10
+
+  From the job
+  Job csv-export finished; its agent is closed
+
+  What the job reported
+  CSV export is on the Orders page. Merged as https://github.com/example/app/pull/48
+  after review.
+  Links:
+  PR #48      https://github.com/example/app/pull/48
+  Dev server  http://localhost:3101/orders
+  12 things checked · 3 skipped
+
+  ▸ More… (f or Enter)  checks, skips
+
+  Added 08:00 · last changed 09:10
+── end of card 4 ───────────────────────────────────────────────────────────────────────
+Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit

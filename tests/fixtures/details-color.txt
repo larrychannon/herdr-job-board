@@ -1,0 +1,328 @@
+===== card 1 · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
+[1m1▸[0m[1mCheckout redesign mockup: approve[0m             [2m7 h 30 min[0m   [2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m        [33m→ [0m[33mPick one[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m       [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m
+                                                               [1m[ Not now ][0m  [1m[ Other… ][0m                       [2m7 h 47 min[0m
+
+[1;34mDOING (1)[0m                                [1mTO DO (3)[0m                                [2;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m       [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m   [2m3 h 30 min[0m   [2m 4 [0mCSV export on the Orders page (PR
+  [32mworking[0m                                  From the roadmap.                         #48): try it, then merge      [2m09:10[0m
+  The order list and filters from the
+  approved mockup.                       [2m6 [0m[1mTODO-MARK Nightly backup check[0m         [2m13 [0mDONE-MARK shipped thing 6     [2m06:40[0m
+                                           From the roadmap.         [2m3 h 29 min[0m
+                                                                                  [2m12 [0mDONE-MARK shipped thing 5     [2m05:40[0m
+                                         [2m7 [0m[1mTODO-MARK Rotate the API keys[0m
+                                           From the roadmap.         [2m3 h 28 min[0m   [2m11 [0mDONE-MARK shipped thing 4     [2m04:40[0m
+[2m──[0m[1m card 1 [0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mCheckout redesign mockup: approve[0m
+  [2mWaiting on you for 7 h 30 min[0m
+
+  [1mWhat it is[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.
+
+  [1mWhat you need to do[0m
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+  [1mFrom the job[0m
+  Job checkout-mockup [36mfinished[0m[2m · its tab: checkout-mockup (press t)[0m
+
+  [1mWhat the job reported[0m
+  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
+  has 12 boards, before and after, e.g. Cart, Address and the payment step.
+  [1mNeeds you:[0m
+[2m──[0m[1m ↓ 10 more lines [0m[2m─────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit[0m
+===== card 2 · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m             [2m7 h 30 min[0m   [1m2▸[0m[1mCoupons AND gift cards discount an order twice: fix?[0m
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m        [33m→ [0m[33mPick one[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m       [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m
+                                                               [1m[ Not now ][0m  [1m[ Other… ][0m                       [2m7 h 47 min[0m
+
+[1;34mDOING (1)[0m                                [1mTO DO (3)[0m                                [2;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m       [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m   [2m3 h 30 min[0m   [2m 4 [0mCSV export on the Orders page (PR
+  [32mworking[0m                                  From the roadmap.                         #48): try it, then merge      [2m09:10[0m
+  The order list and filters from the
+  approved mockup.                       [2m6 [0m[1mTODO-MARK Nightly backup check[0m         [2m13 [0mDONE-MARK shipped thing 6     [2m06:40[0m
+                                           From the roadmap.         [2m3 h 29 min[0m
+                                                                                  [2m12 [0mDONE-MARK shipped thing 5     [2m05:40[0m
+                                         [2m7 [0m[1mTODO-MARK Rotate the API keys[0m
+                                           From the roadmap.         [2m3 h 28 min[0m   [2m11 [0mDONE-MARK shipped thing 4     [2m04:40[0m
+[2m──[0m[1m card 2 [0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mCoupons AND gift cards discount an order twice: fix?[0m
+  [2mWaiting on you for 7 h 47 min[0m
+
+  [1mWhat it is[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then
+  go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.
+
+  [1mWhat you need to do[0m
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+  [2mAdded 02:43 · last changed 03:17[0m
+
+
+
+
+
+[2m──[0m[1m end of card 2 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
+===== card 3 · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m             [2m7 h 30 min[0m   [2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m        [33m→ [0m[33mPick one[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m       [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m
+                                                               [1m[ Not now ][0m  [1m[ Other… ][0m                       [2m7 h 47 min[0m
+
+[1m▸ [0m[1;7;34mDOING (1)[0m                              [1mTO DO (3)[0m                                [2;32mDONE (7)[0m
+[1m3▸[0m[1mOrder history UI: build[0m       [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m   [2m3 h 30 min[0m   [2m 4 [0mCSV export on the Orders page (PR
+  [32mworking[0m                                  From the roadmap.                         #48): try it, then merge      [2m09:10[0m
+  The order list and filters from the
+  approved mockup.                       [2m6 [0m[1mTODO-MARK Nightly backup check[0m         [2m13 [0mDONE-MARK shipped thing 6     [2m06:40[0m
+                                           From the roadmap.         [2m3 h 29 min[0m
+                                                                                  [2m12 [0mDONE-MARK shipped thing 5     [2m05:40[0m
+                                         [2m7 [0m[1mTODO-MARK Rotate the API keys[0m
+                                           From the roadmap.         [2m3 h 28 min[0m   [2m11 [0mDONE-MARK shipped thing 4     [2m04:40[0m
+[2m──[0m[1m card 3 [0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mOrder history UI: build[0m
+  [2mDoing for 12 min[0m
+
+  [1mWhat it is[0m
+  The order list and filters from the approved mockup.
+
+  [1mFrom the job[0m
+  Job orders-ui [32mis working[0m[2m · 12 min[0m[2m · its tab: orders-ui (press t)[0m
+
+  [1mWhat the job reported[0m
+  [2mNothing yet: the job hasn't written its report.[0m
+
+  [2mAdded 10:18[0m
+
+
+
+
+[2m──[0m[1m end of card 3 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · c copy · t go to tab · q quit[0m
+===== card 4 · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m             [2m7 h 30 min[0m   [2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m
+  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
+  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
+  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m        [33m→ [0m[33mPick one[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m       [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m
+                                                               [1m[ Not now ][0m  [1m[ Other… ][0m                       [2m7 h 47 min[0m
+
+[1;34mDOING (1)[0m                                [1mTO DO (3)[0m                                [1m▸ [0m[7;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m       [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m   [2m3 h 30 min[0m   [1m 4▸[0mCSV export on the Orders page (PR
+  [32mworking[0m                                  From the roadmap.                         #48): try it, then merge      [2m09:10[0m
+  The order list and filters from the
+  approved mockup.                       [2m6 [0m[1mTODO-MARK Nightly backup check[0m         [2m13 [0mDONE-MARK shipped thing 6     [2m06:40[0m
+                                           From the roadmap.         [2m3 h 29 min[0m
+                                                                                  [2m12 [0mDONE-MARK shipped thing 5     [2m05:40[0m
+                                         [2m7 [0m[1mTODO-MARK Rotate the API keys[0m
+                                           From the roadmap.         [2m3 h 28 min[0m   [2m11 [0mDONE-MARK shipped thing 4     [2m04:40[0m
+[2m──[0m[1m card 4 [0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mCSV export on the Orders page (PR #48): try it, then merge[0m
+  [2mDone at 09:10[0m
+
+  [1mFrom the job[0m
+  Job csv-export [90mfinished; its agent is closed[0m
+
+  [1mWhat the job reported[0m
+  CSV export is on the Orders page. Merged as [4m]8;;https://github.com/example/app/pull/48\https://github.com/example/app/pull/48]8;;\[0m after review.
+  [1mLinks:[0m
+  PR #48      [4m]8;;https://github.com/example/app/pull/48\https://github.com/example/app/pull/48]8;;\[0m
+  Dev server  [4m]8;;http://localhost:3101/orders\http://localhost:3101/orders]8;;\[0m
+  [2m12 things checked · 3 skipped[0m
+
+  [1;7m▸ More…[0m[2m (f or Enter)  checks, skips[0m
+
+  [2mAdded 08:00 · last changed 09:10[0m
+
+[2m──[0m[1m end of card 4 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · f more · c copy · t go to tab · q quit[0m
+===== card 1 · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
+[1m1▸[0m[1mCheckout redesign mockup: approve[0m                                           [2m7 h 30 min[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+[2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m                        [2m7 h 47 min[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+[1;34mDOING (1)[0m                     [1mTO DO (3)[0m                     [2;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m     [2m5 [0m[1mTODO-MARK Export to PDF[0m     [2m 4 [0mCSV export on the Orders
+  [32mworking[0m                       From the roadmap.              page (PR #48): try it, …
+  The order list and            [2m3 h 30 min[0m                     [2m09:10[0m
+[2m──[0m[1m card 1 [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mCheckout redesign mockup: approve[0m
+  [2mWaiting on you for 7 h 30 min[0m
+
+  [1mWhat it is[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+
+  [1mWhat you need to do[0m
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+  [1mFrom the job[0m
+  Job checkout-mockup [36mfinished[0m[2m · its tab: checkout-mockup (press t)[0m
+
+  [1mWhat the job reported[0m
+  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
+  'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address
+[2m──[0m[1m ↓ 13 more lines [0m[2m─────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit[0m
+===== card 2 · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m                                           [2m7 h 30 min[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+[1m2▸[0m[1mCoupons AND gift cards discount an order twice: fix?[0m                        [2m7 h 47 min[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+[1;34mDOING (1)[0m                     [1mTO DO (3)[0m                     [2;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m     [2m5 [0m[1mTODO-MARK Export to PDF[0m     [2m 4 [0mCSV export on the Orders
+  [32mworking[0m                       From the roadmap.              page (PR #48): try it, …
+  The order list and            [2m3 h 30 min[0m                     [2m09:10[0m
+[2m──[0m[1m card 2 [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mCoupons AND gift cards discount an order twice: fix?[0m
+  [2mWaiting on you for 7 h 47 min[0m
+
+  [1mWhat it is[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+
+  [1mWhat you need to do[0m
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+  [2mAdded 02:43 · last changed 03:17[0m
+
+
+
+
+[2m──[0m[1m end of card 2 [0m[2m───────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
+===== card 3 · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m                                           [2m7 h 30 min[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+[2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m                        [2m7 h 47 min[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+[1m▸ [0m[1;7;34mDOING (1)[0m                   [1mTO DO (3)[0m                     [2;32mDONE (7)[0m
+[1m3▸[0m[1mOrder history UI: build[0m     [2m5 [0m[1mTODO-MARK Export to PDF[0m     [2m 4 [0mCSV export on the Orders
+  [32mworking[0m                       From the roadmap.              page (PR #48): try it, …
+  The order list and            [2m3 h 30 min[0m                     [2m09:10[0m
+[2m──[0m[1m card 3 [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mOrder history UI: build[0m
+  [2mDoing for 12 min[0m
+
+  [1mWhat it is[0m
+  The order list and filters from the approved mockup.
+
+  [1mFrom the job[0m
+  Job orders-ui [32mis working[0m[2m · 12 min[0m[2m · its tab: orders-ui (press t)[0m
+
+  [1mWhat the job reported[0m
+  [2mNothing yet: the job hasn't written its report.[0m
+
+  [2mAdded 10:18[0m
+
+
+
+
+[2m──[0m[1m end of card 3 [0m[2m───────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · c copy · t go to tab · q quit[0m
+===== card 4 · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1;33mWAITING ON YOU (2)[0m
+[2m1 [0m[1mCheckout redesign mockup: approve[0m                                           [2m7 h 30 min[0m
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+  each with a suggested answer.
+  [33m→ [0m[33mOpen the canvas, then OK all suggestions or comment[0m
+  [1;33m[ OK all suggestions ✓ ][0m  [1m[ I'll comment ][0m  [1m[ Other… ][0m
+
+[2m2 [0m[1mCoupons AND gift cards discount an order twice: fix?[0m                        [2m7 h 47 min[0m
+  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+  sell gift cards with coupons until fixed.
+  [33m→ [0m[33mPick one[0m
+  [1;33m[ Fix in #31 ✓ ][0m  [1m[ Fix + hide coupons now ][0m  [1m[ Not now ][0m  [1m[ Other… ][0m
+
+[1;34mDOING (1)[0m                     [1mTO DO (3)[0m                     [1m▸ [0m[7;32mDONE (7)[0m
+[2m3 [0m[1mOrder history UI: build[0m     [2m5 [0m[1mTODO-MARK Export to PDF[0m     [1m 4▸[0mCSV export on the Orders
+  [32mworking[0m                       From the roadmap.              page (PR #48): try it, …
+  The order list and            [2m3 h 30 min[0m                     [2m09:10[0m
+[2m──[0m[1m card 4 [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mCSV export on the Orders page (PR #48): try it, then merge[0m
+  [2mDone at 09:10[0m
+
+  [1mFrom the job[0m
+  Job csv-export [90mfinished; its agent is closed[0m
+
+  [1mWhat the job reported[0m
+  CSV export is on the Orders page. Merged as [4m]8;;https://github.com/example/app/pull/48\https://github.com/example/app/pull/48]8;;\[0m
+  after review.
+  [1mLinks:[0m
+  PR #48      [4m]8;;https://github.com/example/app/pull/48\https://github.com/example/app/pull/48]8;;\[0m
+  Dev server  [4m]8;;http://localhost:3101/orders\http://localhost:3101/orders]8;;\[0m
+  [2m12 things checked · 3 skipped[0m
+
+  [1;7m▸ More…[0m[2m (f or Enter)  checks, skips[0m
+
+  [2mAdded 08:00 · last changed 09:10[0m
+[2m──[0m[1m end of card 4 [0m[2m───────────────────────────────────────────────────────────────────────[0m
+[2mEsc close · ↑↓ scroll · f more · c copy · t go to tab · q quit[0m

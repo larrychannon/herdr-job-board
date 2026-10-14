@@ -21,6 +21,7 @@
 //   mouse wheel             scroll the section under the pointer
 //   click, double click     select a card, open its details
 //   Enter                   open the selected card's details; Esc closes them
+//   f                       in the details: show or hide More… (the rest of the job's report)
 //   c                       copy the card's first link, or its text (OSC 52)
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)

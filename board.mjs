@@ -364,15 +364,19 @@ function editItem(item, opts, now) {
   return item
 }
 
+const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
+// An entry of a report's list may be an object ({ "question": …, "suggested_answer": … }): its
+// first text field among these is the entry.
+const TEXT_FIELDS = ["what", "question", "ask", "text", "title", "summary", "finding", "check", "reason", "description", "command"]
+const SUGGEST_FIELDS = ["suggested_answer", "suggested", "suggestion", "default"]
+const firstText = (o, fields) => fields.map((k) => o[k]).find((v) => typeof v === "string" && v.trim())
+/** One entry of a report's list as text: text, a number or true/false as it is, an object by its text field, else "(not text)". */
+const itemText = (n) => (isRecord(n) ? (firstText(n, TEXT_FIELDS) ?? "(not text)") : asText(n))
+
 /** needs_user from a report, as a list of plain lines. */
 function needsList(needs) {
   const list = Array.isArray(needs) ? needs : needs ? [needs] : []
-  const textField = (n) => [n.what, n.ask, n.text, n.command].find((v) => typeof v === "string" && v.trim())
-  return list
-    .slice(0, 100)
-    .map((n) => (n && typeof n === "object" && !Array.isArray(n) ? (textField(n) ?? "(not text)") : asText(n)))
-    .map(clean)
-    .filter(Boolean)
+  return list.slice(0, 100).map(itemText).map(clean).filter(Boolean)
 }
 
 /** Where a job's report puts its board item: [column, ask], or null for a non-final report. */
@@ -931,8 +935,12 @@ const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - pa
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
 const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · m mouse: ${mouse} · q quit`
 const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · mouse: ${mouse} · q`
-const DETAIL_HINT = "Esc close · ↑↓ scroll · c copy · t go to tab · q quit"
-const DETAIL_HINT_NARROW = "Esc close · ↑↓ · c copy · t tab · q"
+// The key line with a card's details open: ← → only when the card has buttons, f only when
+// there is more to show.
+const detailHint = (wide, buttons, more) =>
+  wide
+    ? ["Esc close", "↑↓ scroll", buttons && "←→ choose", more && "f more", "c copy", "t go to tab", "q quit"].filter(Boolean).join(" · ")
+    : ["Esc", "↑↓", buttons && "←→", more && "f more", "c copy", "t tab", "q"].filter(Boolean).join(" · ")
 
 // --- card details -------------------------------------------------------------------------
 
@@ -940,32 +948,140 @@ const capText = (text, max) => {
   const chars = [...clean(text)]
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : chars.join("")
 }
-const stamp = (iso) => {
+const own = (map, key) => (map && Object.hasOwn(map, key) ? map[key] : undefined)
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const dayOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+
+/**
+ * A short local time: "03:17" today, "Mon 03:17" in the last week, "12 Oct 03:17" this year,
+ * else "12 Oct 2025"; "" when it isn't a date.
+ */
+export function shortTime(iso, now = new Date()) {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${clockOf(d)}`
+  if (!iso || Number.isNaN(d.getTime())) return ""
+  const days = Math.round((dayOf(now) - dayOf(d)) / 86_400_000)
+  if (days === 0) return clockOf(d)
+  if (days > 0 && days < 7) return `${WEEKDAYS[d.getDay()]} ${clockOf(d)}`
+  const date = `${d.getDate()} ${MONTHS[d.getMonth()]}`
+  return d.getFullYear() === now.getFullYear() ? `${date} ${clockOf(d)}` : `${date} ${d.getFullYear()}`
+}
+
+// A dot after one of these doesn't end a sentence.
+const ABBREVIATION = /(?:^|[\s(])(?:e\.g|i\.e|etc|vs|incl|approx|cf|no|nr|fig|mr|mrs|ms|dr|st)\.$/i
+
+/**
+ * The first one or two sentences of `text`, at most about `max` characters: { text, cut }, `cut`
+ * meaning there is more. A first sentence longer than that is cut at a word and ends in "…".
+ */
+export function firstSentences(text, max = 300) {
+  const full = text.trim()
+  const ends = []
+  for (const m of full.matchAll(/[.!?…]["')\]]*(?=\s+["'(\[]?[\p{Lu}\p{N}])/gu)) {
+    if (!ABBREVIATION.test(full.slice(Math.max(0, m.index - 8), m.index + 1))) ends.push(m.index + m[0].length)
+  }
+  ends.push(full.length)
+  let shown = full.slice(0, ends[0])
+  if (ends.length > 1 && [...full.slice(0, ends[1])].length <= max) shown = full.slice(0, ends[1])
+  if ([...shown].length > max) {
+    const head = [...shown].slice(0, max - 1).join("")
+    const space = head.lastIndexOf(" ")
+    shown = `${(space > max / 2 ? head.slice(0, space) : head).trimEnd()}…`
+  }
+  return { text: shown, cut: shown !== full }
+}
+
+/** A report's list (verified, skipped, findings) as lines of text, cut to fixed lengths. */
+const listOf = (value, max = 50) =>
+  (Array.isArray(value) ? value.slice(0, max) : value == null || value === "" ? [] : [value]).map((v) => capText(itemText(v), 600)).filter(Boolean)
+const countOf = (value) => (Array.isArray(value) ? value.length : listOf(value).length)
+
+// Pull or merge requests, issues and commits by the shape of their path, on any host:
+// …/<repo>/pull/12, …/<repo>/pull-requests/12, …/<repo>/-/merge_requests/12.
+const PR_URL = /^https?:\/\/[^/?#]+\/(?:[^/?#]+\/)*?([^/?#]+)\/(?:-\/)?(?:pull|pulls|pull-requests|merge_requests)\/(\d+)(?=$|[/?#])/i
+const ISSUE_URL = /^https?:\/\/[^/?#]+\/(?:[^/?#]+\/)+(?:-\/)?issues\/(\d+)(?=$|[/?#])/i
+const COMMIT_URL = /^https?:\/\/[^/?#]+\/(?:[^/?#]+\/)+(?:-\/)?commits?\/([0-9a-f]{7,40})(?=$|[/?#])/i
+const MAX_LINKS = 10
+
+/** An id's name in words, letters and digits only: "dev_server" → "Dev server", "repo_url" → "Repo". */
+function humanKey(key) {
+  const words = clean(key)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s*\b(?:url|link|href)$/i, "")
+    .trim()
+    .toLowerCase()
+  return capText(words.charAt(0).toUpperCase() + words.slice(1), 24)
 }
 
 /**
- * What a card's report says, as data for the details panel: null when the card has no report,
- * { unavailable } when it can't be read as a JSON object, else its status, summary, needs_user
- * and ids, each cleaned like card text and cut to a fixed length. Nothing in it is run or
- * followed.
+ * The links in a report, labelled for people: the URLs in its ids (in order), then those in its
+ * text, each once. "PR #21" (with the repo when PRs come from more than one), "Issue #4",
+ * "Commit abc1234", "Design canvas" (an id named for a canvas or design, or an artifact when the
+ * ids name a canvas), else the id's name in words, else the host. A PR known only by its number
+ * is listed without a URL.
+ */
+function reportLinks(ids, texts) {
+  const found = []
+  const add = (url, key) => {
+    if (found.length < MAX_LINKS && !found.some((l) => l.url === url)) found.push({ url, key })
+  }
+  const entries = Object.entries(ids).slice(0, 100)
+  for (const [key, value] of entries) {
+    for (const v of Array.isArray(value) ? value.slice(0, 50) : [value]) for (const { url } of findUrls(capText(v, 2000))) add(url, key)
+  }
+  for (const text of texts) for (const { url } of findUrls(text)) add(url, "")
+  const canvas = entries.some(([k]) => /canvas/i.test(k))
+  const repos = new Set(found.map(({ url }) => PR_URL.exec(url)?.[1]).filter(Boolean))
+  const links = found.map(({ url, key }) => {
+    let m
+    if ((m = PR_URL.exec(url))) return { label: `PR #${m[2]}${repos.size > 1 ? ` · ${capText(m[1], 24)}` : ""}`, url }
+    if ((m = ISSUE_URL.exec(url))) return { label: `Issue #${m[1]}`, url }
+    if ((m = COMMIT_URL.exec(url))) return { label: `Commit ${m[1].slice(0, 7)}`, url }
+    if (/canvas|design/i.test(key) || (canvas && /artifact/i.test(key))) return { label: "Design canvas", url }
+    return { label: humanKey(key) || capText(/^https?:\/\/([^/?#]+)/i.exec(url)[1], 32), url }
+  })
+  const number = [ids.pr, ids.pr_number]
+    .map((v) => (typeof v === "number" ? String(v) : typeof v === "string" ? v.trim().replace(/^#/, "") : ""))
+    .find((v) => /^\d{1,7}$/.test(v))
+  if (number && !links.some((l) => l.label === `PR #${number}` || l.label.startsWith(`PR #${number} `))) links.unshift({ label: `PR #${number}`, url: "" })
+  return links
+}
+
+/**
+ * What a card's report says, for the details panel: null when the card has no report;
+ * { unavailable, missing } when there is no file yet, { unavailable } when it can't be read as a
+ * JSON object; else the job's own words, cleaned like card text and cut to fixed lengths:
+ * status, summary and brief (its first sentences, { text, cut }), needs ([{ text, suggested }]),
+ * links ([{ label, url }]), findings, verified and skipped (lists) with their counts, next,
+ * branch and commit. Nothing in it is run or followed: values are only ever shown as text.
  */
 export function reportFacts(path) {
   if (!path) return null
   const { report: r, entry } = readReport(path)
-  if (!r || typeof r !== "object" || Array.isArray(r)) return { unavailable: true }
+  if (!isRecord(r)) return entry ? { unavailable: true } : { unavailable: true, missing: true }
   if (entry?.facts) return entry.facts
   // Only text, numbers and booleans are shown; anything else reads "(not text)" (asText).
   let facts
   try {
-    const ids = r.ids && typeof r.ids === "object" && !Array.isArray(r.ids) ? r.ids : {}
+    const ids = isRecord(r.ids) ? r.ids : {}
+    const summary = capText(r.summary, 4000)
+    const needs = (Array.isArray(r.needs_user) ? r.needs_user : r.needs_user ? [r.needs_user] : [])
+      .slice(0, 20)
+      .map((n) => ({ text: capText(itemText(n), 600), suggested: isRecord(n) ? capText(firstText(n, SUGGEST_FIELDS), 600) : "" }))
+      .filter((n) => n.text)
+    const next = capText(r.next, 2000)
     facts = {
-      status: capText(r.status, 40),
-      summary: capText(r.summary, 2000),
-      needs: needsList(r.needs_user).slice(0, 20).map((n) => capText(n, 600)),
-      pr: capText(ids.pr, 300),
+      status: capText(r.status, 40).toLowerCase(),
+      summary,
+      brief: firstSentences(summary),
+      needs,
+      links: reportLinks(ids, [summary, next, ...needs.flatMap((n) => [n.text, n.suggested])]),
+      findings: listOf(r.findings),
+      verified: listOf(r.verified),
+      skipped: listOf(r.skipped),
+      counts: { findings: countOf(r.findings), verified: countOf(r.verified), skipped: countOf(r.skipped) },
+      next,
       branch: capText(ids.branch, 200),
       commit: capText(ids.commit, 80),
     }
@@ -976,78 +1092,214 @@ export function reportFacts(path) {
   return facts
 }
 
-/** The agent behind a job card in this workspace, and its tab's label, from Herdr's lists. */
+/** The agent behind a job card in this workspace, from Herdr's list. */
 function agentOf(entry, agents, workspace) {
   if (!entry.job || !Array.isArray(agents)) return null
   return agents.find((a) => a.name === entry.job && (!workspace || a.workspace_id === workspace)) || null
 }
 
+const PLACE = { waiting: "Waiting on you", doing: "Doing", todo: "In To do" }
+
+/** The line under the title: where the card is and for how long, in words. */
+function statusLine(entry, now) {
+  if (entry.live === "blocked") return "Waiting on you: its job is blocked"
+  if (entry.column === "done") {
+    const at = shortTime(entry.since, now)
+    return at ? `Done ${/^\d\d:\d\d$/.test(at) ? "at " : ""}${at}` : "Done"
+  }
+  const age = entry.age == null ? "" : formatAge(entry.age)
+  return `${own(PLACE, entry.column) ?? "Waiting on you"}${age === "just now" ? " since just now" : age ? ` for ${age}` : ""}`
+}
+
+const JOB_WORDS = { working: "is working", idle: "is idle at its prompt", blocked: "is blocked: it needs you in its tab", done: "finished", unknown: "is in an unknown state" }
+const REPORT_WORDS = { done: "finished", blocked: "is blocked", failed: "failed" }
+
 /**
- * The details panel's lines: the full title, where the card is and since when, its job (live
- * status, tab), the full description, the ask, the buttons, the report, and the times.
+ * The job in one line, as segments: "Job search-ui finished · its tab: search-ui (press t)",
+ * "Job docs-links is working · 12 min". From the agent's live state, else what its report says.
  */
-export function detailLines(entry, width, { agents = null, tabs = {}, workspace = "", now = new Date() } = {}) {
-  const inner = Math.max(10, width - 2)
-  const ind = { t: "  " }
-  const report = reportFacts(entry.report)
-  const urls = urlsIn(entry.title, entry.desc, entry.ask, report?.summary, report?.pr, ...(report?.needs || []))
-  const lines = []
-  const para = (text, s = "", max = 4000) => {
-    for (const t of wrap(capText(text, max), inner, Infinity)) lines.push([ind, ...linkify(t, s, urls)])
-  }
-  const id = entry.id == null ? "•" : `#${entry.id}`
-  wrap(`${id} ${entry.title}`, width, Infinity).forEach((t) => lines.push(linkify(t, "title", urls)))
-  const where = { waiting: "Waiting on you", doing: "Doing", todo: "To do", done: "Done" }[entry.column] || "Waiting on you"
-  lines.push([ind, { t: `${where}${entry.age != null ? ` · ${formatAge(entry.age)}` : ""}`, s: "dim" }])
-  if (entry.job) {
-    const agent = agentOf(entry, agents, workspace)
-    const status = entry.live || (agent ? agent.agent_status : agents ? "no agent" : "")
-    const tab = agent && tabs[agent.tab_id] ? ` · tab "${capText(tabs[agent.tab_id], 60)}"` : ""
-    lines.push([ind, { t: `job ${entry.job}`, s: "" }, ...(status ? [{ t: " · " }, { t: status, s: STATUS_STYLE[status] || "gone" }] : []), { t: tab, s: "dim" }])
-  }
-  if (entry.desc) {
-    lines.push([])
-    para(entry.desc)
-  }
-  const asks = asksOf(entry.ask)
-  if (asks.length) {
-    lines.push([])
-    for (const ask of asks) {
-      wrap(capText(ask, 2000), inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
-    }
-  }
-  const options = optionsOf(entry)
-  if (options.length) {
-    const sent = entry.sent?.label ? `   sent: ${entry.sent.label}${stamp(entry.sent.at) ? ` · ${stamp(entry.sent.at)}` : ""}` : ""
-    lines.push([ind, { t: "buttons: ", s: "dim" }, { t: options.map((o) => (o.suggested ? `${o.label} ✓` : o.label)).join(" · ") }, { t: sent, s: "dim" }])
-  }
-  if (entry.report) {
-    lines.push([])
-    lines.push([ind, { t: "report ", s: "dim" }, { t: capText(entry.report, 300) }])
-    if (!report || report.unavailable) lines.push([ind, { t: "report unavailable", s: "dim" }])
-    else {
-      if (report.status) lines.push([ind, { t: "status ", s: "dim" }, { t: report.status, s: report.status === "done" ? "finished" : report.status === "running" ? "working" : "blocked" }])
-      if (report.summary) para(report.summary)
-      for (const need of report.needs) {
-        wrap(need, inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "• ", s: "ask" }, ...linkify(t, "", urls)]))
-      }
-      const ids = [["PR", report.pr], ["branch", report.branch], ["commit", report.commit]].filter(([, v]) => v)
-      for (const [label, value] of ids) lines.push([ind, { t: `${label} `, s: "dim" }, ...linkify(value, "", urls)])
-    }
-  }
-  lines.push([])
-  const times = [["created", entry.created], ["in this column since", entry.since], ["updated", entry.updated]].filter(([, v]) => stamp(v))
-  for (const t of wrap(times.map(([k, v]) => `${k} ${stamp(v)}`).join(" · "), inner, Infinity)) lines.push([ind, { t, s: "dim" }])
-  return lines
+function jobLines(entry, agents, tabs, workspace, facts, width) {
+  const agent = agentOf(entry, agents, workspace)
+  const live = entry.live || (agent ? clean(agent.agent_status) : agents ? "no agent" : "")
+  const said = own(REPORT_WORDS, facts?.status)
+  const words = live === "no agent" ? (said ? `${said}; its agent is closed` : "has no agent running") : (own(JOB_WORDS, live) ?? said ?? "")
+  const style = own(STATUS_STYLE, live) || (facts?.status === "done" ? "finished" : said ? "blocked" : "")
+  const head = [{ t: "  " }, { t: `Job ${capText(entry.job, 40)}` }]
+  if (words) head.push({ t: " " }, { t: words, s: style })
+  if (live === "working" && entry.column === "doing" && entry.age != null) head.push({ t: ` · ${formatAge(entry.age)}`, s: "dim" })
+  if (!agent) return [head]
+  const label = capText(own(tabs, agent.tab_id), 60)
+  const tab = label ? `its tab: ${label} (press t)` : "press t for its tab"
+  if (segWidth(head) + 3 + textWidth(tab) <= width) return [[...head, { t: ` · ${tab}`, s: "dim" }]]
+  return [head, [{ t: "  " }, { t: tab, s: "dim" }]]
 }
 
 /**
- * What c copies for a card: its first link (in the title, description, ask, then the report),
- * else the card as plain text. { text, what: "link" | "card" }.
+ * The details panel, in words, top to bottom: the title and where the card is; "What it is"
+ * (the description); "What you need to do" (the ask, and the buttons as on the card); "From the
+ * job" (its state and tab); "What the job reported", rewritten (its first sentences, what it
+ * needs from you, its links, how much was checked); "More…" for the rest of the report; and when
+ * the card was added and last changed. Never the report's path or field names.
+ * `more` shows the rest; `button` is the chosen button (-1: none, and Enter is "More…");
+ * `note` is the card's note from the answerer. Returns { lines, hasMore }.
+ */
+export function detailLines(entry, width, { agents = null, tabs = {}, workspace = "", now = new Date(), more = false, button = -1, note = null } = {}) {
+  const inner = Math.max(10, width - 2)
+  const ind = { t: "  " }
+  const report = reportFacts(entry.report)
+  const facts = report && !report.unavailable ? report : null
+  const asks = asksOf(entry.ask)
+  const urls = urlsIn(
+    entry.title,
+    entry.desc,
+    entry.ask,
+    ...(facts ? [facts.summary, facts.brief.text, facts.next, ...facts.needs.flatMap((n) => [n.text, n.suggested]), ...facts.findings, ...facts.verified, ...facts.skipped] : []),
+  )
+  const lines = []
+  const blank = () => lines.length && lines.at(-1).length && lines.push([])
+  const heading = (t) => {
+    blank()
+    lines.push([ind, { t, s: "head" }])
+  }
+  const para = (text, s = "") => {
+    for (const t of wrap(text, inner, Infinity)) lines.push([ind, ...linkify(t, s, urls)])
+  }
+  // Each item from a "• ", over at most `max` lines (the last ends in "…" when cut).
+  const bullets = (list, max = Infinity) => {
+    for (const text of list) wrap(text, inner - 2, max).forEach((t, i) => lines.push([ind, { t: i ? "  " : "• ", s: "dim" }, ...linkify(t, "", urls)]))
+  }
+
+  for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
+  lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
+
+  if (clean(entry.desc)) {
+    heading("What it is")
+    para(capText(entry.desc, 4000))
+  }
+
+  const blocked = entry.live === "blocked"
+  const options = entry.column === "waiting" && !blocked && entry.id != null ? optionsOf(entry) : []
+  if (asks.length || options.length || blocked) {
+    heading("What you need to do")
+    if (blocked && !asks.length) lines.push([ind, { t: "→ answer it in its tab (press t)", s: "ask" }])
+    for (const ask of asks) wrap(capText(ask, 2000), inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
+    if (options.length) {
+      const at = shortTime(entry.sent?.at, now)
+      if (entry.sent?.label) lines.push([ind, { t: `sent: ${capText(entry.sent.label, 60)}${at ? ` · ${at}` : ""}`, s: "dim" }])
+      // The card's own buttons; marked as the panel's, so a click on them works over the board.
+      for (const l of buttonLines(entry, width, ind, button)) lines.push(l.map((seg) => (seg.button ? { ...seg, button: { ...seg.button, panel: true } } : seg)))
+    }
+    if (note) for (const t of wrap(note.t, inner, 3)) lines.push([ind, { t, s: note.s }])
+  }
+
+  if (entry.job) {
+    heading("From the job")
+    lines.push(...jobLines(entry, agents, tabs, workspace, facts, width))
+  }
+
+  // What the report adds beyond the ask: its needs, unless the ask already says them (job-report
+  // copies needs_user into the ask).
+  const asked = asks.map(clean)
+  const needs = facts ? facts.needs.filter((n) => !asked.some((a) => a === n.text || (n.text.endsWith("…") && a.startsWith(n.text.slice(0, -1))))) : []
+  const needsInFull = facts && (needs.length > 5 || facts.needs.some((n) => n.suggested) || needs.some((n) => wrap(n.text, inner - 2, Infinity).length > 2))
+  if (entry.report) {
+    heading("What the job reported")
+    if (!facts) lines.push([ind, { t: report?.missing ? "Nothing yet: the job hasn't written its report." : "The report can't be read: it isn't a JSON object.", s: "dim" }])
+    else {
+      if (facts.status === "blocked" || facts.status === "failed") lines.push([ind, { t: facts.status === "failed" ? "The job failed." : "The job is blocked.", s: "blocked" }])
+      else if (facts.status !== "done") lines.push([ind, { t: "Not final yet: the job may still change it.", s: "dim" }])
+      if (facts.brief.text) para(facts.brief.text)
+      if (needs.length) {
+        lines.push([ind, { t: "Needs you:", s: "head" }])
+        bullets(needs.slice(0, 5).map((n) => n.text), 2)
+        if (needs.length > 5) lines.push([ind, { t: `  +${needs.length - 5} more under More…`, s: "dim" }])
+      }
+      if (facts.links.length) {
+        lines.push([ind, { t: "Links:", s: "head" }])
+        const w = Math.min(24, Math.max(...facts.links.map((l) => textWidth(l.label))))
+        for (const { label, url } of facts.links) {
+          // The URL is the link's visible text (OSC 8); on its own line when the label leaves no room.
+          const link = { t: url, s: "link", link: url }
+          if (!url) lines.push([ind, { t: label }])
+          else if (2 + w + 2 + textWidth(url) <= width) lines.push([ind, { t: label }, { t: " ".repeat(Math.max(0, w - textWidth(label)) + 2) }, link])
+          else lines.push([ind, { t: label }], [ind, { t: "  " }, link])
+        }
+      }
+      const { verified, skipped, findings } = facts.counts
+      const counts = [verified && `${verified} thing${verified === 1 ? "" : "s"} checked`, skipped && `${skipped} skipped`, findings && `${findings} finding${findings === 1 ? "" : "s"}`]
+      if (counts.some(Boolean)) lines.push([ind, { t: counts.filter(Boolean).join(" · "), s: "dim" }])
+    }
+  }
+
+  // "More…": the rest of the report, for whoever wants it.
+  const rest = facts
+    ? [
+        facts.brief.cut && "full summary",
+        needsInFull && (facts.needs.some((n) => n.suggested) ? "suggested answers" : "every need"),
+        facts.findings.length && "findings",
+        facts.verified.length && "checks",
+        facts.skipped.length && "skips",
+        facts.next && "next steps",
+        (facts.branch || facts.commit) && "branch",
+      ].filter(Boolean)
+    : []
+  const hasMore = rest.length > 0
+  if (hasMore) {
+    blank()
+    // The keys first: a narrow pane cuts the end of the line.
+    const keys = button < 0 ? "f or Enter" : "f"
+    lines.push([ind, { t: more ? "▾ Less" : "▸ More…", s: button < 0 ? "selected" : "button", more: true }, { t: more ? ` (${keys})` : ` (${keys})  ${rest.join(", ")}`, s: "dim", more: true }])
+    if (more) {
+      if (facts.brief.cut) {
+        heading("Full summary")
+        para(facts.summary)
+      }
+      if (needsInFull) {
+        heading("Needs you, in full")
+        for (const n of facts.needs) {
+          bullets([n.text])
+          if (n.suggested) for (const t of wrap(`suggested: ${n.suggested}`, inner - 2, Infinity)) lines.push([ind, { t: "  " }, ...linkify(t, "dim", urls)])
+        }
+      }
+      for (const [title, list, count] of [
+        ["Findings", facts.findings, facts.counts.findings],
+        ["What was checked", facts.verified, facts.counts.verified],
+        ["What was skipped", facts.skipped, facts.counts.skipped],
+      ]) {
+        if (!list.length) continue
+        heading(title)
+        bullets(list)
+        if (count > list.length) lines.push([ind, { t: `  +${count - list.length} more in the report`, s: "dim" }])
+      }
+      if (facts.next) {
+        heading("What's next")
+        para(facts.next)
+      }
+      if (facts.branch || facts.commit) {
+        blank()
+        lines.push([ind, { t: [facts.branch && `Branch ${facts.branch}`, facts.commit && `commit ${facts.commit}`].filter(Boolean).join(" · "), s: "dim" }])
+      }
+    }
+  }
+
+  const added = shortTime(entry.created, now)
+  const changed = entry.updated && entry.updated !== entry.created ? shortTime(entry.updated, now) : ""
+  const times = [added && `Added ${added}`, changed && `${added ? "last" : "Last"} changed ${changed}`].filter(Boolean).join(" · ")
+  if (times) {
+    blank()
+    lines.push([ind, { t: times, s: "dim" }])
+  }
+  return { lines, hasMore }
+}
+
+/**
+ * What c copies for a card: its first link (in the title, description, ask, then the report's
+ * links, summary and needs), else the card as plain text. { text, what: "link" | "card" }.
  */
 export function copyPayload(entry) {
   const report = reportFacts(entry.report)
-  const sources = [entry.title, entry.desc, entry.ask, report?.pr, report?.summary, ...(report?.needs || [])]
+  const facts = report && !report.unavailable ? report : null
+  const sources = [entry.title, entry.desc, entry.ask, ...(facts ? [...facts.links.map((l) => l.url), facts.summary, ...facts.needs.map((n) => n.text)] : [])]
   for (const text of sources) {
     const [first] = findUrls(text)
     if (first) return { text: first.url, what: "link" }
@@ -1067,12 +1319,14 @@ export function copyPayload(entry) {
  * bottom doesn't need it) and shrinks to one line when empty. Under STACK_BELOW cells the four
  * sections stack. Each section scrolls on its own and has a selected card; `scroll` is
  * { selected, anchors, card, button, detail } where an anchor is a section's first visible card,
- * so the view holds still as cards come and go, and `detail` ({ key, offset }) opens a card's
- * details over the lower half. `links` turns whole URLs into terminal hyperlinks; `footer`
- * ({ message, mouse }) adds to the key hint line.
+ * so the view holds still as cards come and go, and `detail` ({ key, offset, more }) opens a
+ * card's details over the lower half: an opaque panel from the middle down to the key line,
+ * between a "── card N ──" rule and a closing rule, with nothing of the board inside it. `links`
+ * turns whole URLs into terminal hyperlinks; `footer` ({ message, mouse }) adds to the key hint
+ * line.
  * Returns { text, sections (per section: blockKeys, offset, maxOffset, page, cards), regions
- * (screen rectangles, 1-based), buttons and cardHits (where each button and card is, for the
- * mouse), entries (by key), scroll (as drawn) }.
+ * (screen rectangles, 1-based), buttons, cardHits and moreHits (where each button, card and the
+ * details' "More…" line is, for the mouse), entries (by key), scroll (as drawn) }.
  */
 export function renderBoard(view, opts = {}) {
   const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
@@ -1091,6 +1345,7 @@ export function renderBoard(view, opts = {}) {
   const regions = {}
   const buttons = []
   const cardHits = []
+  const moreHits = []
   const entries = Object.fromEntries(SECTIONS.flatMap((s) => entriesOf(view, s).map((e) => [keyOf(e), { ...e, column: e.column ?? s }])))
   // Paint a line at screen row `row` from column `left`, noting where its buttons and cards are.
   const emit = (segs, row, left, w) => {
@@ -1100,6 +1355,7 @@ export function renderBoard(view, opts = {}) {
       const x1 = Math.min(x + sw, left + w) - 1
       if (sw && x < left + w) {
         if (seg.button) buttons.push({ ...seg.button, y: row, x0: x, x1 })
+        if (seg.more) moreHits.push({ y: row, x0: x, x1 })
         if (seg.card) {
           const last = cardHits.at(-1)
           if (last && last.key === seg.card && last.y === row && last.x1 >= x - 1) last.x1 = x1
@@ -1243,36 +1499,54 @@ export function renderBoard(view, opts = {}) {
 
   const lines = finite ? out.slice(0, height - (interactive ? 1 : 0)) : out
 
-  // A card's details, over the lower half.
+  // A card's details, over the lower half: every row from the middle to the key line is the
+  // panel's, blank where it has nothing, so no card shows through; a rule closes it.
   const detailEntry = interactive && scroll.detail ? entries[scroll.detail.key] : null
   if (scroll.detail && !detailEntry) delete scroll.detail
+  let detailInfo = null
   if (detailEntry) {
     if (finite) while (lines.length < height - 1) lines.push("")
-    const top = finite ? Math.floor(height / 2) : lines.length
+    const top = finite ? Math.max(0, Math.min(Math.floor(height / 2), height - 4)) : lines.length
+    const key = scroll.detail.key
+    const chosen = scroll.card === key ? (scroll.button ?? -1) : -1
     let body
+    let hasMore = false
     try {
-      body = detailLines(detailEntry, width, { agents: opts.agents, tabs: opts.tabs, workspace: opts.workspace, now })
+      ;({ lines: body, hasMore } = detailLines(detailEntry, width, {
+        agents: opts.agents,
+        tabs: opts.tabs,
+        workspace: opts.workspace,
+        now,
+        more: scroll.detail.more === true,
+        button: chosen,
+        note: notes[key],
+      }))
     } catch (e) {
       body = [[{ t: "  " }, { t: `details unavailable: ${clean(e?.message).slice(0, 120)}`, s: "blocked" }]]
     }
-    const room2 = finite ? height - 1 - top - 1 : body.length
+    // Rows for the body: all but the two rules.
+    const room2 = finite ? Math.max(1, height - 1 - top - 2) : body.length
     const maxOffset = Math.max(0, body.length - room2)
     const offset = Math.max(0, Math.min(scroll.detail.offset || 0, maxOffset))
-    scroll.detail = { key: scroll.detail.key, offset, maxOffset, page: Math.max(1, room2 - 1) }
-    const label = ` card ${detailEntry.id ?? detailEntry.job} ${offset ? `· ↑ ${offset} lines above ` : ""}${offset < maxOffset ? `· ↓ ${maxOffset - offset} more ` : ""}`
-    const rule = [{ t: "──", s: "dim" }, { t: label, s: "head" }, { t: "─".repeat(Math.max(0, width - 2 - textWidth(label))), s: "dim" }]
-    const panel = [rule, ...body.slice(offset, offset + room2)]
+    scroll.detail = { key, offset, maxOffset, page: Math.max(1, room2 - 1), more: hasMore && scroll.detail.more === true, hasMore }
+    const name = detailEntry.id ?? detailEntry.job
+    const rule = (label) => [{ t: "──", s: "dim" }, { t: label, s: "head" }, { t: "─".repeat(Math.max(0, width - 2 - textWidth(label))), s: "dim" }]
+    const below = maxOffset - offset
+    const panel = [rule(` card ${name} ${offset ? `· ↑ ${offset} line${offset === 1 ? "" : "s"} above ` : ""}`), ...body.slice(offset, offset + room2)]
+    while (panel.length < 1 + room2) panel.push([])
+    panel.push(rule(below ? ` ↓ ${below} more line${below === 1 ? "" : "s"} ` : ` end of card ${name} `))
     for (let i = 0; i < panel.length; i++) lines[top + i] = emit(panel[i], top + i + 1, 1, width).text.trimEnd()
     if (finite) lines.length = height - 1
-    regions.detail = { top: top + 1, bottom: top + panel.length, left: 1, right: width }
+    regions.detail = { top: top + 1, bottom: Math.min(top + panel.length, lines.length), left: 1, right: width }
+    detailInfo = { buttons: optionsOf(detailEntry).length > 0 && detailEntry.column === "waiting" && detailEntry.id != null && detailEntry.live !== "blocked", more: hasMore }
   }
-  // Nothing under the details panel can be clicked.
+  // Nothing of the board under the details panel can be clicked; the panel's own buttons can.
   const covered = (y) => regions.detail && y >= regions.detail.top
   if (interactive) {
     if (finite) while (lines.length < height - 1) lines.push("")
     const mouse = opts.footer?.mouse || "board"
     const wide = width >= 80
-    const keys = detailEntry ? (wide ? DETAIL_HINT : DETAIL_HINT_NARROW) : wide ? HINT(mouse) : HINT_NARROW(mouse)
+    const keys = detailInfo ? detailHint(wide, detailInfo.buttons, detailInfo.more) : wide ? HINT(mouse) : HINT_NARROW(mouse)
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "ask" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
@@ -1280,8 +1554,9 @@ export function renderBoard(view, opts = {}) {
     text: lines.join("\n"),
     sections,
     regions,
-    buttons: buttons.filter((b) => b.y <= lines.length && !covered(b.y)),
+    buttons: buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y))),
     cardHits: cardHits.filter((c) => c.y <= lines.length && !covered(c.y)),
+    moreHits: moreHits.filter((m) => m.y <= lines.length),
     entries,
     scroll,
   }
@@ -1309,14 +1584,15 @@ const CHAR_KEYS = {
   "\n": "enter",
   o: "other",
   c: "copy",
+  f: "more",
   t: "tab",
   m: "mouse",
 }
 
 /**
  * Terminal input as events: { type: "key", name } (next and prev for Tab and Shift-Tab, left,
- * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, tab, mouse, quit,
- * redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
+ * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, more, tab, mouse,
+ * quit, redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
  * (1006) mouse reports. Anything else is skipped.
  */
 export function parseInput(text) {
@@ -1383,6 +1659,11 @@ const DOUBLE_CLICK_MS = 400
  *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
  *   mouse capture. A click selects a card, a double click opens it, a click on a button
  *   presses it.
+ * - In the details: ↑ ↓ PgUp PgDn g G and the wheel scroll them; ← → choose one of the card's
+ *   buttons and Enter presses it, as on the card; with no button chosen, Enter (or f, or a
+ *   click on the line) shows or hides "More…", and when there is no more, Enter closes them.
+ *   A click on the panel's buttons presses them; a click elsewhere on the panel does nothing,
+ *   and above it closes the panel.
  * Events may carry `at` (ms), used for double clicks.
  */
 export function handleInput(scroll, event, drawn) {
@@ -1418,12 +1699,34 @@ export function handleInput(scroll, event, drawn) {
     }
   }
   const detail = next.detail ? { ...next.detail } : null
+  // The card shown in the details, as a Waiting card with buttons (else null), and its chosen button.
+  const shownCard = detail ? (drawn.sections.waiting?.cards || []).find((c) => c.key === detail.key && c.buttons) || null : null
+  const chosen = detail && next.card === detail.key ? (next.button ?? -1) : -1
+  const toggleMore = () => {
+    if (detail.hasMore) next.detail = { ...detail, more: !detail.more }
+  }
+  const choose = (index) => {
+    selectSection("waiting")
+    next.card = detail.key
+    next.button = index
+  }
 
   // With the details open, keys work on them.
   if (detail && event.type === "key") {
     const page = detail.page || 1
-    if (name === "escape" || name === "enter") delete next.detail
-    else if (name === "up") next.detail = { ...detail, offset: Math.max(0, detail.offset - 1) }
+    if (name === "escape") {
+      delete next.detail
+      next.button = -1
+    } else if (name === "enter") {
+      if (shownCard && chosen >= 0) action = press(shownCard, chosen)
+      else if (detail.hasMore) toggleMore()
+      else delete next.detail
+    } else if (name === "more") toggleMore()
+    else if ((name === "left" || name === "right") && shownCard) {
+      choose(chosen < 0 ? shownCard.suggested || 0 : Math.max(0, Math.min(chosen + (name === "right" ? 1 : -1), shownCard.buttons - 1)))
+    } else if (name === "other") {
+      if (shownCard) action = press(shownCard, shownCard.buttons - 1)
+    } else if (name === "up") next.detail = { ...detail, offset: Math.max(0, detail.offset - 1) }
     else if (name === "down") next.detail = { ...detail, offset: Math.min(detail.maxOffset ?? 0, detail.offset + 1) }
     else if (name === "pageup") next.detail = { ...detail, offset: Math.max(0, detail.offset - page) }
     else if (name === "pagedown") next.detail = { ...detail, offset: Math.min(detail.maxOffset ?? 0, detail.offset + page) }
@@ -1439,7 +1742,15 @@ export function handleInput(scroll, event, drawn) {
     return { scroll: { ...next, detail: { ...detail, offset } }, action }
   }
   if (detail && event.type === "click") {
-    if (drawn.regions.detail && event.y >= drawn.regions.detail.top) return { scroll: next, action }
+    if (drawn.regions.detail && event.y >= drawn.regions.detail.top) {
+      const within = (h) => h.y === event.y && event.x >= h.x0 && event.x <= h.x1
+      const hit = (drawn.buttons || []).find((b) => b.panel && within(b))
+      if (hit && shownCard && hit.key === detail.key) {
+        choose(hit.index)
+        action = press(shownCard, hit.index)
+      } else if ((drawn.moreHits || []).some(within)) toggleMore()
+      return { scroll: next, action }
+    }
     delete next.detail
   }
 

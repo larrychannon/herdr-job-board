@@ -76,6 +76,7 @@ Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q qui
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸) |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
 | `Enter` | open the selected card's details; `Esc` closes them |
+| `f` in the details | show or hide More… (the rest of the job's report) |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it |
 | `o` | Other… on a card with buttons |
 | `c` | copy the card's first link, or its text (Alt+c does nothing) |
@@ -90,16 +91,67 @@ The key line at the bottom shows the main keys and the mouse mode (`mouse: board
 
 ### Card details
 
-`Enter` (or a double click) opens the selected card over the lower half of the pane: its id and
-full title, where it is and for how long, its job with the agent's live state and the job's tab,
-the full description and ask, its buttons and what was last sent, the job's report (status,
-summary, what it needs from you, PR, branch and commit, read from the card's report file) and
-when the card was created and last changed. `↑` `↓` and `PgUp` `PgDn` scroll it, `c` copies, `t`
-goes to the job's tab, `Esc` closes it. A report that is missing or isn't a JSON object shows
-"report unavailable". Report text is written by agents: it is cleaned like card text (no control
-or invisible characters, cut to a fixed length) and only ever shown; a field that isn't text, a
-number or true/false shows as "(not text)". The report is read again only when the file
-changes.
+`Enter` (or a double click) opens the selected card over the lower half of the pane. The panel
+covers everything from the middle down to the key line: nothing of the board shows through it,
+and a rule closes it at the bottom ("── end of card 1 ──", or "── ↓ 12 more lines ──" while
+there is more to scroll). It reads top to bottom:
+
+```
+── card 1 ──────────────────────────────────────────────────────────────────────
+Checkout redesign mockup: approve
+  Waiting on you for 7 h 30 min
+
+  What it is
+  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small
+  choices, each with a suggested answer.
+
+  What you need to do
+  → Open the canvas, then OK all suggestions or comment
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+
+  From the job
+  Job checkout-mockup finished · its tab: checkout-mockup (press t)
+
+  What the job reported
+  Mockup of the new checkout is on the design canvas. It has 12 boards.
+  Needs you:
+  • The saved-card preview drops the billing address. Make saved cards editable
+    anyway?
+  Links:
+  Design canvas  https://canvas.example/boards/checkout-v2
+  PR #57         https://github.com/example/app/pull/57
+  3 things checked · 1 skipped · 1 finding
+
+  ▸ More… (f or Enter)  full summary, suggested answers, findings, checks, skips
+
+  Added 03:00 · last changed 03:01
+── end of card 1 ───────────────────────────────────────────────────────────────
+```
+
+- **The title**, then where the card is, in words: "Waiting on you for 7 h 30 min", "Doing for
+  2 h", "Done at 01:10".
+- **What it is**: the description. **What you need to do**: the ask and the card's buttons,
+  which work here as on the card (`←` `→` choose one, `Enter` or a click presses it).
+- **From the job**: one line with the agent's live state and its tab (`t` goes there).
+- **What the job reported**, rewritten for people, from the card's report file: the summary's
+  first one or two sentences; **Needs you**, what the report asks of you (each over at most two
+  lines, and left out when the card's ask already says it); **Links** to PRs, artifacts and
+  other URLs in the report's `ids` or text, one per line and labelled ("PR #57", "Design
+  canvas", "Dev server"); and how much was checked and skipped. The report's path and its field
+  names never show. A job that hasn't written its report yet shows "Nothing yet".
+- **More…** (`f`, or `Enter` while no button is chosen, or a click on the line) shows the rest:
+  the full summary, the needs with their suggested answers, findings, what was checked and
+  skipped, what's next, the branch and commit. It starts hidden; `f` hides it again.
+- **Times** last, short and local: "Added 03:00 · last changed 03:17" (a weekday or a date
+  when not today).
+
+`↑` `↓`, `PgUp` `PgDn`, `g` `G` and the mouse wheel scroll it, `c` copies, `t` goes to the
+job's tab, `Esc` closes it (`Enter` too on a card with no More… and no chosen button). Report
+text is written by agents: it is cleaned like card text (no control or invisible characters,
+cut to a fixed length) and only ever shown, links follow the same strict rule as everywhere (the
+visible text is the URL), and a field that isn't text, a number or true/false shows as
+"(not text)". Labels made from the report's `ids` names keep only letters and digits. The report
+is read again only when the file changes.
 
 ### Links and copying
 
@@ -253,7 +305,8 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    ```
 
    - `done` with no `needs_user` → Done.
-   - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `→` line each).
+   - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `→` line each). An
+     entry may be text or an object such as `{ "question": "…", "suggested_answer": "…" }`.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
 
