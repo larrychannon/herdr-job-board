@@ -17,24 +17,24 @@ Job board · my-app                                                             
   → Say go once merged
   [ Go ✓ ]  [ Not now ]  [ Other… ]
 
-DOING (2)                                TO DO (4)                                DONE (1)
-6 Search filters: build         25 min    8 Export to CSV                 1 min   12 Nightly backup check          07:30
-  working                                   Let people download any table as
-  The filter panel from the approved        CSV. Three customers asked for it.
-  mockup, with saved filters per user.
-                                          9 Dark mode                     1 min
-7 Docs site: fix broken links    2 min      Follow the system theme. The colour
-  working                                   tokens are already in place.
-  Check every link on the new docs
-  site and fix the ones that 404.        10 Pick next: onboarding or settings
-                                            From the roadmap: an onboarding
-                                            tour or a new settings page. You
-                                            pick.                         1 min
+DOING (2)                                                    TO DO (4)
+6 Search filters: build                             25 min    8 Export to CSV                                     1 min
+  working                                                       Let people download any table as CSV. Three customers
+  The filter panel from the approved mockup, with saved         asked for it.
+  filters per user.
+                                                              9 Dark mode                                         1 min
+7 Docs site: fix broken links                        2 min      Follow the system theme. The colour tokens are already
+  working                                                       in place.
+  Check every link on the new docs site and fix the ones
+  that 404.                                                  10 Pick next: onboarding or settings                 1 min
+                                                                From the roadmap: an onboarding tour or a new settings
+                                                                page. You pick.
 
-                                         11 Upgrade the test runner       1 min
-                                            The current version reaches end of
-                                            life next month.
+                                                             11 Upgrade the test runner                           1 min
+                                                                The current version reaches end of life next month.
 
 
 
-Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit
+
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit

@@ -29,7 +29,7 @@
 //   path                    print the board file's path
 //
 // Columns: todo, doing, waiting (on the user), done. Done items are kept 14 days (the pane's
-// Done column shows today's), then dropped.
+// Done, folded to one line until opened, shows today's), then dropped.
 //
 // The board file is $(git rev-parse --git-common-dir)/job-board.json: inside .git, so every
 // worktree of the repo shares one board and it is never committed. JOB_BOARD_FILE overrides it.
@@ -597,11 +597,44 @@ const STYLES = {
   gone: "90",
 }
 const STATUS_STYLE = { working: "working", blocked: "blocked", idle: "idle", done: "finished", "no agent": "gone", unknown: "gone" }
+// A Doing card whose agent is working shows a small bar bouncing beside "working", one frame per
+// tick of the pane (`frame` in renderBoard; none, and it stands still). Plain ASCII, the same
+// width in every frame, so nothing around it moves. Idle, done, blocked and gone agents stay still.
+export const WORKING_FRAMES = ["[=   ]", "[ =  ]", "[  = ]", "[   =]", "[  = ]", "[ =  ]"]
+const frameOf = (n) => WORKING_FRAMES[((n % WORKING_FRAMES.length) + WORKING_FRAMES.length) % WORKING_FRAMES.length]
+// The pane's tick for it: about 6 frames a second.
+export const TICK_MS = 160
+/** Whether the working bar moves: not with JOB_BOARD_ANIMATION=0 (or off, false, no), nor on a dumb terminal. */
+export const animates = (env) => !/^\s*(0|off|false|no)\s*$/i.test(env.JOB_BOARD_ANIMATION ?? "") && env.TERM !== "dumb"
+
+/**
+ * The working bar's timer: after each paint, `sync(on)` with on = "a working bar is on screen"
+ * starts it (calling `tick` every TICK_MS) or stops it. At most one runs; none while nothing moves.
+ */
+export function animationTimer(tick, { every = TICK_MS, start = setInterval, stop = clearInterval } = {}) {
+  let handle = null
+  return {
+    sync(on) {
+      if (on && handle === null) handle = start(tick, every)
+      else if (!on && handle !== null) {
+        stop(handle)
+        handle = null
+      }
+      return handle !== null
+    },
+    get running() {
+      return handle !== null
+    },
+  }
+}
 // Wide characters (CJK, emoji) take two cells; combining marks none.
 const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u
 const ZERO = /[\p{Mn}\p{Me}\u200b-\u200f\ufe0f]/u
-const cellWidth = (ch) => (ZERO.test(ch) ? 0 : WIDE.test(ch) ? 2 : 1)
-export const textWidth = (text) => [...text].reduce((w, ch) => w + cellWidth(ch), 0)
+// Below U+0300 (no combining marks, nothing wide) every character is one cell: a fast path, as
+// the pane redraws several times a second while a working bar moves.
+const NARROW = /^[\u0000-\u02ff]*$/
+const cellWidth = (ch) => (ch < "\u0300" ? 1 : ZERO.test(ch) ? 0 : WIDE.test(ch) ? 2 : 1)
+export const textWidth = (text) => (NARROW.test(text) ? text.length : [...text].reduce((w, ch) => w + cellWidth(ch), 0))
 // Board text comes from agents and reports: never let it carry escape sequences, newlines or
 // bidirectional controls (which would show text in a different order than it is stored).
 const printable = (text) =>
@@ -787,7 +820,12 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
   } else if (column === "doing" && (entry.live || entry.reportStatus)) {
     const status = entry.live && entry.reportStatus ? `${entry.live}, report ${entry.reportStatus}` : entry.live || `report ${entry.reportStatus}`
-    lines.push([indent, { t: status, s: entry.live ? STATUS_STYLE[entry.live] || "gone" : "finished" }])
+    const line = [indent, { t: status, s: entry.live ? STATUS_STYLE[entry.live] || "gone" : "finished" }]
+    const bar = entry.live === "working" && Number.isInteger(ui.frame) ? ` ${frameOf(ui.frame)}` : ""
+    // The bar only where the whole status still fits: words before motion ("report failed" is
+    // never cut to make room for it).
+    if (bar && textWidth(status + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
+    lines.push(line)
   }
   for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
   if (column === "waiting" || blocked) {
@@ -934,15 +972,18 @@ function headerLine(view, section, selected) {
   const count = entriesOf(view, section).length
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
-  segs.push({ t: `${HEADINGS[section]} (${count})`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
+  // Done open: ▾, for "d or a click here folds it again".
+  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" ? " ▾" : ""}`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
   if (section === "waiting" && !count) segs.push({ t: "  Nothing needs you", s: "dim" })
   return segs
 }
 
 const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - painted.width))
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
-const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · m mouse: ${mouse} · q quit`
-const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · mouse: ${mouse} · q`
+const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: ${mouse} · q quit`
+const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mouse: ${mouse} · q`
+/** Done folded: one line, its count and ▸, for "d or a click here opens it". */
+const doneLine = (view) => [{ t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
 const detailHint = (wide, buttons, more) =>
@@ -1341,7 +1382,8 @@ export function copyPayload(entry) {
     if (first) return { text: first.url, what: "link" }
   }
   const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, clean(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
-  const options = optionsOf(entry).map((o) => o.label)
+  // Only the buttons the card shows: a blocked job's card has none to copy.
+  const options = shownOptions(entry).map((o) => o.label)
   if (options.length) parts.push(`buttons: ${options.join(" · ")}`)
   return { text: parts.filter(Boolean).join("\n\n"), what: "card" }
 }
@@ -1350,25 +1392,38 @@ export function copyPayload(entry) {
 
 /**
  * Lay the board out in `width` × `height` cells (height Infinity: everything, no scrolling).
- * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING | TO DO | DONE in
- * three columns below. Waiting takes what it needs up to half the height (more only when the
- * bottom doesn't need it) and shrinks to one line when empty. Under STACK_BELOW cells the four
- * sections stack. Each section scrolls on its own and has a selected card; `scroll` is
- * { selected, anchors, card, button, detail } where an anchor is a section's first visible card,
- * so the view holds still as cards come and go, and `detail` ({ key, offset, more }) opens a
- * card's details over the lower half: an opaque panel from the middle down to the key line,
- * between a "── card N ──" rule and a closing rule, with nothing of the board inside it. `links`
- * turns whole URLs into terminal hyperlinks; `footer` ({ message, mouse }) adds to the key hint
- * line.
- * Returns { text, sections (per section: blockKeys, offset, maxOffset, page, cards), regions
- * (screen rectangles, 1-based), buttons, cardHits and moreHits (where each button, card and the
- * details' "More…" line is, for the mouse), entries (by key), scroll (as drawn) }.
+ * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING | TO DO below in
+ * two columns, and DONE folded to one line ("DONE · 3 today ▸") at the bottom of the lower area;
+ * opened (`scroll.doneOpen`), DOING | TO DO | DONE in three columns. Waiting takes what it needs
+ * up to half the height (more only when the bottom doesn't need it) and shrinks to one line when
+ * empty. Under STACK_BELOW cells the sections stack, Done folded the same way. Each section
+ * scrolls on its own and has a selected card; `scroll` is { selected, anchors, card, button,
+ * detail, doneOpen } where an anchor is a section's first visible card, so the view holds still
+ * as cards come and go (Done folded keeps its anchor for when it opens again), and `detail`
+ * ({ key, offset, more }) opens a card's details over the lower half: an opaque panel from the
+ * middle down to the key line, between a "── card N ──" rule and a closing rule, with nothing of
+ * the board inside it. `links` turns whole URLs into terminal hyperlinks; `footer`
+ * ({ message, mouse }) adds to the key hint line; `frame` (a whole number) is the working bar's
+ * frame on Doing cards, none for a board that stands still.
+ * Returns { text, sections (per section shown: blockKeys, offset, maxOffset, page, cards),
+ * regions (screen rectangles, 1-based), buttons, cardHits and moreHits (where each button, card
+ * and the details' "More…" line is, for the mouse), doneToggle (the row a click folds or opens
+ * Done on), bars (where each working bar on screen starts, { y, x }) and animated (how many: the
+ * pane ticks only while there are some), entries (by key), scroll (as drawn) }.
  */
 export function renderBoard(view, opts = {}) {
   const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
   const width = Math.max(20, Math.floor(opts.width ?? 100))
   const scroll = { ...(opts.scroll || {}), selected: opts.scroll?.selected || "waiting", anchors: { ...(opts.scroll?.anchors || {}) } }
   const notes = opts.notes || {}
+  const frame = Number.isInteger(opts.frame) ? opts.frame : null
+  const doneOpen = scroll.doneOpen === true
+  // Done folded can't be selected: To do is, with its own selection.
+  if (!doneOpen && scroll.selected === "done") {
+    scroll.selected = "todo"
+    delete scroll.card
+    scroll.button = -1
+  }
   const finite = Number.isFinite(height)
   const paint = (segs, w = width) => paintLine(segs, w, color, links)
 
@@ -1382,6 +1437,8 @@ export function renderBoard(view, opts = {}) {
   const buttons = []
   const cardHits = []
   const moreHits = []
+  const animated = []
+  let doneToggle = null
   const entries = Object.fromEntries(SECTIONS.flatMap((s) => entriesOf(view, s).map((e) => [keyOf(e), { ...e, column: e.column ?? s }])))
   // Paint a line at screen row `row` from column `left`, noting where its buttons and cards are.
   const emit = (segs, row, left, w) => {
@@ -1392,6 +1449,7 @@ export function renderBoard(view, opts = {}) {
       if (sw && x < left + w) {
         if (seg.button) buttons.push({ ...seg.button, y: row, x0: x, x1 })
         if (seg.more) moreHits.push({ y: row, x0: x, x1 })
+        if (seg.anim) animated.push({ y: row, x })
         if (seg.card) {
           const last = cardHits.at(-1)
           if (last && last.key === seg.card && last.y === row && last.x1 >= x - 1) last.x1 = x1
@@ -1404,7 +1462,7 @@ export function renderBoard(view, opts = {}) {
   }
 
   // Cards carry their notes everywhere, so heights are the same before and after selection.
-  const noted = (e) => ({ note: notes[keyOf(e)] })
+  const noted = (e) => ({ note: notes[keyOf(e)], frame })
   // The selected section's selected card: the one chosen, else the first one in view. Its
   // button is chosen only with ← →, never in advance.
   const uiFor = (section, perRow, w, h) => {
@@ -1463,20 +1521,32 @@ export function renderBoard(view, opts = {}) {
   }
   const header = (section) => headerLine(view, section, interactive && scroll.selected === section)
   const room = finite ? height - out.length - (interactive ? 1 : 0) : Infinity
+  // Done folded: its line, on the last row of the lower area (after a blank line when nothing
+  // limits the height); a click anywhere on it opens Done.
+  const foldedDone = () => {
+    if (finite) while (out.length < height - (interactive ? 1 : 0) - 1) out.push("")
+    else out.push("")
+    const y = out.length + 1
+    out.push(emit(doneLine(view), y, 1, width).text)
+    regions.done = { top: y, bottom: y, left: 1, right: width }
+    doneToggle = { y, x0: 1, x1: width }
+  }
 
   if (width >= STACK_BELOW) {
     const gap = 3
-    const cw = Math.floor((width - 2 * gap) / 3)
+    // Done folded: DOING | TO DO share the width, and Done's line takes one row under them.
+    const bottom = doneOpen ? ["doing", "todo", "done"] : ["doing", "todo"]
+    const folded = doneOpen ? 0 : 1
+    const cw = Math.floor((width - (bottom.length - 1) * gap) / bottom.length)
     const perRow = width >= 110 ? 2 : 1
     let wBlocks = sectionBlocks(view, "waiting", width, perRow, noted)
-    const bottom = ["doing", "todo", "done"]
     const bBlocks = bottom.map((c) => sectionBlocks(view, c, cw, 1, noted))
     const wWant = wBlocks.length ? 1 + contentHeight(wBlocks) : 1
     const bWant = 1 + Math.max(...bBlocks.map(contentHeight))
     let wH = wWant
     let bH = bWant
     if (finite) {
-      const r = room - 1
+      const r = room - 1 - folded
       if (wBlocks.length) wH = Math.max(Math.min(wWant, 2), Math.min(wWant, Math.max(r - bWant, Math.floor(r / 2))))
       bH = Math.max(2, r - wH)
     }
@@ -1487,7 +1557,7 @@ export function renderBoard(view, opts = {}) {
       // Lines Waiting can't fill with whole cards go to the bottom.
       if (finite) {
         wH = used("waiting", wBlocks, wH)
-        bH = Math.max(2, room - 1 - wH)
+        bH = Math.max(2, room - 1 - folded - wH)
       }
       for (const l of place("waiting", wBlocks, wH - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
     } else place("waiting", wBlocks, 0)
@@ -1495,28 +1565,33 @@ export function renderBoard(view, opts = {}) {
     out.push("")
     const bTop = out.length + 1
     const bodies = bottom.map((c, i) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
-    const row = (cells, y) => cells.map((segs, i) => (i < 2 ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
+    const last = bottom.length - 1
+    const row = (cells, y) => cells.map((segs, i) => (i < last ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
     out.push(row(bottom.map(header), out.length + 1))
     const rows = finite ? bH - 1 : Math.max(...bodies.map((b) => b.length))
     for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || []), out.length + 1))
     bottom.forEach((c, i) => {
       regions[c] = { top: bTop, bottom: bTop + rows, left: 1 + i * (cw + gap), right: i * (cw + gap) + cw }
     })
+    // Done open: a click on its header folds it.
+    if (doneOpen) doneToggle = { y: bTop, x0: regions.done.left, x1: regions.done.right }
+    else foldedDone()
   } else {
-    let all = SECTIONS.map((s) => sectionBlocks(view, s, width, 1, noted))
-    const wants = all.map((blocks, i) => (blocks.length ? 1 + contentHeight(blocks) : SECTIONS[i] === "waiting" ? 1 : 2))
-    const heights = finite ? share(wants, room - (SECTIONS.length - 1)) : wants
-    all = all.map((blocks, i) => (blocks.length ? uiFor(SECTIONS[i], 1, width, heights[i] - 1) : blocks))
+    const shown = doneOpen ? SECTIONS : SECTIONS.filter((s) => s !== "done")
+    let all = shown.map((s) => sectionBlocks(view, s, width, 1, noted))
+    const wants = all.map((blocks, i) => (blocks.length ? 1 + contentHeight(blocks) : shown[i] === "waiting" ? 1 : 2))
+    const heights = finite ? share(wants, room - (shown.length - 1) - (doneOpen ? 0 : 1)) : wants
+    all = all.map((blocks, i) => (blocks.length ? uiFor(shown[i], 1, width, heights[i] - 1) : blocks))
     if (finite) {
       // Each section keeps the lines it fills with whole cards; the rest goes to the first one
       // (Waiting, then Doing, To do, Done) that shows more cards with it.
       let spare = 0
-      SECTIONS.forEach((s, i) => {
+      shown.forEach((s, i) => {
         const u = used(s, all[i], heights[i])
         spare += heights[i] - u
         heights[i] = u
       })
-      SECTIONS.forEach((s, i) => {
+      shown.forEach((s, i) => {
         if (spare <= 0 || !all[i].length) return
         const u = used(s, all[i], heights[i] + spare)
         if (u > heights[i]) {
@@ -1525,14 +1600,16 @@ export function renderBoard(view, opts = {}) {
         }
       })
     }
-    SECTIONS.forEach((s, i) => {
+    shown.forEach((s, i) => {
       if (i) out.push("")
       const sTop = out.length + 1
       out.push(paint(header(s)).text)
+      if (s === "done") doneToggle = { y: sTop, x0: 1, x1: width }
       if (s !== "waiting" || all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
       else place(s, all[i], 0)
       regions[s] = { top: sTop, bottom: out.length, left: 1, right: width }
     })
+    if (!doneOpen) foldedDone()
   }
 
   const lines = finite ? out.slice(0, height - (interactive ? 1 : 0)) : out
@@ -1580,11 +1657,13 @@ export function renderBoard(view, opts = {}) {
   }
   // Nothing of the board under the details panel can be clicked; the panel's own buttons can.
   const covered = (y) => regions.detail && y >= regions.detail.top
+  // Working bars on screen: not cut off, not under the panel.
+  const bars = animated.filter((a) => a.y <= lines.length && !covered(a.y))
   if (interactive) {
     if (finite) while (lines.length < height - 1) lines.push("")
     const mouse = opts.footer?.mouse || "board"
     const wide = width >= 80
-    const keys = detailInfo ? detailHint(wide, detailInfo.buttons, detailInfo.more) : wide ? HINT(mouse) : HINT_NARROW(mouse)
+    const keys = detailInfo ? detailHint(wide, detailInfo.buttons, detailInfo.more) : textWidth(HINT(mouse)) <= width ? HINT(mouse) : HINT_NARROW(mouse)
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "ask" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
@@ -1595,9 +1674,40 @@ export function renderBoard(view, opts = {}) {
     buttons: buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y))),
     cardHits: cardHits.filter((c) => c.y <= lines.length && !covered(c.y)),
     moreHits: moreHits.filter((m) => m.y <= lines.length),
+    doneToggle: doneToggle && doneToggle.y <= lines.length && !covered(doneToggle.y) ? doneToggle : null,
+    bars,
+    animated: bars.length,
     entries,
     scroll,
   }
+}
+
+/**
+ * What the pane writes to turn the screen it drew (`before`, lines) into `after`: only the lines
+ * that changed, each rewritten in place and cleared to its end (when shorter than `cols` cells;
+ * `widthOf` gives a line's width). With a different number of lines (the first draw, a resize,
+ * r: `before` is []) every line is written and the rest of the screen cleared.
+ */
+export function screenDiff(before, after, cols, widthOf) {
+  const whole = before.length !== after.length
+  let out = ""
+  for (let i = 0; i < after.length; i++) {
+    if (!whole && after[i] === before[i]) continue
+    out += `\x1b[${i + 1};1H${after[i]}${widthOf(after[i]) < cols ? "\x1b[K" : ""}`
+  }
+  if (whole) out += after.length ? "\x1b[J" : "\x1b[H\x1b[J"
+  return out
+}
+
+/**
+ * A tick of the working bar without drawing the board again: each bar on screen (`drawn.bars`)
+ * rewritten in place at `frame`, exactly as renderBoard would paint it. The bar has the same
+ * width in every frame, so nothing else on the line changes.
+ */
+export function barTick(drawn, frame, color) {
+  const bar = ` ${frameOf(frame)}`
+  const painted = color ? `\x1b[${STYLES.working}m${bar}\x1b[0m` : bar
+  return (drawn?.bars || []).map(({ y, x }) => `\x1b[${y};${x}H${painted}`).join("")
 }
 
 /** The board as text, everything shown (for `ls`), or as the pane draws it. */
@@ -1622,6 +1732,7 @@ const CHAR_KEYS = {
   "\n": "enter",
   o: "other",
   c: "copy",
+  d: "done",
   f: "more",
   t: "tab",
   m: "mouse",
@@ -1629,8 +1740,8 @@ const CHAR_KEYS = {
 
 /**
  * Terminal input as events: { type: "key", name } (next and prev for Tab and Shift-Tab, left,
- * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, more, tab, mouse,
- * quit, redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
+ * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, done, more, tab,
+ * mouse, quit, redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
  * (1006) mouse reports. Anything else is skipped.
  */
 export function parseInput(text) {
@@ -1690,9 +1801,11 @@ const DOUBLE_CLICK_MS = 400
  * One input event against the screen the user sees (`drawn`, from renderBoard): the new state
  * and maybe an action for the pane to carry out: { type: "send", id, key, label },
  * { type: "other", id, key }, { type: "copy", key }, { type: "tab", key } or { type: "mouse" }.
- * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them; ↑ ↓ select a
- *   card in the section, scrolling to keep it in view; PgUp PgDn scroll a page, g G go to the
- *   ends; the mouse wheel scrolls the section under the pointer.
+ * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them, skipping Done
+ *   while it is folded; ↑ ↓ select a card in the section, scrolling to keep it in view; PgUp PgDn
+ *   scroll a page, g G go to the ends; the mouse wheel scrolls the section under the pointer.
+ * - d, or a click on Done's line (folded) or header (open), folds or opens Done. Nothing else
+ *   moves: the selection stays, unless it was in Done as it folds (then To do is selected).
  * - Enter opens the selected card's details (Esc closes them), or, once ← → chose one of its
  *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
  *   mouse capture. A click selects a card, a double click opens it, a click on a button
@@ -1723,7 +1836,9 @@ export function handleInput(scroll, event, drawn) {
     }
   }
   const at = (section) => drawn.sections[section]?.offset ?? 0
-  const step = (dir) => SECTIONS[(SECTIONS.indexOf(next.selected) + dir + SECTIONS.length) % SECTIONS.length]
+  // Tab goes round the sections on screen: Done only while it is open.
+  const order = next.doneOpen ? SECTIONS : SECTIONS.filter((x) => x !== "done")
+  const step = (dir) => order[(Math.max(0, order.indexOf(next.selected)) + dir + order.length) % order.length]
   const press = (card, index) => {
     if (!card || card.id == null || !card.buttons) return null
     const label = index < card.labels.length ? card.labels[index] : null
@@ -1735,6 +1850,10 @@ export function handleInput(scroll, event, drawn) {
       delete next.card
       next.button = -1
     }
+  }
+  const toggleDone = () => {
+    next.doneOpen = !next.doneOpen
+    if (!next.doneOpen && next.selected === "done") selectSection("todo")
   }
   const detail = next.detail ? { ...next.detail } : null
   // The card shown in the details, as a Waiting card with buttons (else null), and its chosen button.
@@ -1792,7 +1911,11 @@ export function handleInput(scroll, event, drawn) {
     delete next.detail
   }
 
-  if (event.type === "click") {
+  const fold = drawn.doneToggle
+  if (event.type === "click" && fold && fold.y === event.y && event.x >= fold.x0 && event.x <= fold.x1) {
+    toggleDone()
+    next.lastClick = null
+  } else if (event.type === "click") {
     const hit = (drawn.buttons || []).find((b) => b.y === event.y && event.x >= b.x0 && event.x <= b.x1)
     const onCard = (drawn.cardHits || []).find((c) => c.y === event.y && event.x >= c.x0 && event.x <= c.x1)
     const section = sectionAt(drawn.regions, event.x, event.y)
@@ -1840,6 +1963,7 @@ export function handleInput(scroll, event, drawn) {
   } else if (name === "tab") {
     if (current) action = { type: "tab", key: current.key }
   } else if (name === "mouse") action = { type: "mouse" }
+  else if (name === "done") toggleDone()
   else if (name === "next" || name === "right") selectSection(step(1))
   else if (name === "prev" || name === "left") selectSection(step(-1))
   else if (name === "up") scrollTo(s, at(s) - 1)

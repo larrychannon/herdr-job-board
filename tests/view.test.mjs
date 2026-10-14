@@ -8,7 +8,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { asText, buildView, detailLines, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts } from "../board.mjs"
+import { animates, animationTimer, asText, barTick, buildView, copyPayload, detailLines, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -94,7 +94,7 @@ test("colours: the 16-colour palette, by section, status, ask and age; off witho
     has("1;7;33", "WAITING ON YOU (2)") // selected: reversed amber
     has("1;34", "DOING (2)")
     has("1", "TO DO (1)")
-    has("2;32", "DONE (1)")
+    has("2;32", "DONE · 1 today ▸") // folded
     has("32", "working")
     has("90", "no agent")
     has("33", "→ ")
@@ -121,6 +121,12 @@ test("findUrls: http(s) only, strictly; trailing punctuation, quotes and userinf
     ["https://a.example/pull/1?q=aaa\u2026", []],
     ["cut https://a.example/x\u2026 here, whole https://b.example/y", ["https://b.example/y"]],
     ["https://a.example\u2026", []],
+    // Cut just after a host's dot or hyphen, or a port's colon: the pattern stops before it, but
+    // the URL was still cut short.
+    ["https://a.example.\u2026", []],
+    ["https://a.example:\u2026", []],
+    ["https://a-\u2026", []],
+    ["https://a.example.:\u2026 and https://b.example.", ["https://b.example"]],
     ["<https://a.example/x>", ["https://a.example/x"]],
     ["two: https://a.example and http://b.example/y!", ["https://a.example", "http://b.example/y"]],
     ["https://good.example@evil.example/x", ["https://good.example"]],
@@ -276,8 +282,9 @@ const detailAgents = [
   { name: "checkout-mockup", agent_status: "done", workspace_id: "w9", pane_id: "w9:p6", tab_id: "w9:t6", interactive_ready: true },
 ]
 const detailTabs = [...tabs, { tab_id: "w9:t7", label: "orders-ui", workspace_id: "w9" }, { tab_id: "w9:t6", label: "checkout-mockup", workspace_id: "w9" }]
-// Keys that open each card's details: Waiting 1 and 2, Doing (orders-ui), Done (CSV export).
-const OPEN = { 1: "\r", 2: "\x1b[B\r", 3: "\t\r", 4: "\t\t\t\r" }
+// Keys that open each card's details: Waiting 1 and 2, Doing (orders-ui), Done (CSV export; d
+// opens Done first).
+const OPEN = { 1: "\r", 2: "\x1b[B\r", 3: "\t\r", 4: "d\t\t\t\r" }
 const plainOf = (text) => text.replace(/\x1b\[[0-9;]*m|\x1b\]8;;[^\x1b]*\x1b\\/g, "")
 
 test("details panel snapshots: Waiting from a job, Waiting without one, Doing and Done; 120 and 88 columns; colour on and off", () => {
@@ -306,8 +313,8 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
   const t = setup({ agents: detailAgents, tabs: detailTabs })
   try {
     seedDetails(t)
-    const board = t.pane(["--width", "120", "--height", "40"]).stdout
-    assert.match(board, /DONE-MARK shipped thing 6/, "without the panel, Done shows in the lower half")
+    const board = t.pane(["--width", "120", "--height", "40"], "d").stdout
+    assert.match(board, /DONE-MARK shipped thing 6/, "without the panel, Done (open) shows in the lower half")
     for (const [width, height] of [[120, 40], [88, 40], [60, 30]]) {
       for (const [card, keys] of Object.entries(OPEN)) {
         for (const flags of [[], ["--color", "--links"]]) {
@@ -323,7 +330,7 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
           assert.equal([...screen[top]].length, width, "and so does the top one")
           assert.match(screen.at(-1), /^Esc /)
           for (const line of screen.slice(top, bottom + 1)) {
-            assert.doesNotMatch(line, /TODO-MARK|DONE-MARK|DOING \(|TO DO \(|DONE \(|WAITING ON YOU|↓ \d+ more$/, `${card} at ${width}: column text in the panel: ${line}`)
+            assert.doesNotMatch(line, /TODO-MARK|DONE-MARK|DOING \(|TO DO \(|DONE \(|DONE · |WAITING ON YOU|↓ \d+ more$/, `${card} at ${width}: column text in the panel: ${line}`)
           }
         }
       }
@@ -830,6 +837,251 @@ test("the report is read once while it doesn't change (cached by mtime and size)
     assert.equal(reportCacheStats.reads - before.reads, 2)
     rmSync(path)
     assert.deepEqual(reportFacts(path), { unavailable: true, missing: true }, "a removed file is unavailable, not cached")
+  } finally {
+    t.done()
+  }
+})
+
+// --- the working bar and Done folded (0.3.3) ---------------------------------------------------
+
+/** seed() plus two more Doing jobs: Doing has working (with a final report), idle, working and no agent. */
+const motionAgents = [
+  { name: "search-ui", agent_status: "working", workspace_id: "w9", pane_id: "w9:p5", tab_id: "w9:t5" },
+  { name: "docs-links", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p6", tab_id: "w9:t6" },
+  { name: "api-client", agent_status: "working", workspace_id: "w9", pane_id: "w9:p7", tab_id: "w9:t7" },
+]
+function seedMotion(t) {
+  seed(t)
+  t.board("2026-10-13T10:10:00Z", "job-start", "api-client", "--title", "API client: regenerate", "--desc", "From the new OpenAPI file.")
+  t.board("2026-10-13T10:12:00Z", "job-start", "release-notes", "--title", "Release notes: draft")
+}
+const BAR = /\[[ =]{4}\]/g
+const barsOf = (text) => text.match(BAR) ?? []
+
+test("board snapshots: Done folded (default) and open, Doing with working and idle cards; 120 and 88 columns; colour on and off; the bar's frame injected", () => {
+  const t = setup({ agents: motionAgents, tabs })
+  try {
+    seedMotion(t)
+    for (const [name, flags] of [["board-motion-plain.txt", []], ["board-motion-color.txt", ["--color"]]]) {
+      let all = ""
+      for (const width of [120, 88]) {
+        for (const [label, keys, frame] of [["Done folded · frame 0", "", 0], ["Done open (d) · frame 3", "d", 3]]) {
+          const r = t.pane(["--width", String(width), "--height", "40", "--frame", String(frame), ...flags], keys)
+          assert.equal(r.status, 0, r.stderr)
+          all += `===== ${label} · ${width} columns =====\n${r.stdout}`
+        }
+      }
+      const snap = join(FIXTURES, name)
+      if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, all)
+      assert.equal(all, readFileSync(snap, "utf8"), `snapshot ${name} (UPDATE_SNAPSHOTS=1 to rewrite)`)
+    }
+    // At 88 with Done open, Doing is 27 cells: "working, report done" fits, with the bar it
+    // wouldn't, so that card keeps its words and goes without.
+    for (const [width, keys, bars] of [[120, "", 2], [120, "d", 2], [88, "", 2], [88, "d", 1]]) {
+      const at = (frame) => t.pane(["--width", String(width), "--height", "40", ...(frame == null ? [] : ["--frame", String(frame)])], keys).stdout
+      assert.deepEqual(barsOf(at(null)), [], "no frame: nothing moves (ls, --once)")
+      // Only working cards carry the bar; every frame is the same screen but for it.
+      const first = at(0)
+      for (let f = 0; f < WORKING_FRAMES.length; f++) {
+        const text = at(f)
+        assert.deepEqual(barsOf(text), Array(bars).fill(WORKING_FRAMES[f]), `${width}${keys}: frame ${f} on the working cards`)
+        assert.equal(text.replace(BAR, "[bar]"), first.replace(BAR, "[bar]"), `${width}${keys}: frame ${f} moves nothing else`)
+      }
+      assert.match(first, / {2}working \[=   \]/)
+      if (bars === 2) assert.match(first, / {2}working, report done \[=   \]/, "after the report too")
+      else assert.match(first, / {2}working, report done(?! \[)/)
+      assert.match(first, / {2}idle(?! \[)/, "idle stands still")
+      assert.match(first, / {2}no agent(?! \[)/, "no agent stands still")
+    }
+    // Colour: the bar is the working green; NO_COLOR or no --color, plain text.
+    const on = t.pane(["--width", "88", "--height", "40", "--frame", "0", "--color"]).stdout
+    assert.ok(on.includes(`${ESC}[32m [=   ]${ESC}[0m`), "green, like working")
+    assert.deepEqual(sequences(t.pane(["--width", "88", "--height", "40", "--frame", "0"]).stdout), [])
+  } finally {
+    t.done()
+  }
+})
+
+test("the working bar: only on screen counts (scrolled away or under the details, none); the timer runs only while one shows", () => {
+  const t = setup({ agents: motionAgents, tabs })
+  try {
+    seedMotion(t)
+    const state = JSON.parse(readFileSync(t.file, "utf8"))
+    const draw = (agents, scroll = {}, opts = {}) =>
+      renderBoard(buildView(state, agents, { now: new Date(NOW), workspace: "w9" }), { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 2, scroll: { selected: "waiting", anchors: {}, ...scroll }, ...opts })
+    // `animated` counts exactly the bars on screen.
+    const counted = (drawn) => {
+      assert.equal(drawn.animated, barsOf(drawn.text).length, "animated = bars drawn")
+      return drawn.animated
+    }
+    assert.equal(counted(draw(motionAgents)), 2, "two working cards on screen")
+    assert.equal(counted(draw(motionAgents, {}, { frame: undefined })), 0, "no frame: still")
+    const idle = motionAgents.map((a) => ({ ...a, agent_status: "idle" }))
+    assert.equal(counted(draw(idle)), 0, "none working")
+    assert.equal(counted(draw(null)), 0, "Herdr unreadable: no live status at all")
+    // The details panel covers the lower half: bars under it don't count.
+    assert.equal(counted(draw(motionAgents, { detail: { key: "#1", offset: 0 } })), 1, "one working card above the panel, one under it")
+    assert.equal(counted(draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 24 })), 0, "both under it")
+    assert.ok(counted(draw(motionAgents, {}, { height: 24 })) >= 1, "while without it one shows")
+    // Scrolled so the working cards are above the view: none on screen. (Doing: 3 search-ui, 4
+    // docs-links, 7 api-client, 8 release-notes; a short pane shows one Doing card at a time.)
+    const short = (anchor) => draw(motionAgents, { anchors: { doing: { key: anchor, index: 0 } } }, { height: 16 })
+    assert.equal(counted(short("#3")), 1)
+    assert.equal(counted(short("#4")), 0, "the idle card in view, the working ones scrolled away")
+
+    // The timer: started once while a bar shows, stopped when none does, never two at once.
+    const calls = []
+    const timer = animationTimer(() => {}, { start: (fn, ms) => (calls.push(["start", ms]), calls.length), stop: (h) => calls.push(["stop", h]) })
+    for (const drawn of [draw(motionAgents), draw(motionAgents), draw(idle), draw(idle), draw(motionAgents), draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 24 })]) timer.sync(drawn.animated > 0)
+    assert.deepEqual(calls, [["start", TICK_MS], ["stop", 1], ["start", TICK_MS], ["stop", 3]])
+    assert.equal(timer.running, false)
+    assert.ok(TICK_MS >= 125 && TICK_MS <= 250, "4 to 8 frames a second")
+
+    // On or off by the environment: JOB_BOARD_ANIMATION=0 (off, false, no) and TERM=dumb keep it still.
+    assert.equal(animates({}), true)
+    assert.equal(animates({ NO_COLOR: "1" }), true, "NO_COLOR: it still moves, uncoloured")
+    for (const value of ["0", "off", "false", "no", " OFF "]) assert.equal(animates({ JOB_BOARD_ANIMATION: value }), false, value)
+    assert.equal(animates({ JOB_BOARD_ANIMATION: "1" }), true)
+    assert.equal(animates({ TERM: "dumb" }), false)
+  } finally {
+    t.done()
+  }
+})
+
+test("barTick: a tick rewrites only the bars, in place, and the screen then is the board drawn at that frame", () => {
+  const t = setup({ agents: motionAgents, tabs })
+  try {
+    seedMotion(t)
+    const state = JSON.parse(readFileSync(t.file, "utf8"))
+    const view = buildView(state, motionAgents, { now: new Date(NOW), workspace: "w9" })
+    for (const [width, scroll] of [[88, {}], [120, {}], [60, {}], [88, { doneOpen: true }], [120, { doneOpen: true }]]) {
+      for (const color of [false, true]) {
+        const draw = (frame) => renderBoard(view, { width, height: 40, color, interactive: true, now: new Date(NOW), frame, scroll: { selected: "waiting", anchors: {}, ...scroll } })
+        const base = draw(0)
+        assert.ok(base.bars.length > 0)
+        for (let f = 1; f < WORKING_FRAMES.length + 2; f++) {
+          const patch = barTick(base, f, color)
+          // Only cursor moves and the bar, painted as the board paints it.
+          const cell = color ? `${ESC}\\[32m \\[[ =]{4}\\]${ESC}\\[0m` : " \\[[ =]{4}\\]"
+          assert.match(patch, new RegExp(`^(?:${ESC}\\[\\d+;\\d+H${cell})+$`))
+          // Applied to the plain screen, it gives the board drawn at frame f.
+          if (!color) {
+            const screen = base.text.split("\n").map((l) => [...l])
+            for (const m of patch.matchAll(/\x1b\[(\d+);(\d+)H([^\x1b]+)/g)) screen[m[1] - 1].splice(m[2] - 1, m[3].length, ...m[3])
+            assert.equal(screen.map((l) => l.join("")).join("\n"), draw(f).text, `${width} ${JSON.stringify(scroll)}: frame ${f}`)
+          } else {
+            assert.ok(draw(f).text.includes(`${ESC}[32m ${WORKING_FRAMES[f % WORKING_FRAMES.length]}${ESC}[0m`), "the same paint as the board's")
+          }
+        }
+      }
+    }
+    assert.equal(barTick({ bars: [] }, 3, true), "", "no bars, nothing to write")
+    assert.equal(barTick(null, 3, true), "")
+  } finally {
+    t.done()
+  }
+})
+
+test("screenDiff: only changed lines are rewritten; a new size rewrites all and clears below", () => {
+  const w = (l) => [...l].length
+  assert.equal(screenDiff(["a", "b", "c"], ["a", "b", "c"], 10, w), "")
+  assert.equal(screenDiff(["a", "b", "c"], ["a", "B", "c"], 10, w), `${ESC}[2;1HB${ESC}[K`)
+  assert.equal(screenDiff(["a", "b"], ["a", "b", "c"], 10, w), `${ESC}[1;1Ha${ESC}[K${ESC}[2;1Hb${ESC}[K${ESC}[3;1Hc${ESC}[K${ESC}[J`)
+  assert.equal(screenDiff([], ["xx"], 2, w), `${ESC}[1;1Hxx${ESC}[J`, "a full line is not cleared to its end")
+  assert.equal(screenDiff(["a"], [], 10, w), `${ESC}[H${ESC}[J`)
+  assert.equal(screenDiff(["a", null, "c"], ["a", "b", "c"], 10, w), `${ESC}[2;1Hb${ESC}[K`, "a line a tick wrote is rewritten by the next paint")
+})
+
+test("the live pane: the bar moves about 6 times a second rewriting only its line, and stops once nothing is working; JOB_BOARD_ANIMATION=0 keeps it still", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
+  const t = setup({ agents: [{ name: "api-client", agent_status: "working", workspace_id: "w9", pane_id: "w9:p7", tab_id: "w9:t7" }] })
+  const herdrFile = t.env.FAKE_HERDR_STATE
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+  const children = []
+  const run = (extraEnv = {}) => {
+    // Its own process group, so a failed assertion can't leave the pane running.
+    const child = spawn("script", ["-qefc", `stty cols 89 rows 24; exec node ${JSON.stringify(PANE)} --board ${JSON.stringify(t.file)} --interval 1`, "/dev/null"], { cwd: t.base, env: { ...t.env, ...extraEnv }, detached: true })
+    children.push(child)
+    const run = { out: "", child }
+    child.stdout.on("data", (d) => (run.out += d.toString("latin1")))
+    run.quit = async () => {
+      child.stdin.write("q")
+      await new Promise((r) => (child.exitCode === null ? child.on("exit", r) : r()))
+    }
+    return run
+  }
+  // The fake Herdr rewrites its file on every call: change it under its lock.
+  const setStatus = (status) => {
+    for (;;) {
+      try {
+        mkdirSync(`${herdrFile}.lock`)
+        break
+      } catch {}
+    }
+    try {
+      const state = JSON.parse(readFileSync(herdrFile, "utf8"))
+      state.agents[0].agent_status = status
+      writeFileSync(herdrFile, JSON.stringify(state))
+    } finally {
+      rmSync(`${herdrFile}.lock`, { recursive: true, force: true })
+    }
+  }
+  try {
+    t.board(NOW, "job-start", "api-client", "--title", "API client: regenerate")
+    const live = run({ NO_COLOR: "1" })
+    await pause(1500)
+    // After the first full draw (it ends clearing the rest of the screen), each tick rewrites only
+    // the bar, in place, just after "working".
+    const first = live.out.indexOf(`${ESC}[J`)
+    assert.ok(first > 0, "the first draw")
+    const plain = live.out.slice(first + 3).replace(/\x1b\[\?2026[hl]/g, "")
+    const ticks = [...plain.matchAll(/\x1b\[(\d+);(\d+)H (\[[ =]{4}\])/g)]
+    assert.ok(ticks.length >= 5, `about 6 ticks a second (saw ${ticks.length} in 1.5 s)`)
+    assert.deepEqual([...new Set(ticks.map((m) => `${m[1]};${m[2]}`))], [`${ticks[0][1]};10`], "always the same place: after '  working'")
+    // Nothing else is written, but for a refresh rewriting that same line whole.
+    const rest = plain.replace(/\x1b\[\d+;\d+H \[[ =]{4}\]/g, "")
+    assert.equal(rest.replace(new RegExp(`\\x1b\\[${ticks[0][1]};1H {2}working \\[[ =]{4}\\]\\x1b\\[K`, "g"), ""), "", "and nothing else is written")
+    // The bars seen are the frames in order, from wherever it started.
+    const seen = ticks.map((m) => m[3])
+    const n = WORKING_FRAMES.length
+    assert.ok(WORKING_FRAMES.some((_, k) => seen.every((bar, i) => bar === WORKING_FRAMES[(k + i) % n])), `frames in order: ${seen.join(" ")}`)
+    // The agent goes idle: within a refresh the card says so, and then nothing is written at all.
+    setStatus("idle")
+    await pause(1600)
+    assert.match(live.out.slice(-400), / {2}idle\x1b\[K/)
+    const mark = live.out.length
+    await pause(1200)
+    assert.equal(live.out.slice(mark), "", "no timer, no writes, once nothing is working")
+    await live.quit()
+
+    // JOB_BOARD_ANIMATION=0: still, from the start.
+    setStatus("working")
+    const still = run({ JOB_BOARD_ANIMATION: "0", NO_COLOR: "1" })
+    await pause(900)
+    const before = still.out.length
+    assert.match(still.out, / {2}working\x1b\[K/)
+    assert.deepEqual(barsOf(still.out), [])
+    await pause(700)
+    assert.equal(still.out.length, before, "nothing moves")
+    await still.quit()
+  } finally {
+    for (const child of children) {
+      try {
+        if (child.exitCode === null) process.kill(-child.pid, "SIGKILL")
+      } catch {}
+    }
+    t.done()
+  }
+})
+
+test("copy: a card whose job is blocked copies without its hidden buttons", () => {
+  const t = setup({ agents: [{ name: "namer", agent_status: "blocked", workspace_id: "w9", pane_id: "w9:p4", tab_id: "w9:t4" }], tabs })
+  try {
+    t.board(NOW, "add", "waiting", "Pick a name", "--job", "namer", "--ask", "Choose one", "--option", "Alpha", "--option", "Beta", "--suggest", "Alpha")
+    assert.deepEqual(decode52(t.pane([], "c").stdout), ["#1 Pick a name\n\n→ Choose one"])
+    const card = { id: 1, title: "Pick a name", ask: "Choose one", column: "waiting", options: [{ label: "Alpha", suggested: true }, { label: "Beta" }] }
+    assert.equal(copyPayload({ ...card, live: "" }).text, "#1 Pick a name\n\n→ Choose one\n\nbuttons: Alpha · Beta", "buttons on screen are copied")
+    assert.equal(copyPayload({ ...card, live: "blocked" }).text, "#1 Pick a name\n\n→ Choose one", "hidden ones never")
+    assert.equal(copyPayload({ ...card, column: "doing", live: "" }).text, "#1 Pick a name\n\n→ Choose one", "nor on a card out of Waiting")
   } finally {
     t.done()
   }

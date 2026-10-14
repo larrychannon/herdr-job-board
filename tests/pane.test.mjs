@@ -106,8 +106,11 @@ test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓ select ca
   const sel = (events) => feed(s, events).drawn.scroll.selected
   assert.equal(sel([]), "waiting")
   assert.equal(sel([key("next")]), "doing")
-  assert.equal(sel([key("next"), key("next"), key("next"), key("next")]), "waiting", "Tab wraps around")
-  assert.equal(sel([key("prev")]), "done")
+  assert.equal(sel([key("next"), key("next"), key("next")]), "waiting", "Tab wraps around, past Done folded")
+  assert.equal(sel([key("done"), key("next"), key("next"), key("next")]), "done", "Done open is on the way")
+  assert.equal(sel([key("done"), key("next"), key("next"), key("next"), key("next")]), "waiting")
+  assert.equal(sel([key("prev")]), "todo", "Done is folded: Shift-Tab skips it")
+  assert.equal(sel([key("done"), key("prev")]), "done", "open, it is a section like the others")
   assert.equal(sel([key("right"), key("right")]), "todo", "→ moves on when the card has no buttons")
   const { drawn } = feed(s, [key("next")])
   assert.match(drawn.text, /^▸ DOING \(2\)/m, "the selected section's header is marked")
@@ -143,6 +146,66 @@ test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓ select ca
   const below = 12 - offset(paged) - paged.sections.todo.page
   if (below > 0) assert.match(paged.text, new RegExp(`↓ ${below} more`))
   else assert.doesNotMatch(paged.text.split("TO DO")[1] ?? "", /↓ \d+ more/)
+})
+
+test("Done: folded by default; d or a click on its line opens it, d or a click on its header folds it; nothing else moves", () => {
+  const s = state({ waiting: 2, doing: 2, todo: 12 })
+  for (const [width, height] of [[88, 40], [120, 40], [60, 30]]) {
+    const at = { width, height }
+    const folded = draw(s, at)
+    const lines = folded.text.split("\n")
+    assert.equal(lines.at(-2), "DONE · 1 today ▸", `${width}: one line, just above the key hint`)
+    assert.equal(folded.sections.done, undefined, "no Done section to scroll or select")
+    assert.deepEqual(folded.doneToggle, { y: height - 1, x0: 1, x1: width })
+    if (width >= 70) assert.match(folded.text, /^DOING \(2\) +TO DO \(12\)$/m, `${width}: Doing and To do share the width`)
+    // d opens it; d again folds it.
+    const open = feed(s, [key("done")], at).drawn
+    assert.match(open.text, /DONE \(1\) ▾/)
+    assert.match(open.text, /\bShipped\b/)
+    assert.doesNotMatch(open.text, /DONE · /)
+    assert.equal(feed(s, [key("done"), key("done")], at).drawn.text, folded.text)
+    // A click on the folded line opens it; a click on the open header folds it.
+    const clickLine = feed(s, [{ type: "click", x: 3, y: height - 1 }], at).drawn
+    assert.equal(clickLine.text, open.text)
+    const header = find(open, "DONE (1)")
+    assert.equal(feed(s, [key("done"), { type: "click", x: header.x + 2, y: header.y }], at).drawn.text, folded.text)
+    // The wheel on the folded line does nothing; Enter, c, ↑ ↓ never reach Done.
+    assert.equal(feed(s, [{ type: "wheel", dir: "down", x: 3, y: height - 1 }], at).drawn.text, folded.text)
+  }
+  // The selection and every section's scroll position hold as Done opens and folds.
+  const todoHeader = find(draw(s), "TO DO (12)")
+  const wheel = { type: "wheel", dir: "down", x: todoHeader.x + 2, y: todoHeader.y + 3 }
+  const before = feed(s, [key("next"), key("next"), key("down"), key("down"), wheel]).drawn
+  assert.equal(before.scroll.selected, "todo")
+  const card = before.scroll.card
+  const first = before.sections.todo.blockKeys[before.sections.todo.offset]
+  for (const events of [[key("done")], [key("done"), key("done")], [{ type: "click", x: 3, y: 39 }]]) {
+    const after = feed(s, [key("next"), key("next"), key("down"), key("down"), wheel, ...events]).drawn
+    assert.equal(after.scroll.selected, "todo", "same section")
+    assert.equal(after.scroll.card, card, "same card")
+    assert.match(after.text, new RegExp(`\\d+▸Later ${card.slice(1)}\\b`), "still marked and in view")
+    assert.equal(after.sections.todo.blockKeys[after.sections.todo.offset], first, "same first card in view")
+  }
+  // Done open and selected, then folded: the selection goes to To do, not anywhere else.
+  const inDone = feed(s, [key("done"), key("prev")]).drawn
+  assert.equal(inDone.scroll.selected, "done")
+  assert.equal(feed(s, [key("done"), key("prev"), key("done")]).drawn.scroll.selected, "todo")
+  // Folded, Tab and Shift-Tab and ← → skip it; the details keep d for themselves (it does nothing there).
+  assert.deepEqual(
+    [[key("next")], [key("next"), key("next")], [key("next"), key("next"), key("next")], [key("prev")], [key("left")]].map((e) => feed(s, e).drawn.scroll.selected),
+    ["doing", "todo", "waiting", "todo", "todo"],
+  )
+  const detail = feed(s, [key("enter"), key("done")]).drawn
+  assert.equal(detail.scroll.detail.key, "#1")
+  assert.notEqual(detail.scroll.doneOpen, true)
+  // Counts stay right: the headers count the cards, the folded line today's Done.
+  const many = structuredClone(s)
+  for (let i = 0; i < 31; i++) many.items.push({ id: 100 + i, title: `Old ${i}`, column: "done", since: "2026-10-13T09:00:00Z" })
+  many.items.push({ id: 200, title: "Yesterday", column: "done", since: "2026-10-12T09:00:00Z" })
+  const counted = draw(many)
+  assert.match(counted.text, /^DONE · 32 today ▸$/m)
+  assert.match(counted.text, /^DOING \(2\) +TO DO \(12\)$/m)
+  assert.match(feed(many, [key("done")]).drawn.text, /DONE \(32\) ▾/)
 })
 
 test("mouse: the wheel scrolls the section under the pointer, a click selects it", () => {

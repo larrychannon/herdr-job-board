@@ -10,15 +10,15 @@ Job board · my-app                                                             
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
                                                                [ Not now ]  [ Other… ]                       7 h 47 min
 
-DOING (1)                                TO DO (3)                                DONE (7)
-3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
-  working                                  From the roadmap.                         #48): try it, then merge      09:10
-  The order list and filters from the
-  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
-                                           From the roadmap.         3 h 29 min
-                                                                                  12 DONE-MARK shipped thing 5     05:40
-                                         7 TODO-MARK Rotate the API keys
-                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+DOING (1)                                                    TO DO (3)
+3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
+  working                                                      From the roadmap.
+  The order list and filters from the approved mockup.
+                                                             6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
+                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
+                                                               From the roadmap.
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -51,15 +51,15 @@ Job board · my-app                                                             
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
                                                                [ Not now ]  [ Other… ]                       7 h 47 min
 
-DOING (1)                                TO DO (3)                                DONE (7)
-3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
-  working                                  From the roadmap.                         #48): try it, then merge      09:10
-  The order list and filters from the
-  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
-                                           From the roadmap.         3 h 29 min
-                                                                                  12 DONE-MARK shipped thing 5     05:40
-                                         7 TODO-MARK Rotate the API keys
-                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+DOING (1)                                                    TO DO (3)
+3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
+  working                                                      From the roadmap.
+  The order list and filters from the approved mockup.
+                                                             6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
+                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
+                                                               From the roadmap.
 ── card 2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -92,15 +92,15 @@ WAITING ON YOU (2)
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
                                                                [ Not now ]  [ Other… ]                       7 h 47 min
 
-▸ DOING (1)                              TO DO (3)                                DONE (7)
-3▸Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4 CSV export on the Orders page (PR
-  working                                  From the roadmap.                         #48): try it, then merge      09:10
-  The order list and filters from the
-  approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
-                                           From the roadmap.         3 h 29 min
-                                                                                  12 DONE-MARK shipped thing 5     05:40
-                                         7 TODO-MARK Rotate the API keys
-                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
+▸ DOING (1)                                                  TO DO (3)
+3▸Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
+  working                                                      From the roadmap.
+  The order list and filters from the approved mockup.
+                                                             6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
+                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
+                                                               From the roadmap.
 ── card 3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -133,7 +133,7 @@ WAITING ON YOU (2)
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
                                                                [ Not now ]  [ Other… ]                       7 h 47 min
 
-DOING (1)                                TO DO (3)                                ▸ DONE (7)
+DOING (1)                                TO DO (3)                                ▸ DONE (7) ▾
 3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4▸CSV export on the Orders page (PR
   working                                  From the roadmap.                         #48): try it, then merge      09:10
   The order list and filters from the
@@ -179,10 +179,10 @@ Job board · my-app                                                             
   → Pick one
   [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-DOING (1)                     TO DO (3)                     DONE (7)
-3 Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
-  working                       From the roadmap.              page (PR #48): try it, …
-  The order list and            3 h 30 min                     09:10
+DOING (1)                                    TO DO (3)
+3 Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
+  working                                      From the roadmap.
+  The order list and filters from the
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -220,10 +220,10 @@ Job board · my-app                                                             
   → Pick one
   [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-DOING (1)                     TO DO (3)                     DONE (7)
-3 Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
-  working                       From the roadmap.              page (PR #48): try it, …
-  The order list and            3 h 30 min                     09:10
+DOING (1)                                    TO DO (3)
+3 Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
+  working                                      From the roadmap.
+  The order list and filters from the
 ── card 2 ──────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -261,10 +261,10 @@ WAITING ON YOU (2)
   → Pick one
   [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-▸ DOING (1)                   TO DO (3)                     DONE (7)
-3▸Order history UI: build     5 TODO-MARK Export to PDF      4 CSV export on the Orders
-  working                       From the roadmap.              page (PR #48): try it, …
-  The order list and            3 h 30 min                     09:10
+▸ DOING (1)                                  TO DO (3)
+3▸Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
+  working                                      From the roadmap.
+  The order list and filters from the
 ── card 3 ──────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -302,7 +302,7 @@ WAITING ON YOU (2)
   → Pick one
   [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-DOING (1)                     TO DO (3)                     ▸ DONE (7)
+DOING (1)                     TO DO (3)                     ▸ DONE (7) ▾
 3 Order history UI: build     5 TODO-MARK Export to PDF      4▸CSV export on the Orders
   working                       From the roadmap.              page (PR #48): try it, …
   The order list and            3 h 30 min                     09:10

@@ -4,15 +4,20 @@
 // board.mjs writes it.
 //
 //   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
-//   node board-pane.mjs --once [--width N] [--height N] [--color] [--links] [--keys <input>] [--origin <pane>]
+//   node board-pane.mjs --once [--width N] [--height N] [--color] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
 // `board.mjs open` starts it in a split right of the calling pane. WAITING ON YOU across the
-// top; DOING, TO DO and DONE (today, newest first) in three columns below; under 70 cells wide
-// the four stack. Each card: the title, the description over up to 3 lines, for Waiting the
-// ask ("→ …"), and the age; Doing shows its agent's live status from `herdr agent list`, and a
-// blocked agent shows under Waiting. Colours come from the 16-colour palette (NO_COLOR turns
-// them off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also
-// keeps the sidebar's $board token current.
+// top; DOING and TO DO in two columns below, and DONE (today) folded to one line at the bottom
+// ("DONE · 3 today ▸"; d or a click opens it as a third column, newest first, and folds it
+// again); under 70 cells wide the sections stack. Each card: the title, the description over up
+// to 3 lines, for Waiting the ask ("→ …"), and the age; Doing shows its agent's live status from
+// `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour
+// palette (NO_COLOR turns them off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing
+// the URL itself. It also keeps the sidebar's $board token current.
+//
+// A Doing card whose agent is working shows a small ASCII bar bouncing beside "working"; every
+// other card stands still, so the motion says what is running. It ticks about 6 times a second,
+// only while such a bar is on screen (no timer otherwise), and a tick rewrites only the bars. JOB_BOARD_ANIMATION=0 (or TERM=dumb) keeps it still; NO_COLOR draws it uncoloured.
 //
 // Every section scrolls on its own and has a selected card; the position holds across redraws
 // and new cards.
@@ -26,6 +31,8 @@
 //                           More… (the rest of the job's report), and Enter closes the details
 //                           when there is no More…; o is Other…; Esc closes them
 //   c                       copy the card's first link, or its text (OSC 52)
+//   d, click on Done's line open Done (a third column); d or a click on its header folds it.
+//                           Folded, Tab skips it. The choice holds while the pane runs
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)
 //   q quit, r redraw
@@ -35,11 +42,11 @@
 // prompt`; o (or Other…) focuses that pane for the user to type. Presses run one at a time; a
 // card answered already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
-// when the text changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
+// the lines that changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
 // signal and on a crash.
 //
-// --once prints one frame and exits (no colour unless --color, no hyperlinks unless --links): for
-// tests and a quick look.
+// --once prints one frame and exits (no colour unless --color, no hyperlinks unless --links, the
+// working bar still unless --frame N picks its frame): for tests and a quick look.
 // --keys feeds it input first, e.g. --keys $'\t\e[B' (next section, then one card down); a
 // button pressed there is really sent.
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
@@ -48,6 +55,9 @@ import { watch } from "node:fs"
 import { basename, dirname, resolve, sep } from "node:path"
 
 import {
+  animates,
+  animationTimer,
+  barTick,
   boardPath,
   buildView,
   copyPayload,
@@ -62,8 +72,10 @@ import {
   renderBoard,
   repoName,
   reportToken,
+  screenDiff,
   textWidth,
   tokenText,
+  WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
 
@@ -71,14 +83,14 @@ const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, links: false, keys: "", origin: "" }
+  const opts = { interval: 3, once: false, color: null, links: false, keys: "", origin: "", frame: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
     else if (a === "--links") opts.links = true
     else if (a === "--color") opts.color = true
     else if (a === "--no-color") opts.color = false
-    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
+    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
   return opts
@@ -168,7 +180,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, write: (text) => process.stdout.write(text) }
     let message = null
-    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links }
+    const frame = opts.frame === null ? null : Number(opts.frame)
+    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links, frame: Number.isInteger(frame) ? frame : null }
     const draw = (scroll) =>
       compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
     let drawn = draw()
@@ -204,8 +217,21 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   })
   let scroll = { selected: "waiting", anchors: {} }
   let drawn = null
-  let last = ""
+  // The screen as last written, by line; [] for "write it all".
+  let shownLines = []
   let lastToken
+  // The working bar: its frame, and the timer that moves it, running only while one is on screen.
+  // A tick draws nothing else: it rewrites the bars in place (a few bytes), and marks their
+  // lines for the next paint, which draws the board at the current frame.
+  const animate = animates(env)
+  let frame = 0
+  const ticker = animationTimer(() => {
+    frame = (frame + 1) % WORKING_FRAMES.length
+    const patch = barTick(drawn, frame, color)
+    if (!patch) return
+    out.write(`\x1b[?2026h${patch}\x1b[?2026l`)
+    for (const { y } of drawn.bars) shownLines[y - 1] = null
+  })
   const ctx = { answers, env, wait: false, mouse: true, drawn: null, write: (text) => out.write(text) }
   // A footer message (copied, mouse mode, …) shows for a few seconds.
   let message = null
@@ -230,24 +256,24 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       height: out.rows || 24,
       color,
       links: true,
+      frame: animate ? frame : null,
       scroll,
       notes: answers.notes,
       footer: { mouse: ctx.mouse ? "board" : "select", message },
     })
     drawn = result.drawn
     scroll = drawn.scroll
-    if (drawn.text !== last) {
-      const body = drawn.text
-        .split("\n")
-        .map((l) => (textWidth(l.replace(ANSI, "")) < cols ? `${l}\x1b[K` : l))
-        .join("\r\n")
-      out.write(`\x1b[?2026h\x1b[H${body}\x1b[J\x1b[?2026l`)
-      last = drawn.text
-    }
+    // Only the lines that changed: a tick of the working bar rewrites just its lines.
+    const lines = drawn.text.split("\n")
+    const diff = screenDiff(shownLines, lines, cols, (l) => textWidth(l.replace(ANSI, "")))
+    if (diff) out.write(`\x1b[?2026h${diff}\x1b[?2026l`)
+    shownLines = lines
     if (result.token !== null && result.token !== lastToken) {
       reportToken(result.token, env, { wait: false })
       lastToken = result.token
     }
+    // Tick while a working bar is on screen; no timer otherwise.
+    ticker.sync(animate && drawn.animated > 0)
   }
   let loading = false
   const refresh = async () => {
@@ -284,7 +310,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 
   out.write(`\x1b[?1049h\x1b[?25l${MOUSE_ON}\x1b[2J`)
   out.on("resize", () => {
-    last = ""
+    shownLines = []
     paint()
   })
   if (process.stdin.isTTY) {
@@ -293,7 +319,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       for (const event of parseInput(chunk.toString("utf8"))) {
         if (event.type === "key" && event.name === "quit") quit(0)
         if (event.type === "key" && event.name === "redraw") {
-          last = ""
+          shownLines = []
           refresh()
           continue
         }

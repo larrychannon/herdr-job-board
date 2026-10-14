@@ -4,7 +4,8 @@
 //   and hyphens; no user:password@), an optional port, then a path, query or fragment without
 //   spaces, quotes, angle brackets, backticks or control characters. Trailing punctuation and
 //   unbalanced closing brackets are left out, as are invisible format characters (Unicode Cf).
-//   A URL followed by "…" was cut short (to fit a length or a line), so it is not a link at all.
+//   A URL followed by "…" was cut short (to fit a length or a line), so it is not a link at all,
+//   nor is one cut just after a host's "." or "-" or a port's ":".
 //   Nothing else is a link: no javascript:, data:, file: or ftp:.
 // - osc8: a terminal hyperlink whose visible text is the URL itself, never other text.
 // - osc52: a clipboard write, which the pane sends only when the user presses c.
@@ -31,7 +32,9 @@ export function findUrls(text) {
   const found = []
   if (typeof text !== "string") return found
   for (const m of text.matchAll(URL_RE)) {
-    if (text[m.index + m[0].length] === "\u2026") continue
+    // Cut short: "…" right after it, or after a host's "." or "-" or a port's ":" that the
+    // pattern stopped before (https://a.example.… is no more a link than https://a.exa…).
+    if (/^[.:-]*\u2026/.test(text.slice(m.index + m[0].length))) continue
     const url = trimUrl(m[0])
     // A scheme and host only, ending in a dot or a hyphen after trimming, is not a link.
     if (/^https?:\/\/[A-Za-z0-9]/i.test(url)) found.push({ url, index: m.index })

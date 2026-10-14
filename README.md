@@ -28,38 +28,45 @@ Job board · my-app                                                             
   → Try the invoice page on :3000, then say merge
 ↓ 2 more
 
-DOING (2)                     TO DO (4)                     DONE (1)
-6 Search filters: build        8 Export to CSV      1 min   12 Nightly backup check
-  working                        Let people download any       07:30
-  The filter panel from the      table as CSV. Three
-  approved mockup, with          customers asked for it.
-  saved filters per user.
-  25 min                       9 Dark mode          1 min
-                                 Follow the system theme.
-7 Docs site: fix broken          The colour tokens are
-  links               2 min      already in place.
-  working
-  Check every link on the     10 Pick next: onboarding or
-  new docs site and fix the      settings           1 min
-  ones that 404.                 From the roadmap: an
-                                 onboarding tour or a new
-                                 settings page. You pick.
-                              ↓ 1 more
+DOING (2)                                    TO DO (4)
+6 Search filters: build             25 min    8 Export to CSV                     1 min
+  working [=   ]                                Let people download any table as CSV.
+  The filter panel from the approved            Three customers asked for it.
+  mockup, with saved filters per user.
+                                              9 Dark mode                         1 min
+7 Docs site: fix broken links        2 min      Follow the system theme. The colour
+  idle                                          tokens are already in place.
+  Check every link on the new docs site
+  and fix the ones that 404.                 10 Pick next: onboarding or settings
+                                                From the roadmap: an onboarding tour or
+                                                a new settings page. You pick.    1 min
+
+                                             11 Upgrade the test runner           1 min
+                                                The current version reaches end of life
+                                                next month.
 
 
 
-Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ```
 
 - **WAITING ON YOU** runs across the top: what needs you. Each card shows its title, a
   description of up to 3 lines and, highlighted, what you should do (`→ …`). A card can carry
   **answer buttons** (below). An agent that is **blocked** on a question or an approval shows
   here by itself, even when nobody put it on the board.
-- **DOING | TO DO | DONE** share the bottom in three columns. Doing cards show the live state of
-  the job's agent from `herdr agent list` (working, done, idle, no agent) and their age. Done
-  lists today's finished cards, newest first, with the time they finished.
+- **DOING | TO DO** share the bottom in two columns. Doing cards show the live state of the
+  job's agent from `herdr agent list` (working, done, idle, no agent) and their age. A card
+  whose agent is **working** shows a small ASCII bar bouncing beside the word (`working [=   ]`);
+  idle, done, blocked and gone agents stand still, so the motion itself says what is running.
+- **DONE** is folded to one line at the bottom, `DONE · 3 today ▸`, so it takes no room. `d`
+  or a click on that line opens it as a third column (today's finished cards, newest first,
+  with the time they finished, under `DONE (3) ▾`); `d` or a click on its header folds it
+  again. Folded, `Tab` skips it. The choice holds until the pane closes; it always starts
+  folded.
 - Waiting gets about half the height. With nothing waiting it shrinks to one line ("Nothing
-  needs you") and the rest goes to the bottom. Under 70 columns the four sections stack.
+  needs you") and the rest goes to the bottom. Under 70 columns the sections stack, with Done's
+  line at the bottom.
 - **Every section scrolls on its own**, and the place you scrolled to holds while the board
   redraws and new cards arrive. "↑ 2 above" and "↓ 3 more" say what is out of view; a card is
   never hidden without saying so.
@@ -68,22 +75,28 @@ Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q qui
   (working), red (blocked), cyan (idle or done) or grey (no agent); the `→` line amber, the
   suggested button highlighted, and a Waiting card's age red after a day. `NO_COLOR` turns
   colour off.
+- **The working bar** ticks about 6 times a second, and only while one is on screen: with no
+  working card in view (none working, scrolled away, or under the details) there is no timer at
+  all. Each tick rewrites only that card's line, and the layout, the selection and the scroll
+  position never move with it. `JOB_BOARD_ANIMATION=0` (or a `TERM=dumb` terminal) keeps it
+  still; with `NO_COLOR` it moves uncoloured.
 
 ### Keys and mouse
 
 | | |
 |---|---|
-| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸) |
+| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text (Alt+c does nothing) |
+| `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on Done's line or header opens or folds it |
 | `q`, `r` | quit; redraw |
 
 The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
@@ -158,11 +171,13 @@ is read again only when the file changes.
 - **Links.** `http://` and `https://` URLs in cards and reports are terminal hyperlinks (OSC 8)
   whose visible text is the URL itself, never other words. In Herdr, Ctrl-click opens them
   (Herdr's own `ui.mouse_capture` setting decides whether Herdr or your terminal handles it). A URL that the
-  pane had to cut short is plain text. Only `http` and `https` count: not `javascript:`,
+  pane had to cut short is plain text, even when the cut fell just after a dot, a hyphen or a
+  port's colon (`https://a.example.…`). Only `http` and `https` count: not `javascript:`,
   `data:` or `file:`, never a `user:password@` part, and never an invisible character.
 - **Copy.** `c` puts the selected card's first link on the clipboard, or the card's text when
-  it has no link (OSC 52, at most 8000 characters), and the key line says what was copied. It
-  happens only when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
+  it has no link (OSC 52, at most 8000 characters), with the buttons it shows (a blocked job's
+  card shows none, so none are copied), and the key line says what was copied. It happens only
+  when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
   your terminal must allow them (most do; some ask first or need a setting such as
   "allow clipboard access").
 - **Select text yourself.** `m` turns the board's mouse capture off: Herdr's own drag-select

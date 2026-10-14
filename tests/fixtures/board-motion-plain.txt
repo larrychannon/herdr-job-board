@@ -1,0 +1,164 @@
+===== Done folded · frame 0 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
+  → Reply with a name                                          Invoices round per line. Preview:
+                                                               http://localhost:3000/invoices
+                                                               → Try http://localhost:3000/invoices, then say merge
+                                                               [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+DOING (4)                                                    TO DO (1)
+3 Search filters: build                             25 min   5 Export to CSV                                     23 min
+  working, report done [=   ]                                  Let people download any table as CSV.
+  The filter panel from the approved mockup.
+
+4 Docs: fix links                                   24 min
+  idle
+
+7 API client: regenerate                            20 min
+  working [=   ]
+  From the new OpenAPI file.
+
+8 Release notes: draft                              18 min
+  no agent
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+===== Done open (d) · frame 3 · 120 columns =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
+  → Reply with a name                                          Invoices round per line. Preview:
+                                                               http://localhost:3000/invoices
+                                                               → Try http://localhost:3000/invoices, then say merge
+                                                               [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+DOING (4)                                TO DO (1)                                DONE (1) ▾
+3 Search filters: build         25 min   5 Export to CSV                 23 min   6 Nightly backup check           09:30
+  working, report done [   =]              Let people download any table as
+  The filter panel from the approved       CSV.
+  mockup.
+
+4 Docs: fix links               24 min
+  idle
+
+7 API client: regenerate        20 min
+  working [   =]
+  From the new OpenAPI file.
+
+8 Release notes: draft          18 min
+  no agent
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+===== Done folded · frame 0 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Old question: pick a name                                                       2 days
+  → Reply with a name
+
+2 Billing fix (PR #12): review                                                    30 min
+  Invoices round per line. Preview: http://localhost:3000/invoices
+  → Try http://localhost:3000/invoices, then say merge
+  [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+DOING (4)                                    TO DO (1)
+3 Search filters: build             25 min   5 Export to CSV                     23 min
+  working, report done [=   ]                  Let people download any table as CSV.
+  The filter panel from the approved
+  mockup.
+
+4 Docs: fix links                   24 min
+  idle
+
+7 API client: regenerate            20 min
+  working [=   ]
+  From the new OpenAPI file.
+
+8 Release notes: draft              18 min
+  no agent
+
+
+
+
+
+
+
+
+
+
+
+
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+===== Done open (d) · frame 3 · 88 columns =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (2)
+1▸Old question: pick a name                                                       2 days
+  → Reply with a name
+
+2 Billing fix (PR #12): review                                                    30 min
+  Invoices round per line. Preview: http://localhost:3000/invoices
+  → Try http://localhost:3000/invoices, then say merge
+  [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+DOING (4)                     TO DO (1)                     DONE (1) ▾
+3 Search filters: build       5 Export to CSV      23 min   6 Nightly backup check
+  working, report done          Let people download any       09:30
+  The filter panel from the     table as CSV.
+  approved mockup.   25 min
+
+4 Docs: fix links    24 min
+  idle
+
+7 API client: regenerate
+  working [   =]
+  From the new OpenAPI
+  file.              20 min
+
+8 Release notes: draft
+  no agent           18 min
+
+
+
+
+
+
+
+
+
+
+
+
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit

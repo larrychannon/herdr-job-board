@@ -159,7 +159,7 @@ function seedDemo(dir) {
 
 const agent = (name, status, workspace = "w9") => ({ name, agent_status: status, workspace_id: workspace, pane_id: `${workspace}:p${name.length}` })
 
-test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (snapshots)", () => {
+test("board-pane: Waiting on top, Doing | To do below, Done folded to one line; stacked at 60 (snapshots)", () => {
   const { base, done } = temp()
   try {
     const dir = repo(base, "my-app")
@@ -171,7 +171,7 @@ test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (sna
       const lines = r.stdout.replace(/\n$/, "").split("\n")
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
       assert.equal(lines.length, height, `exactly ${height} lines`)
-      assert.equal(lines.at(-1), width >= 80 ? "Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit" : "Tab · ↑↓ · Enter · c copy · mouse: board · q", "the key hint is the last line")
+      assert.equal(lines.at(-1), width >= 82 ? "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit" : "Tab · ↑↓ · Enter · c copy · d done · mouse: board · q", "the key hint is the last line")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
@@ -180,8 +180,14 @@ test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (sna
       const snap = join(FIXTURES, `board-${width}x${height}.txt`)
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, text)
       assert.equal(text, readFileSync(snap, "utf8"), `snapshot ${snap} (UPDATE_SNAPSHOTS=1 to rewrite)`)
-      assert.match(text, /DONE \(1\)[\s\S]*12 Nightly backup check/, "Done: today's cards")
-      assert.match(text, /\b07:30\b/, "with the time they finished")
+      // Done is folded: one line at the bottom of the lower area, just above the key hint.
+      assert.equal(text.split("\n").at(-3), "DONE · 1 today ▸")
+      assert.doesNotMatch(text, /Nightly backup check|DONE \(/)
+      // d opens it: today's cards, with the time they finished.
+      const open = frame(width, height, dir, "d")
+      assert.match(open, /DONE \(1\) ▾[\s\S]*12 Nightly backup check/, "Done: today's cards")
+      assert.match(open, /\b07:30\b/, "with the time they finished")
+      assert.doesNotMatch(open, /DONE · /)
     }
     assert.match(frame(120, 40), /\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/, "answer buttons")
     // Waiting doesn't fit at 88 x 40: it scrolls, says how many cards are below, and leaves the
@@ -204,7 +210,8 @@ test("board-pane: Waiting on top, Doing | To do | Done below; stacked at 60 (sna
     const quiet = frame(88, 20, calm).split("\n")
     assert.equal(quiet[2], "▸ WAITING ON YOU (0)  Nothing needs you")
     assert.equal(quiet[3], "")
-    assert.match(quiet[4], /^DOING \(0\) +TO DO \(1\) +DONE \(0\)$/)
+    assert.match(quiet[4], /^DOING \(0\) +TO DO \(1\)$/)
+    assert.equal(quiet.at(-3), "DONE · 0 today ▸", "at the bottom, above the key hint")
   } finally {
     done()
   }

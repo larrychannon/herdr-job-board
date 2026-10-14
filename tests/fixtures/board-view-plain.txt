@@ -9,13 +9,13 @@ Job board · my-app                                                             
   → Try http://localhost:3000/invoices, then say merge
   [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
-DOING (2)                     TO DO (1)                     DONE (1)
-3 Search filters: build       5 Export to CSV      23 min   6 Nightly backup check
-  working, report done          Let people download any       09:30
-  The filter panel from the     table as CSV.
-  approved mockup.   25 min
+DOING (2)                                    TO DO (1)
+3 Search filters: build             25 min   5 Export to CSV                     23 min
+  working, report done                         Let people download any table as CSV.
+  The filter panel from the approved
+  mockup.
 
-4 Docs: fix links    24 min
+4 Docs: fix links                   24 min
   no agent
 
 
@@ -36,5 +36,5 @@ DOING (2)                     TO DO (1)                     DONE (1)
 
 
 
-
-Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q quit
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
