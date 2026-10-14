@@ -8,7 +8,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { asText, buildView, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts } from "../board.mjs"
+import { asText, buildView, detailLines, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -117,6 +117,10 @@ test("findUrls: http(s) only, strictly; trailing punctuation, quotes and userinf
     ["'https://q.example/p'", ["https://q.example/p"]],
     ["HTTPS://A.EXAMPLE:8080/x?y=1&z=2#f, and", ["HTTPS://A.EXAMPLE:8080/x?y=1&z=2#f"]],
     ["http://localhost:3000/cost]", ["http://localhost:3000/cost"]],
+    // Cut short ("…" right after it): not a link at all, so no "…" in a target or a copy.
+    ["https://a.example/pull/1?q=aaa\u2026", []],
+    ["cut https://a.example/x\u2026 here, whole https://b.example/y", ["https://b.example/y"]],
+    ["https://a.example\u2026", []],
     ["<https://a.example/x>", ["https://a.example/x"]],
     ["two: https://a.example and http://b.example/y!", ["https://a.example", "http://b.example/y"]],
     ["https://good.example@evil.example/x", ["https://good.example"]],
@@ -195,7 +199,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     assert.match(t.pane([], "\t\rG").stdout, /What the job reported\n {2}Nothing yet: the job hasn't written its report\./)
     for (const garbled of ["{ not json", "[1, 2]"]) {
       writeFileSync(report, garbled)
-      assert.match(t.pane([], "\t\rG").stdout, /The report can't be read: it isn't a JSON object\./)
+      assert.match(t.pane([], "\t\rG").stdout, /The report can't be read: it isn't a JSON object of at most 1 MB\./)
     }
     // A huge summary: the first ~300 characters in the panel, at most 4000 under More….
     writeFileSync(report, JSON.stringify({ status: "done", summary: "x ".repeat(5000) }))
@@ -298,21 +302,21 @@ test("details panel snapshots: Waiting from a job, Waiting without one, Doing an
   }
 })
 
-test("details panel: opaque from its top rule to the key line, closed by a rule; nothing of the columns inside it", () => {
+test("details panel: opaque from its top rule to the key line, closed by a rule; nothing of the columns inside it (120×40, 88×40, 60×30 stacked)", () => {
   const t = setup({ agents: detailAgents, tabs: detailTabs })
   try {
     seedDetails(t)
     const board = t.pane(["--width", "120", "--height", "40"]).stdout
     assert.match(board, /DONE-MARK shipped thing 6/, "without the panel, Done shows in the lower half")
-    for (const width of [120, 88]) {
+    for (const [width, height] of [[120, 40], [88, 40], [60, 30]]) {
       for (const [card, keys] of Object.entries(OPEN)) {
         for (const flags of [[], ["--color", "--links"]]) {
-          const screen = plainOf(t.pane(["--width", String(width), "--height", "40", ...flags], keys).stdout).split("\n")
+          const screen = plainOf(t.pane(["--width", String(width), "--height", String(height), ...flags], keys).stdout).split("\n")
           assert.equal(screen.at(-1), "", "ends in a newline")
           screen.pop()
-          assert.equal(screen.length, 40)
+          assert.equal(screen.length, height)
           const top = screen.findIndex((l) => /^── card \d/.test(l))
-          assert.equal(top, 20, `${card} at ${width}: the panel starts half way down`)
+          assert.equal(top, height / 2, `${card} at ${width}: the panel starts half way down`)
           const bottom = screen.length - 2
           assert.match(screen[bottom], /^── (end of card \d+|↓ \d+ more lines?) ─+$/, `${card} at ${width}: the closing rule, just above the key line`)
           assert.equal([...screen[bottom]].length, width, "the closing rule spans the pane")
@@ -405,6 +409,128 @@ test("details: More… shows the rest of the report (f, Enter on it, or a click)
     drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: 1, detail: { key: "#1", offset: 0 } })
     const esc = handleInput(drawn.scroll, { type: "key", name: "escape" }, drawn).scroll
     assert.deepEqual([esc.detail, esc.button], [undefined, -1])
+  } finally {
+    t.done()
+  }
+})
+
+test("a Waiting card whose job is blocked shows no buttons, so none can be chosen or sent: on the board, in the panel, end to end", () => {
+  const blocked = detailAgents.map((a) => (a.name === "checkout-mockup" ? { ...a, agent_status: "blocked" } : a))
+  const t = setup({ agents: blocked, tabs: detailTabs })
+  try {
+    seedDetails(t)
+    const state = JSON.parse(readFileSync(t.file, "utf8"))
+    const view = buildView(state, blocked, { now: new Date(NOW), workspace: "w9" })
+    assert.equal(view.waiting[0].live, "blocked")
+    const draw = (scroll) => renderBoard(view, { width: 120, height: 60, interactive: true, now: new Date(NOW), workspace: "w9", agents: blocked, tabs: {}, scroll })
+    for (const detail of [undefined, { key: "#1", offset: 0 }]) {
+      let drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1, detail })
+      assert.equal(drawn.sections.waiting.cards.find((c) => c.key === "#1").buttons, 0, "no button counts")
+      assert.ok(!drawn.buttons.some((b) => b.key === "#1"), "none on screen")
+      assert.doesNotMatch(drawn.text, /[[<] OK all suggestions/, "no button drawn")
+      const actions = []
+      for (const name of ["right", "enter", "left", "right", "enter", "other", "enter"]) {
+        const r = handleInput(drawn.scroll, { type: "key", name }, drawn)
+        if (r.action) actions.push(r.action)
+        drawn = draw(r.scroll)
+        assert.ok(!(drawn.scroll.card === "#1" && drawn.scroll.button >= 0), `${detail ? "panel" : "board"}: ${name} chose a hidden button`)
+      }
+      assert.deepEqual(actions.filter((a) => a.type === "send" || a.type === "other"), [], `${detail ? "panel" : "board"}: nothing sent`)
+    }
+    // In the panel: what to do instead, and no ←→ on the key line.
+    const panel = t.pane(["--width", "120", "--height", "60"], "\r").stdout
+    assert.match(panel, /What you need to do\n {2}→ Open the canvas, then OK all suggestions or comment\n\n/, "the ask, and no buttons under it")
+    assert.match(panel, /Job checkout-mockup is blocked: it needs you in its tab/)
+    assert.doesNotMatch(panel.trimEnd().split("\n").at(-1), /←→/)
+    // End to end through the pane and the fake Herdr: → Enter and o, on the board and in the panel.
+    for (const keys of ["\x1b[C\r", "\r\x1b[C\r", "\r\x1b[C\x1b[C\r", "\ro", "o"]) t.pane(["--width", "120", "--height", "60"], keys)
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || (a[1] === "focus" && a[2] === "w9:p1"))), [])
+  } finally {
+    t.done()
+  }
+})
+
+test("details open with no button chosen: a button chosen on the card, then a double click, gives More… on Enter, not a send", () => {
+  const t = setup({ agents: detailAgents, tabs: detailTabs })
+  try {
+    seedDetails(t)
+    const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
+    const draw = (scroll) => renderBoard(view, { width: 120, height: 60, interactive: true, now: new Date(NOW), scroll })
+    let drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1 })
+    let r = handleInput(drawn.scroll, { type: "key", name: "right" }, drawn)
+    drawn = draw(r.scroll)
+    assert.equal(drawn.scroll.button, 0, "→ chose the suggested button on the card")
+    const title = drawn.cardHits.find((c) => c.key === "#1")
+    for (const at of [1000, 1100]) {
+      r = handleInput(drawn.scroll, { type: "click", x: title.x0, y: title.y, at }, drawn)
+      drawn = draw(r.scroll)
+    }
+    assert.equal(drawn.scroll.detail?.key, "#1", "the double click opened the details")
+    assert.equal(drawn.scroll.button, -1, "with no button chosen")
+    assert.match(drawn.text, /── card 1[^\n]*\n(?:.*\n)*? {2}\[ OK all suggestions ✓ \]/)
+    r = handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn)
+    assert.equal(r.action, null, "Enter is not a send")
+    assert.equal(r.scroll.detail.more, true, "it opens More…")
+    // Opening with Enter after Esc un-chose the button: the same.
+    drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1 })
+    r = handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn)
+    assert.deepEqual([r.action, r.scroll.button, r.scroll.detail.key], [null, -1, "#1"])
+  } finally {
+    t.done()
+  }
+})
+
+test("a press in the panel: argv only, to the origin pane, once; again asks first; o focuses the origin pane", () => {
+  const t = setup({ agents: detailAgents, tabs: detailTabs })
+  try {
+    seedDetails(t)
+    const prompts = () => t.log().filter((a) => a[0] === "agent" && a[1] === "prompt")
+    const first = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r")
+    assert.equal(first.status, 0, first.stderr)
+    assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (Checkout redesign mockup: approve): OK all suggestions"]])
+    assert.equal(JSON.parse(readFileSync(t.file, "utf8")).items[0].sent.label, "OK all suggestions")
+    const again = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r").stdout
+    assert.match(again.split(/── card 1/)[1], /send again\? "OK all suggestions" was sent already/, "the note shows in the panel")
+    assert.equal(prompts().length, 1, "no second send without a second press")
+    t.pane(["--width", "120", "--height", "60"], "\ro")
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "w9:p1"])
+  } finally {
+    t.done()
+  }
+})
+
+test("details: a report over 1 MB is not read; OSC 52 in a report does nothing; a URL cut short is no link; More… is built once", () => {
+  const t = setup({ agents: detailAgents, tabs: detailTabs })
+  try {
+    seedDetails(t)
+    const big = join(t.base, "big-report.json")
+    writeFileSync(big, JSON.stringify({ status: "done", summary: `BIGMARK ${"y".repeat(1.5 * 1024 * 1024)}` }))
+    t.board(NOW, "edit", "2", "--report", big)
+    const unread = t.pane(["--width", "120", "--height", "60"], "\x1b[B\r").stdout
+    assert.match(unread, /The report can't be read: it isn't a JSON object of at most 1 MB\./)
+    assert.doesNotMatch(unread, /BIGMARK|big-report/)
+    // OSC 52 (a clipboard write) and a URL cut at the 4000-character cap.
+    const osc52 = `${ESC}]52;c;${Buffer.from("rm -rf ~").toString("base64")}\x07`
+    const cut = join(t.base, "cut-report.json")
+    writeFileSync(cut, JSON.stringify({ status: "done", summary: `Done ${osc52} here. ${"x ".repeat(1990)}https://a.example/${"p".repeat(200)}`, needs_user: [`Copy ${osc52}`] }))
+    t.board(NOW, "edit", "2", "--report", cut)
+    for (const keys of ["\x1b[B\r", "\x1b[B\rf", "\x1b[B\rfG"]) {
+      const text = t.pane(["--width", "120", "--height", "200", "--color", "--links"], keys).stdout
+      assert.doesNotMatch(text, /\x1b\]52/, "no clipboard write without c")
+      assert.doesNotMatch(text, /\x1b\]8;;[^\x1b]*…/, "no link target ends in a cut")
+    }
+    const copied = decode52(t.pane(["--width", "120", "--height", "60"], "\x1b[B\rc").stdout)
+    assert.equal(copied.length, 1)
+    assert.doesNotMatch(copied[0], /rm -rf|…|a\.example/, "the copy is the card's text: the cut URL is no link")
+    // More… is built once per report and width: a repaint reuses its lines.
+    const state = JSON.parse(readFileSync(t.file, "utf8"))
+    const view = buildView(state, null, { now: new Date(NOW) })
+    const entry = { ...view.waiting.find((e) => e.id === 1), column: "waiting" }
+    const block = (r) => r.lines.find((l) => l.some((seg) => seg.t === "What was checked"))
+    const one = detailLines(entry, 120, { now: new Date(NOW), more: true })
+    assert.ok(block(one))
+    assert.equal(block(detailLines(entry, 120, { now: new Date(NOW), more: true })), block(one), "the same lines, not built again")
+    assert.notEqual(block(detailLines(entry, 100, { now: new Date(NOW), more: true })), block(one), "another width builds them again")
   } finally {
     t.done()
   }

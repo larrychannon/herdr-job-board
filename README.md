@@ -75,10 +75,10 @@ Tab section · ↑↓ card · Enter details · c copy · m mouse: board · q qui
 |---|---|
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸) |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
-| `Enter` | open the selected card's details; `Esc` closes them |
-| `f` in the details | show or hide More… (the rest of the job's report) |
-| `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it |
+| `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
+| `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen |
 | `o` | Other… on a card with buttons |
+| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text (Alt+c does nothing) |
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |

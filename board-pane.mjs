@@ -20,16 +20,20 @@
 //   PgUp PgDn               scroll a page           g G        first / last card
 //   mouse wheel             scroll the section under the pointer
 //   click, double click     select a card, open its details
-//   Enter                   open the selected card's details; Esc closes them
-//   f                       in the details: show or hide More… (the rest of the job's report)
+//   Enter                   open the selected card's details (no button chosen); Esc closes them
+//   in the details          ↑ ↓ PgUp PgDn g G scroll; ← → choose one of the card's buttons and
+//                           Enter presses it; with no button chosen, Enter or f shows or hides
+//                           More… (the rest of the job's report), and Enter closes the details
+//                           when there is no More…; o is Other…; Esc closes them
 //   c                       copy the card's first link, or its text (OSC 52)
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)
 //   q quit, r redraw
 // Waiting cards can carry answer buttons (board.mjs add … --option): ← → choose one (the
-// suggested first), Enter (or a click on it) sends "Board card <id> (<title>): <label>" to the
-// --origin pane with `herdr agent prompt`; o (or Other…) focuses that pane for the user to
-// type. Presses run one at a time; a card answered already asks before sending again.
+// suggested first; only buttons on screen, so none on a card whose job is blocked), Enter (or a
+// click on it) sends "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent
+// prompt`; o (or Other…) focuses that pane for the user to type. Presses run one at a time; a
+// card answered already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // when the text changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
 // signal and on a crash.

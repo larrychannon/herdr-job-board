@@ -295,6 +295,14 @@ export function optionsOf(item) {
     .slice(0, MAX_OPTIONS)
 }
 
+/**
+ * The buttons a card shows, and so the only ones that can be chosen or pressed: a Waiting card's
+ * own, unless it has no id or its job is blocked (that card says "answer it in its tab" instead).
+ */
+export function shownOptions(entry, column = entry?.column) {
+  return column === "waiting" && entry?.id != null && entry.live !== "blocked" ? optionsOf(entry) : []
+}
+
 function setOptions(item, opts) {
   if (opts["clear-options"]) {
     delete item.options
@@ -789,7 +797,7 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     }
     if (asks.length > 2) lines.push([indent, { t: `  +${asks.length - 2} more (board.mjs json)`, s: "dim" }])
   }
-  if (column === "waiting" && !blocked && entry.id != null && optionsOf(entry).length) {
+  if (shownOptions(entry, column).length) {
     if (entry.sent?.label) {
       const at = new Date(entry.sent.at)
       lines.push([indent, { t: `sent: ${entry.sent.label}${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`}`, s: "dim" }])
@@ -1134,6 +1142,75 @@ function jobLines(entry, agents, tabs, workspace, facts, width) {
   return [head, [{ t: "  " }, { t: tab, s: "dim" }]]
 }
 
+/** Writers for the details panel's lines: they append to `out`, wrapped to `inner` cells, with whole URLs in `urls` as links. */
+function writer(out, inner, urls) {
+  const ind = { t: "  " }
+  const blank = () => out.length && out.at(-1).length && out.push([])
+  return {
+    blank,
+    heading(t) {
+      blank()
+      out.push([ind, { t, s: "head" }])
+    },
+    para(text, s = "") {
+      for (const t of wrap(text, inner, Infinity)) out.push([ind, ...linkify(t, s, urls)])
+    },
+    // Each item from a "• ", over at most `max` lines (the last ends in "…" when cut).
+    bullets(list, max = Infinity) {
+      for (const text of list) wrap(text, inner - 2, max).forEach((t, i) => out.push([ind, { t: i ? "  " : "• ", s: "dim" }, ...linkify(t, "", urls)]))
+    },
+  }
+}
+
+// More… can run to a thousand lines on a maximal report, and the pane paints on every key and
+// every few seconds: its lines are built once per report (its facts, cached while the file is
+// unchanged), width and needs setting, then reused.
+const moreBlocks = new WeakMap()
+
+/** The rest of a report, under More…: the full summary, needs with suggested answers, findings, checks, skips, next, branch. */
+function moreBlock(facts, width, needsInFull) {
+  const key = `${width} ${needsInFull}`
+  const known = moreBlocks.get(facts)
+  if (known?.key === key) return known.lines
+  const inner = Math.max(10, width - 2)
+  const ind = { t: "  " }
+  const urls = urlsIn(facts.summary, facts.next, ...facts.needs.flatMap((n) => [n.text, n.suggested]), ...facts.findings, ...facts.verified, ...facts.skipped)
+  // It follows the More… line: it starts with a blank line.
+  const out = [[]]
+  const { blank, heading, para, bullets } = writer(out, inner, urls)
+  if (facts.brief.cut) {
+    heading("Full summary")
+    para(facts.summary)
+  }
+  if (needsInFull) {
+    heading("Needs you, in full")
+    for (const n of facts.needs) {
+      bullets([n.text])
+      if (n.suggested) for (const t of wrap(`suggested: ${n.suggested}`, inner - 2, Infinity)) out.push([ind, { t: "  " }, ...linkify(t, "dim", urls)])
+    }
+  }
+  for (const [title, list, count] of [
+    ["Findings", facts.findings, facts.counts.findings],
+    ["What was checked", facts.verified, facts.counts.verified],
+    ["What was skipped", facts.skipped, facts.counts.skipped],
+  ]) {
+    if (!list.length) continue
+    heading(title)
+    bullets(list)
+    if (count > list.length) out.push([ind, { t: `  +${count - list.length} more in the report`, s: "dim" }])
+  }
+  if (facts.next) {
+    heading("What's next")
+    para(facts.next)
+  }
+  if (facts.branch || facts.commit) {
+    blank()
+    out.push([ind, { t: [facts.branch && `Branch ${facts.branch}`, facts.commit && `commit ${facts.commit}`].filter(Boolean).join(" · "), s: "dim" }])
+  }
+  moreBlocks.set(facts, { key, lines: out })
+  return out
+}
+
 /**
  * The details panel, in words, top to bottom: the title and where the card is; "What it is"
  * (the description); "What you need to do" (the ask, and the buttons as on the card); "From the
@@ -1156,18 +1233,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
     ...(facts ? [facts.summary, facts.brief.text, facts.next, ...facts.needs.flatMap((n) => [n.text, n.suggested]), ...facts.findings, ...facts.verified, ...facts.skipped] : []),
   )
   const lines = []
-  const blank = () => lines.length && lines.at(-1).length && lines.push([])
-  const heading = (t) => {
-    blank()
-    lines.push([ind, { t, s: "head" }])
-  }
-  const para = (text, s = "") => {
-    for (const t of wrap(text, inner, Infinity)) lines.push([ind, ...linkify(t, s, urls)])
-  }
-  // Each item from a "• ", over at most `max` lines (the last ends in "…" when cut).
-  const bullets = (list, max = Infinity) => {
-    for (const text of list) wrap(text, inner - 2, max).forEach((t, i) => lines.push([ind, { t: i ? "  " : "• ", s: "dim" }, ...linkify(t, "", urls)]))
-  }
+  const { blank, heading, para, bullets } = writer(lines, inner, urls)
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
   lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
@@ -1178,7 +1244,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   }
 
   const blocked = entry.live === "blocked"
-  const options = entry.column === "waiting" && !blocked && entry.id != null ? optionsOf(entry) : []
+  const options = shownOptions(entry)
   if (asks.length || options.length || blocked) {
     heading("What you need to do")
     if (blocked && !asks.length) lines.push([ind, { t: "→ answer it in its tab (press t)", s: "ask" }])
@@ -1204,7 +1270,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   const needsInFull = facts && (needs.length > 5 || facts.needs.some((n) => n.suggested) || needs.some((n) => wrap(n.text, inner - 2, Infinity).length > 2))
   if (entry.report) {
     heading("What the job reported")
-    if (!facts) lines.push([ind, { t: report?.missing ? "Nothing yet: the job hasn't written its report." : "The report can't be read: it isn't a JSON object.", s: "dim" }])
+    if (!facts) lines.push([ind, { t: report?.missing ? "Nothing yet: the job hasn't written its report." : "The report can't be read: it isn't a JSON object of at most 1 MB.", s: "dim" }])
     else {
       if (facts.status === "blocked" || facts.status === "failed") lines.push([ind, { t: facts.status === "failed" ? "The job failed." : "The job is blocked.", s: "blocked" }])
       else if (facts.status !== "done") lines.push([ind, { t: "Not final yet: the job may still change it.", s: "dim" }])
@@ -1249,37 +1315,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
     // The keys first: a narrow pane cuts the end of the line.
     const keys = button < 0 ? "f or Enter" : "f"
     lines.push([ind, { t: more ? "▾ Less" : "▸ More…", s: button < 0 ? "selected" : "button", more: true }, { t: more ? ` (${keys})` : ` (${keys})  ${rest.join(", ")}`, s: "dim", more: true }])
-    if (more) {
-      if (facts.brief.cut) {
-        heading("Full summary")
-        para(facts.summary)
-      }
-      if (needsInFull) {
-        heading("Needs you, in full")
-        for (const n of facts.needs) {
-          bullets([n.text])
-          if (n.suggested) for (const t of wrap(`suggested: ${n.suggested}`, inner - 2, Infinity)) lines.push([ind, { t: "  " }, ...linkify(t, "dim", urls)])
-        }
-      }
-      for (const [title, list, count] of [
-        ["Findings", facts.findings, facts.counts.findings],
-        ["What was checked", facts.verified, facts.counts.verified],
-        ["What was skipped", facts.skipped, facts.counts.skipped],
-      ]) {
-        if (!list.length) continue
-        heading(title)
-        bullets(list)
-        if (count > list.length) lines.push([ind, { t: `  +${count - list.length} more in the report`, s: "dim" }])
-      }
-      if (facts.next) {
-        heading("What's next")
-        para(facts.next)
-      }
-      if (facts.branch || facts.commit) {
-        blank()
-        lines.push([ind, { t: [facts.branch && `Branch ${facts.branch}`, facts.commit && `commit ${facts.commit}`].filter(Boolean).join(" · "), s: "dim" }])
-      }
-    }
+    if (more) lines.push(...moreBlock(facts, width, needsInFull))
   }
 
   const added = shortTime(entry.created, now)
@@ -1380,7 +1416,8 @@ export function renderBoard(view, opts = {}) {
     const v = viewport(plain, h, at)
     let current = list.find((e) => keyOf(e) === scroll.card)
     if (!current) current = list.find((e) => keyOf(e) === plain[v.offset]?.keys[0]) || list[0]
-    const count = section === "waiting" && current.id != null && optionsOf(current).length ? optionsOf(current).length + 1 : 0
+    const shown = shownOptions(current, section)
+    const count = shown.length ? shown.length + 1 : 0
     if (scroll.card !== keyOf(current) || !(scroll.button >= 0 && scroll.button < count)) scroll.button = -1
     scroll.card = keyOf(current)
     return sectionBlocks(view, section, w, perRow, (e) => ({ ...noted(e), selected: keyOf(e) === scroll.card, button: keyOf(e) === scroll.card ? scroll.button : -1 }))
@@ -1413,9 +1450,10 @@ export function renderBoard(view, opts = {}) {
       cards: entriesOf(view, section).map((e) => ({
         key: keyOf(e),
         id: e.id,
-        buttons: section === "waiting" && e.id != null && optionsOf(e).length ? optionsOf(e).length + 1 : 0,
-        labels: optionsOf(e).map((o) => o.label),
-        suggested: Math.max(0, optionsOf(e).findIndex((o) => o.suggested)),
+        // Only buttons on screen count: a card whose buttons are hidden has none to choose or press.
+        buttons: shownOptions(e, section).length ? shownOptions(e, section).length + 1 : 0,
+        labels: shownOptions(e, section).map((o) => o.label),
+        suggested: Math.max(0, shownOptions(e, section).findIndex((o) => o.suggested)),
         block: Math.max(0, blockCards.findIndex((keys) => keys.includes(keyOf(e)))),
       })),
     }
@@ -1538,7 +1576,7 @@ export function renderBoard(view, opts = {}) {
     for (let i = 0; i < panel.length; i++) lines[top + i] = emit(panel[i], top + i + 1, 1, width).text.trimEnd()
     if (finite) lines.length = height - 1
     regions.detail = { top: top + 1, bottom: Math.min(top + panel.length, lines.length), left: 1, right: width }
-    detailInfo = { buttons: optionsOf(detailEntry).length > 0 && detailEntry.column === "waiting" && detailEntry.id != null && detailEntry.live !== "blocked", more: hasMore }
+    detailInfo = { buttons: shownOptions(detailEntry).length > 0, more: hasMore }
   }
   // Nothing of the board under the details panel can be clicked; the panel's own buttons can.
   const covered = (y) => regions.detail && y >= regions.detail.top
@@ -1768,7 +1806,11 @@ export function handleInput(scroll, event, drawn) {
       const double = next.lastClick && next.lastClick.key === onCard.key && (event.at ?? 0) - (next.lastClick.at ?? 0) <= DOUBLE_CLICK_MS
       if (next.card !== onCard.key) next.button = -1
       next.card = onCard.key
-      if (double) next.detail = { key: onCard.key, offset: 0 }
+      // Details always open with no button chosen: Enter there is never a send until ← → choose.
+      if (double) {
+        next.detail = { key: onCard.key, offset: 0 }
+        next.button = -1
+      }
     } else if (section) selectSection(section)
     next.lastClick = onCard && !hit ? { key: onCard.key, at: event.at ?? 0 } : null
   } else if (event.type === "wheel") {
@@ -1785,7 +1827,10 @@ export function handleInput(scroll, event, drawn) {
     next.button = b < 0 ? current.suggested || 0 : Math.max(0, Math.min(b + (name === "right" ? 1 : -1), current.buttons - 1))
   } else if (name === "enter") {
     if (current && current.buttons && (scroll.button ?? -1) >= 0) action = press(current, scroll.button)
-    else if (current) next.detail = { key: current.key, offset: 0 }
+    else if (current) {
+      next.detail = { key: current.key, offset: 0 }
+      next.button = -1
+    }
   } else if (name === "escape") {
     next.button = -1
   } else if (name === "other") {

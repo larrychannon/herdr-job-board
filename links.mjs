@@ -4,14 +4,15 @@
 //   and hyphens; no user:password@), an optional port, then a path, query or fragment without
 //   spaces, quotes, angle brackets, backticks or control characters. Trailing punctuation and
 //   unbalanced closing brackets are left out, as are invisible format characters (Unicode Cf).
+//   A URL followed by "…" was cut short (to fit a length or a line), so it is not a link at all.
 //   Nothing else is a link: no javascript:, data:, file: or ftp:.
 // - osc8: a terminal hyperlink whose visible text is the URL itself, never other text.
 // - osc52: a clipboard write, which the pane sends only when the user presses c.
 
 // The path excludes format characters (Unicode Cf, zero-width and the like): nothing invisible
-// in a link.
+// in a link. Nor "…", which marks a cut.
 const URL_RE =
-  /\bhttps?:\/\/[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*(?::\d{1,5})?(?:[/?#][^\s"'<>`\\\u0000-\u001f\u007f-\u009f\p{Cf}]*)?/giu
+  /\bhttps?:\/\/[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*(?::\d{1,5})?(?:[/?#][^\s"'<>`\\\u0000-\u001f\u007f-\u009f\u2026\p{Cf}]*)?/giu
 const CLOSERS = { ")": "(", "]": "[", "}": "{" }
 
 /** Trailing punctuation, and closing brackets that the URL itself didn't open. */
@@ -30,6 +31,7 @@ export function findUrls(text) {
   const found = []
   if (typeof text !== "string") return found
   for (const m of text.matchAll(URL_RE)) {
+    if (text[m.index + m[0].length] === "\u2026") continue
     const url = trimUrl(m[0])
     // A scheme and host only, ending in a dot or a hyphen after trimming, is not a link.
     if (/^https?:\/\/[A-Za-z0-9]/i.test(url)) found.push({ url, index: m.index })
