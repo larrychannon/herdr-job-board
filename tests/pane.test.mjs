@@ -492,6 +492,10 @@ test("viewport: every card is above, shown or below, at any height", () => {
       const text = v.lines.map((l) => l.map((s) => s.t).join("")).join("\n")
       if (v.above && height > 0) assert.match(text, new RegExp(`↑ ${v.above} above`), `${height}/${offset}`)
       if (v.below && height > 0) assert.match(text, new RegExp(`↓ ${v.below} more`), `${height}/${offset}`)
+      // A card shown cut says so on the last line; one shown whole never does.
+      const cutShown = v.shown === 1 && v.lines.length && !text.includes(`card ${v.offset + 1} line ${sizes[v.offset]}`)
+      assert.equal(v.cut, cutShown, `${height}/${offset}: cut`)
+      if (v.cut) assert.match(v.lines.at(-1)[0].t, /card cut off: open it for the rest$/, `${height}/${offset}`)
       // A card counted as shown has at least one line on screen.
       for (let k = v.offset; k < v.offset + v.shown; k++) assert.ok(text.includes(`card ${k + 1} line 1`), `${height}/${offset}: card ${k + 1}`)
     }

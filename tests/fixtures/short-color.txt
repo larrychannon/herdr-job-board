@@ -1,0 +1,138 @@
+===== as drawn · 120x20 =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs
+  move, #15 search filters, #17 export to CSV (+ optional
+  #16 dark mode). Plan: merge in order (each catches up w…
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+[2m↓ card cut off: open it for the rest[0m
+
+[1;34mDOING (2)[0m                                                    [1mTO DO (3)[0m
+[2m2 [0m[1mSearch filters: build[0m                             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                                      [2m1 min[0m
+  The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
+  user.                                                        it.
+
+[2m3 [0m[1mDocs site: fix links[0m                              [2m10 min[0m   [2m5 [0m[1mDark mode[0m                                          [2m1 min[0m
+  Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
+                                                             [2m↓ 1 more[0m
+[2;32mDONE · 0 today ▸[0m
+[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+===== details, → chooses and scrolls to it · 120x20 =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs
+  move, #15 search filters, #17 export to CSV (+ optional
+  #16 dark mode). Plan: merge in order (each catches up w…
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+[2m↓ card cut off: open it for the rest[0m
+
+[2m──[0m[1m card 1 · ↑ 6 lines above [0m[2m────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+  [1mWhat you need to do[0m
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
+    keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+
+  [2mAdded 03:14[0m
+[2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
+===== as drawn · 88x20 =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with
+  main), tag v1.4, deploy, then run the backfill.
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+[2m↓ card cut off: open it for the rest[0m
+
+[1;34mDOING (2)[0m                                    [1mTO DO (3)[0m
+[2m2 [0m[1mSearch filters: build[0m             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                      [2m1 min[0m
+  The filter panel from the approved           Let people download any table as CSV;
+  mockup, saved per user.                      three asked for it.
+                                             [2m↓ 2 more[0m
+[2m3 [0m[1mDocs site: fix links[0m              [2m10 min[0m
+  Check every link on the new docs site
+  and fix the 404s.
+[2;32mDONE · 0 today ▸[0m
+[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+===== details, → chooses and scrolls to it · 88x20 =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with
+  main), tag v1.4, deploy, then run the backfill.
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+[2m↓ card cut off: open it for the rest[0m
+
+[2m──[0m[1m card 1 · ↑ 7 lines above [0m[2m────────────────────────────────────────────────────────────[0m
+
+  [1mWhat you need to do[0m
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+
+  [2mAdded 03:14[0m
+[2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────[0m
+[1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
+===== as drawn · 60x26 =====
+[1mJob board · my-app[0m                                     [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m            [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move,
+  #15 search filters, #17 export to CSV (+ optional #16 dark
+  mode). Plan: merge in order (each catches up with main), …
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+[2m↓ card cut off: open it for the rest[0m
+
+[1;34mDOING (2)[0m
+[2m2 [0m[1mSearch filters: build[0m                               [2m25 min[0m
+  The filter panel from the approved mockup, saved per user.
+
+[2m3 [0m[1mDocs site: fix links[0m                                [2m10 min[0m
+  Check every link on the new docs site and fix the 404s.
+
+[1mTO DO (3)[0m
+[2m4 [0m[1mExport to CSV[0m                                        [2m1 min[0m
+  Let people download any table as CSV; three asked for it.
+
+[2m5 [0m[1mDark mode[0m                                            [2m1 min[0m
+  Follow the system theme; the colour tokens are in place.
+[2m↓ 1 more[0m
+[2;32mDONE · 0 today ▸[0m
+[2mTab · ↑↓ · Enter · c copy · d done · mouse: board · q[0m
+===== details, → chooses and scrolls to it · 60x26 =====
+[1mJob board · my-app[0m                                     [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m            [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move,
+  #15 search filters, #17 export to CSV (+ optional #16 dark
+  mode). Plan: merge in order (each catches up with main), …
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+[2m↓ card cut off: open it for the rest[0m
+
+[1;34mDOING (2)[0m
+[2m2 [0m[1mSearch filters: build[0m                               [2m25 min[0m
+  The filter panel from the approved mockup, saved per user.
+[2m──[0m[1m card 1 · ↑ 7 lines above [0m[2m────────────────────────────────[0m
+  tag v1.4, deploy, then run the backfill.
+
+  [1mWhat you need to do[0m
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Include
+    #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m
+  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+
+  [2mAdded 03:14[0m
+[2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────[0m
+[1mEnter: send[0m[2m · [0m[2mEsc · ↑↓ · ←→ · c copy · t tab · q[0m

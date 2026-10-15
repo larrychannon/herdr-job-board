@@ -928,8 +928,10 @@ const cardsIn = (blocks, from, to) => blocks.slice(from, to).reduce((n, b) => n 
  * The blocks that show in `height` lines starting at block `offset`, with "↑ N above" and
  * "↓ N more" lines at the edges, so no card is ever hidden without being counted. The offset is
  * clamped: the last page is full, not one card and empty space. When no card fits whole, the
- * first one is shown cut; when not even that fits, it is counted in "↓ N more". Every card is
- * either above, shown or below: above + shown cards + below is always the total.
+ * first one is shown cut, with a line under it that says so (`cut`), so nothing of a card (its
+ * buttons, say) is hidden without a word; when not even one line of it fits, it is counted in
+ * "↓ N more". Every card is either above, shown or below: above + shown cards + below is always
+ * the total.
  */
 export function viewport(blocks, height, offset = 0) {
   const n = blocks.length
@@ -939,16 +941,21 @@ export function viewport(blocks, height, offset = 0) {
   const o = Math.max(0, Math.min(offset, maxOffset))
   const top = o > 0 ? 1 : 0
   let shown = n - o
+  let cut = false
   if (heightOf(blocks, o, n) > height - top) {
-    // Whole cards, keeping a line for "↓ N more"; else the first one cut, if a line is left for it.
+    // Whole cards, keeping a line for "↓ N more"; else the first one cut, keeping a line that
+    // says so, if a line is left for some of it.
     shown = 0
     while (o + shown < n && heightOf(blocks, o, o + shown + 1) <= height - top - 1) shown++
-    if (shown === 0 && o < n && height - top - (o + 1 < n ? 1 : 0) > 0) shown = 1
+    if (shown === 0 && o < n && height - top - 1 > 0) {
+      shown = 1
+      cut = true
+    }
   }
-  const bottom = o + shown < n ? 1 : 0
+  const bottom = o + shown < n || cut ? 1 : 0
   const above = cardsIn(blocks, 0, o)
   const below = cardsIn(blocks, o + shown, n)
-  const result = { offset: o, maxOffset, page: Math.max(1, shown), shown: cardsIn(blocks, o, o + shown), above, below }
+  const result = { offset: o, maxOffset, page: Math.max(1, shown), shown: cardsIn(blocks, o, o + shown), above, below, cut }
   if (height <= 0) return { ...result, lines: [], shown: 0, below: cardsIn(blocks, o, n) }
   // Too short for both markers: one line that says both.
   if (top + bottom > height) {
@@ -958,7 +965,7 @@ export function viewport(blocks, height, offset = 0) {
   const lines = []
   if (top) lines.push([{ t: `↑ ${above} above`, s: "dim" }])
   lines.push(...linesOf(blocks, o, o + shown).slice(0, height - top - bottom))
-  if (bottom) lines.push([{ t: `↓ ${below} more`, s: "dim" }])
+  if (bottom) lines.push([{ t: `↓ ${[below ? `${below} more` : "", cut ? "card cut off: open it for the rest" : ""].filter(Boolean).join(" · ")}`, s: "dim" }])
   return { ...result, lines }
 }
 
@@ -1273,7 +1280,9 @@ function moreBlock(facts, width, needsInFull) {
  * needs from you, its links, how much was checked); "More…" for the rest of the report; and when
  * the card was added and last changed. Never the report's path or field names.
  * `more` shows the rest; `button` is the chosen button (-1: none, and Enter is "More…");
- * `note` is the card's note from the answerer. Returns { lines, hasMore }.
+ * `note` is the card's note from the answerer. Returns { lines, hasMore, questionAt, buttonRows }:
+ * the line the question starts on, and the line each button is on (by index), so the panel can
+ * scroll them into view.
  */
 export function detailLines(entry, width, { agents = null, tabs = {}, workspace = "", now = new Date(), more = false, button = -1, note = null } = {}) {
   const inner = Math.max(10, width - 2)
@@ -1289,6 +1298,8 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   )
   const lines = []
   const { blank, heading, para, bullets } = writer(lines, inner, urls)
+  let questionAt = null
+  const buttonRows = {}
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
   lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
@@ -1305,10 +1316,14 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
     // As on the card: the question as text, its buttons straight under it, then what was sent.
     // Both marked as the panel's, so a click on them works over the board.
     const hit = { key: keyOf(entry), panel: true }
+    questionAt = lines.length
     if (blocked && !asks.length) lines.push(...askLines("answer it in its tab (press t)", askLabel(false), inner, Infinity, ind, urls, hit))
     for (const ask of asks) lines.push(...askLines(capText(ask, 2000), askLabel(options.length > 0), inner, Infinity, ind, urls, hit))
     if (options.length) {
-      for (const l of buttonLines(entry, width, ind, button)) lines.push(l.map((seg) => (seg.button ? { ...seg, button: { ...seg.button, panel: true } } : seg)))
+      for (const l of buttonLines(entry, width, ind, button)) {
+        for (const seg of l) if (seg.button) buttonRows[seg.button.index] = lines.length
+        lines.push(l.map((seg) => (seg.button ? { ...seg, button: { ...seg.button, panel: true } } : seg)))
+      }
       const at = shortTime(entry.sent?.at, now)
       if (entry.sent?.label) lines.push([ind, { t: `sent: ${capText(entry.sent.label, 60)}${at ? ` · ${at}` : ""}`, s: "dim" }])
     }
@@ -1382,7 +1397,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
     blank()
     lines.push([ind, { t: times, s: "dim" }])
   }
-  return { lines, hasMore }
+  return { lines, hasMore, questionAt, buttonRows }
 }
 
 /**
@@ -1645,8 +1660,10 @@ export function renderBoard(view, opts = {}) {
     const chosen = scroll.card === key ? (scroll.button ?? -1) : -1
     let body
     let hasMore = false
+    let questionAt = null
+    let buttonRows = {}
     try {
-      ;({ lines: body, hasMore } = detailLines(detailEntry, width, {
+      ;({ lines: body, hasMore, questionAt, buttonRows } = detailLines(detailEntry, width, {
         agents: opts.agents,
         tabs: opts.tabs,
         workspace: opts.workspace,
@@ -1662,7 +1679,8 @@ export function renderBoard(view, opts = {}) {
     const room2 = finite ? Math.max(1, height - 1 - top - 2) : body.length
     const maxOffset = Math.max(0, body.length - room2)
     const offset = Math.max(0, Math.min(scroll.detail.offset || 0, maxOffset))
-    scroll.detail = { key, offset, maxOffset, page: Math.max(1, room2 - 1), more: hasMore && scroll.detail.more === true, hasMore }
+    // Where the question and the buttons are, for handleInput to scroll them into view.
+    scroll.detail = { key, offset, maxOffset, page: Math.max(1, room2 - 1), rows: room2, more: hasMore && scroll.detail.more === true, hasMore, questionAt, buttonRows }
     const name = detailEntry.id ?? detailEntry.job
     const rule = (label) => [{ t: "──", s: "dim" }, { t: label, s: "head" }, { t: "─".repeat(Math.max(0, width - 2 - textWidth(label))), s: "dim" }]
     const below = maxOffset - offset
@@ -1676,24 +1694,29 @@ export function renderBoard(view, opts = {}) {
   }
   // Nothing of the board under the details panel can be clicked; the panel's own buttons can.
   const covered = (y) => regions.detail && y >= regions.detail.top
+  const shownButtons = buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y)))
   // Working bars on screen: not cut off, not under the panel.
   const bars = animated.filter((a) => a.y <= lines.length && !covered(a.y))
   if (interactive) {
     if (finite) while (lines.length < height - 1) lines.push("")
     const mouse = opts.footer?.mouse || "board"
     const wide = width >= 80
-    // A button chosen (← →, or a click on the question): the key line starts with what Enter does.
+    // A button chosen (← →, or a click on the question) and on screen: the key line starts with
+    // what Enter does. One that isn't on screen (a card cut short, a panel scrolled away) is never
+    // pressed, so the line doesn't offer it.
     const key = detailEntry ? scroll.detail.key : scroll.selected === "waiting" ? scroll.card : null
     const count = key && scroll.card === key && entries[key] ? shownOptions(entries[key]).length : 0
     const chosen = count ? (scroll.button ?? -1) : -1
-    const send = chosen < 0 || chosen > count ? "" : chosen < count ? (wide ? "Enter to send" : "Enter: send") : wide ? "Enter to answer in the chat" : "Enter: chat"
+    const seen = chosen >= 0 && shownButtons.some((b) => b.key === key && b.index === chosen && !b.panel === !detailEntry)
+    const send = !seen || chosen > count ? "" : chosen < count ? (wide ? "Enter to send" : "Enter: send") : wide ? "Enter to answer in the chat" : "Enter: chat"
+    // The long key line when it fits after the Enter part, else the short one.
+    const fits = (keys) => textWidth(send ? `${send} · ${keys}` : keys) <= width
+    const keyLine = (long, short) => (fits(long) ? long : short)
     const keys = detailInfo
-      ? detailHint(wide, detailInfo.buttons, detailInfo.more)
+      ? keyLine(detailHint(wide, detailInfo.buttons, detailInfo.more), detailHint(false, detailInfo.buttons, detailInfo.more))
       : send
-        ? CHOSEN_HINT(wide)
-        : textWidth(HINT(mouse)) <= width
-          ? HINT(mouse)
-          : HINT_NARROW(mouse)
+        ? keyLine(CHOSEN_HINT(true), CHOSEN_HINT(false))
+        : keyLine(HINT(mouse), HINT_NARROW(mouse))
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "note" }, { t: " · ", s: "dim" }] : []), ...(send ? [{ t: send, s: "head" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
@@ -1701,7 +1724,7 @@ export function renderBoard(view, opts = {}) {
     text: lines.join("\n"),
     sections,
     regions,
-    buttons: buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y))),
+    buttons: shownButtons,
     askHits: askHits.filter((a) => a.y <= lines.length && (a.panel || !covered(a.y))),
     cardHits: cardHits.filter((c) => c.y <= lines.length && !covered(c.y)),
     moreHits: moreHits.filter((m) => m.y <= lines.length),
@@ -1844,13 +1867,18 @@ const DOUBLE_CLICK_MS = 400
  * - Enter opens the selected card's details (Esc closes them), or, once ← → chose one of its
  *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
  *   mouse capture. A click selects a card, a double click opens it, a click on a button
- *   presses it. A click on a card's question chooses its suggested button (or the first), as
- *   the first ← → does, so Enter sends it: it never sends by itself.
+ *   presses it. A click on a card's question chooses its suggested button (or the first), so
+ *   Enter sends it: it never sends by itself.
+ * - Only buttons on the screen the user sees (`drawn.buttons`) are chosen or pressed: on a card
+ *   cut short by a small pane, ← → and a click on the question choose none that is off screen,
+ *   and Enter opens the details instead of pressing one.
  * - In the details: ↑ ↓ PgUp PgDn g G and the wheel scroll them; ← → choose one of the card's
  *   buttons and Enter presses it, as on the card; with no button chosen, Enter (or f, or a
  *   click on the line) shows or hides "More…", and when there is no more, Enter closes them.
  *   A click on the panel's buttons presses them, on its question chooses the suggested button
  *   (never sends); a click elsewhere on the panel does nothing, and above it closes the panel.
+ *   A button the panel has scrolled away is scrolled into view as it is chosen, and Enter on
+ *   one still off screen scrolls to it instead of pressing it.
  * Events may carry `at` (ms), used for double clicks.
  */
 export function handleInput(scroll, event, drawn) {
@@ -1875,6 +1903,8 @@ export function handleInput(scroll, event, drawn) {
   // Tab goes round the sections on screen: Done only while it is open.
   const order = next.doneOpen ? SECTIONS : SECTIONS.filter((x) => x !== "done")
   const step = (dir) => order[(Math.max(0, order.indexOf(next.selected)) + dir + order.length) % order.length]
+  // A card's buttons on screen, by index: in the details panel (`panel`) or on the board.
+  const onScreen = (key, panel) => [...new Set((drawn.buttons || []).filter((b) => b.key === key && !b.panel === !panel).map((b) => b.index))].sort((a, b) => a - b)
   const press = (card, index) => {
     if (!card || card.id == null || !card.buttons) return null
     const label = index < card.labels.length ? card.labels[index] : null
@@ -1898,10 +1928,19 @@ export function handleInput(scroll, event, drawn) {
   const toggleMore = () => {
     if (detail.hasMore) next.detail = { ...detail, more: !detail.more }
   }
+  // Choose a button in the details, scrolling the panel to it when it is off screen: the
+  // question and every button when they fit, else the chosen button's line.
   const choose = (index) => {
     selectSection("waiting")
     next.card = detail.key
     next.button = index
+    const row = detail.buttonRows?.[index]
+    if (onScreen(detail.key, true).includes(index) || !Number.isInteger(row)) return
+    const rows = Math.max(1, detail.rows || 1)
+    const last = Math.max(...Object.values(detail.buttonRows))
+    let offset = Math.max(last - rows + 1, Number.isInteger(detail.questionAt) ? detail.questionAt : row)
+    if (row < offset) offset = row
+    next.detail = { ...(next.detail || detail), offset: Math.max(0, Math.min(offset, detail.maxOffset ?? 0)) }
   }
 
   // With the details open, keys work on them.
@@ -1911,7 +1950,9 @@ export function handleInput(scroll, event, drawn) {
       delete next.detail
       next.button = -1
     } else if (name === "enter") {
-      if (shownCard && chosen >= 0) action = press(shownCard, chosen)
+      // Only a button on screen is pressed; one scrolled away is brought into view first.
+      if (shownCard && chosen >= 0 && onScreen(detail.key, true).includes(chosen)) action = press(shownCard, chosen)
+      else if (shownCard && chosen >= 0) choose(chosen)
       else if (detail.hasMore) toggleMore()
       else delete next.detail
     } else if (name === "more") toggleMore()
@@ -1974,9 +2015,11 @@ export function handleInput(scroll, event, drawn) {
         next.button = -1
       } else if (asked && asked.key === onCard.key) {
         // The question: choose the suggested button (or the first) for Enter, never send. Only
-        // buttons the card shows count, so a card without any (or a blocked job's) gets none.
+        // a button the card shows and that is on screen: a card without any (or a blocked
+        // job's) gets none, and so does one cut short above its buttons.
         const c = (drawn.sections[section]?.cards || []).find((x) => x.key === onCard.key)
-        if (c?.buttons) next.button = c.suggested || 0
+        const target = c?.buttons ? c.suggested || 0 : -1
+        next.button = target >= 0 && onScreen(c.key, false).includes(target) ? target : -1
       }
     } else if (section) selectSection(section)
     next.lastClick = onCard && !hit ? { key: onCard.key, at: event.at ?? 0 } : null
@@ -1989,11 +2032,15 @@ export function handleInput(scroll, event, drawn) {
     next.card = cards[i].key
     next.button = -1
   } else if (current && current.buttons && (name === "left" || name === "right")) {
-    // The first ← or → chooses the suggested button (or the first); then they move.
-    const b = scroll.button ?? -1
-    next.button = b < 0 ? current.suggested || 0 : Math.max(0, Math.min(b + (name === "right" ? 1 : -1), current.buttons - 1))
+    // The first ← or → chooses the suggested button (or the first); then they move. Only
+    // buttons on screen: a card cut short has fewer, or none.
+    const seen = onScreen(current.key, false)
+    const at = seen.indexOf(scroll.button ?? -1)
+    if (seen.length) next.button = at < 0 ? (seen.includes(current.suggested) ? current.suggested : seen[0]) : seen[Math.max(0, Math.min(at + (name === "right" ? 1 : -1), seen.length - 1))]
   } else if (name === "enter") {
-    if (current && current.buttons && (scroll.button ?? -1) >= 0) action = press(current, scroll.button)
+    // A chosen button is pressed only while it is on screen; else Enter opens the details, which
+    // show every button.
+    if (current && current.buttons && (scroll.button ?? -1) >= 0 && onScreen(current.key, false).includes(scroll.button)) action = press(current, scroll.button)
     else if (current) {
       next.detail = { key: current.key, offset: 0 }
       next.button = -1

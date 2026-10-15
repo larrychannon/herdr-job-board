@@ -1,0 +1,138 @@
+===== as drawn · 120x20 =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?          7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs
+  move, #15 search filters, #17 export to CSV (+ optional
+  #16 dark mode). Plan: merge in order (each catches up w…
+  Question: Approve the whole release (merges, tag v1.4,
+↓ card cut off: open it for the rest
+
+DOING (2)                                                    TO DO (3)
+2 Search filters: build                             25 min   4 Export to CSV                                      1 min
+  The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
+  user.                                                        it.
+
+3 Docs site: fix links                              10 min   5 Dark mode                                          1 min
+  Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
+                                                             ↓ 1 more
+DONE · 0 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+===== details, → chooses and scrolls to it · 120x20 =====
+Job board · my-app                                                                                                 10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?          7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs
+  move, #15 search filters, #17 export to CSV (+ optional
+  #16 dark mode). Plan: merge in order (each catches up w…
+  Question: Approve the whole release (merges, tag v1.4,
+↓ card cut off: open it for the rest
+
+── card 1 · ↑ 6 lines above ────────────────────────────────────────────────────────────────────────────────────────────
+
+  What you need to do
+  Question: Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
+    keep it for later?
+  < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+
+  Added 03:14
+── end of card 1 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
+===== as drawn · 88x20 =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with
+  main), tag v1.4, deploy, then run the backfill.
+  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+↓ card cut off: open it for the rest
+
+DOING (2)                                    TO DO (3)
+2 Search filters: build             25 min   4 Export to CSV                      1 min
+  The filter panel from the approved           Let people download any table as CSV;
+  mockup, saved per user.                      three asked for it.
+                                             ↓ 2 more
+3 Docs site: fix links              10 min
+  Check every link on the new docs site
+  and fix the 404s.
+DONE · 0 today ▸
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+===== details, → chooses and scrolls to it · 88x20 =====
+Job board · my-app                                                                 10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with
+  main), tag v1.4, deploy, then run the backfill.
+  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+↓ card cut off: open it for the rest
+
+── card 1 · ↑ 7 lines above ────────────────────────────────────────────────────────────
+
+  What you need to do
+  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+
+  Added 03:14
+── end of card 1 ───────────────────────────────────────────────────────────────────────
+Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
+===== as drawn · 60x26 =====
+Job board · my-app                                     10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?            7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move,
+  #15 search filters, #17 export to CSV (+ optional #16 dark
+  mode). Plan: merge in order (each catches up with main), …
+  Question: Approve the whole release (merges, tag v1.4,
+↓ card cut off: open it for the rest
+
+DOING (2)
+2 Search filters: build                               25 min
+  The filter panel from the approved mockup, saved per user.
+
+3 Docs site: fix links                                10 min
+  Check every link on the new docs site and fix the 404s.
+
+TO DO (3)
+4 Export to CSV                                        1 min
+  Let people download any table as CSV; three asked for it.
+
+5 Dark mode                                            1 min
+  Follow the system theme; the colour tokens are in place.
+↓ 1 more
+DONE · 0 today ▸
+Tab · ↑↓ · Enter · c copy · d done · mouse: board · q
+===== details, → chooses and scrolls to it · 60x26 =====
+Job board · my-app                                     10:30
+
+▸ WAITING ON YOU (1)
+1▸Release v1.4: all reviewed, approve?            7 h 16 min
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move,
+  #15 search filters, #17 export to CSV (+ optional #16 dark
+  mode). Plan: merge in order (each catches up with main), …
+  Question: Approve the whole release (merges, tag v1.4,
+↓ card cut off: open it for the rest
+
+DOING (2)
+2 Search filters: build                               25 min
+  The filter panel from the approved mockup, saved per user.
+── card 1 · ↑ 7 lines above ────────────────────────────────
+  tag v1.4, deploy, then run the backfill.
+
+  What you need to do
+  Question: Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Include
+    #16 or keep it for later?
+  < Approve, include #16 ✓ >  [ Approve, #16 later ]
+  [ Not yet ]  [ Other… ]
+
+  Added 03:14
+── end of card 1 ───────────────────────────────────────────
+Enter: send · Esc · ↑↓ · ←→ · c copy · t tab · q

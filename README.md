@@ -70,7 +70,8 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   line at the bottom.
 - **Every section scrolls on its own**, and the place you scrolled to holds while the board
   redraws and new cards arrive. "↑ 2 above" and "↓ 3 more" say what is out of view; a card is
-  never hidden without saying so.
+  never hidden without saying so. A card taller than its section (in a short pane) is cut with
+  "↓ card cut off: open it for the rest" under it; open it to see the rest, buttons included.
 - **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
   WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green; the agent's state green
   (working), red (blocked), cyan (idle or done) or grey (no agent); every button filled grey
@@ -90,7 +91,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
-| `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen |
+| `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text (Alt+c does nothing) |
@@ -147,7 +148,8 @@ Checkout redesign mockup: approve
   2 h", "Done at 01:10".
 - **What it is**: the description. **What you need to do**: the ask and the card's buttons
   right under it, which work here as on the card (`←` `→` or a click on the question choose
-  one, `Enter` or a click on the button presses it), then what was sent.
+  one, `Enter` or a click on the button presses it), then what was sent. Choosing a button
+  below the panel's fold scrolls it into view, and `Enter` presses only a button on screen.
 - **From the job**: one line with the agent's live state and its tab (`t` goes there).
 - **What the job reported**, rewritten for people, from the card's report file: the summary's
   first one or two sentences; **Needs you**, what the report asks of you (each over at most two
@@ -474,7 +476,10 @@ another file.
 - **No answer without choosing.** Enter on a card opens its details; it presses a button only
   after you chose one with ← → or a click on the question (either picks the suggested one, or
   the first button when the card has no `--suggest`). A click on a button presses it at once; a
-  click on the question only chooses, and the question is never drawn as a button.
+  click on the question only chooses, and the question is never drawn as a button. Only a
+  button on the screen you see can be chosen or pressed: on a card cut short by a small pane,
+  nothing off screen is chosen, Enter opens the details instead, and "Enter to send" shows
+  only while the chosen button is on screen.
 - **Links and the clipboard.** A hyperlink's target is exactly the URL shown, checked against a
   strict pattern; nothing else from a card becomes a link. The board writes the clipboard only
   when you press `c`, with only the selected card's link or text; it never reads the clipboard.

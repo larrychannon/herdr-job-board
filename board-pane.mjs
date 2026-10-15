@@ -40,7 +40,8 @@
 // Waiting cards can carry answer buttons (board.mjs add … --option), straight under the question
 // (plain text after a dim "Question:", never drawn like a button): ← → or a click on the
 // question choose one (the suggested first; only buttons on screen, so none on a card whose job
-// is blocked) and the key line says "Enter to send"; Enter (or a click on the button) sends
+// is blocked or one cut off above its buttons in a short pane) and the key line says "Enter to
+// send"; Enter on a chosen button still on screen (or a click on the button) sends
 // "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent prompt`; o (or
 // Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
 // already asks before sending again.

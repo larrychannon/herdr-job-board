@@ -1234,3 +1234,162 @@ test("a click on the question chooses the suggested button (or the first) and sa
     t.done()
   }
 })
+
+// --- a card cut short shows no button it can't show (0.3.4 review) ------------------------------
+
+/** A tall question card, and Doing and To do cards that leave it too little room in a short pane. */
+function seedShort(t) {
+  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16")
+  t.board("2026-10-13T10:05:00Z", "add", "doing", "Search filters: build", "--desc", "The filter panel from the approved mockup, saved per user.")
+  t.board("2026-10-13T10:20:00Z", "add", "doing", "Docs site: fix links", "--desc", "Check every link on the new docs site and fix the 404s.")
+  t.board("2026-10-13T10:29:00Z", "add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV; three asked for it.")
+  t.board("2026-10-13T10:29:00Z", "add", "todo", "Dark mode", "--desc", "Follow the system theme; the colour tokens are in place.")
+  t.board("2026-10-13T10:29:00Z", "add", "todo", "Upgrade the test runner", "--desc", "The current version reaches end of life next month.")
+}
+// The sizes where the card's question shows but its buttons don't (the review's sweep).
+const SHORT = [
+  [120, 20],
+  [88, 20],
+  [60, 26],
+]
+
+test("short panes (120x20, 88x20, 60x26): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
+  const t = setup({ agents, tabs })
+  try {
+    seedShort(t)
+    const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
+    for (const [width, height] of SHORT) {
+      const size = `${width}x${height}`
+      const draw = (scroll) => renderBoard(view, { width, height, interactive: true, now: new Date(NOW), scroll })
+      const lastLine = (d) => d.text.split("\n").at(-1)
+      const mine = (d, panel = false) => d.buttons.filter((b) => b.key === "#1" && !b.panel === !panel)
+      let drawn = draw({ selected: "todo", anchors: {} })
+      // The precondition: the question on screen, none of its buttons, and a line that says the card goes on.
+      assert.ok(drawn.askHits.some((a) => a.key === "#1"), `${size}: question on screen`)
+      assert.deepEqual(mine(drawn), [], `${size}: buttons off screen`)
+      assert.match(drawn.text, /↓ card cut off: open it for the rest/, `${size}: the cut is marked`)
+      assert.doesNotMatch(drawn.text, /\[ Approve, include #16/, `${size}`)
+      // A click on the question: the card is selected, nothing chosen, nothing sent, no hint.
+      const q = drawn.askHits.find((a) => a.key === "#1")
+      let r = handleInput(drawn.scroll, { type: "click", x: q.x0 + 1, y: q.y, at: 0 }, drawn)
+      assert.deepEqual([r.action, r.scroll.selected, r.scroll.card, r.scroll.button], [null, "waiting", "#1", -1], `${size}: click`)
+      drawn = draw(r.scroll)
+      assert.doesNotMatch(lastLine(drawn), /Enter(?: to|:) send/, `${size}`)
+      // ← → choose nothing that isn't on screen.
+      for (const name of ["right", "right", "left"]) {
+        r = handleInput(drawn.scroll, { type: "key", name }, drawn)
+        assert.deepEqual([r.action, r.scroll.button], [null, -1], `${size}: ${name}`)
+        drawn = draw(r.scroll)
+      }
+      // A button chosen while it showed (a taller pane, say) and now off screen: no hint, and
+      // Enter opens the details, with nothing chosen, instead of pressing it.
+      drawn = draw({ ...drawn.scroll, button: 0 })
+      assert.doesNotMatch(lastLine(drawn), /Enter(?: to|:) send/, `${size}: stale choice`)
+      r = handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn)
+      assert.deepEqual([r.action, r.scroll.detail?.key, r.scroll.button], [null, "#1", -1], `${size}: Enter opens the details`)
+      // In the details: the buttons are below the panel's fold. Enter with one chosen off
+      // screen scrolls to it; → and a click on the question choose and scroll to it.
+      drawn = draw(r.scroll)
+      assert.deepEqual(mine(drawn, true), [], `${size}: panel buttons below the fold`)
+      drawn = draw({ ...drawn.scroll, card: "#1", button: 0 })
+      assert.doesNotMatch(lastLine(drawn), /Enter(?: to|:) send/, `${size}: chosen but off the panel`)
+      r = handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn)
+      assert.equal(r.action, null, `${size}: Enter didn't press an unseen button`)
+      drawn = draw(r.scroll)
+      assert.ok(mine(drawn, true).some((b) => b.index === 0), `${size}: Enter scrolled to it`)
+      assert.match(lastLine(drawn), /^Enter(?: to|:) send · /, `${size}`)
+      assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" }, `${size}: now Enter sends what is shown`)
+      for (const how of ["right", "question"]) {
+        drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1, detail: { key: "#1", offset: 0 } })
+        assert.deepEqual(mine(drawn, true), [], `${size}`)
+        if (how === "right") r = handleInput(drawn.scroll, { type: "key", name: "right" }, drawn)
+        else {
+          const pq = drawn.askHits.find((a) => a.panel && a.key === "#1")
+          if (!pq) continue // the panel's question is below the fold too: nothing to click
+          r = handleInput(drawn.scroll, { type: "click", x: pq.x0 + 1, y: pq.y }, drawn)
+        }
+        assert.deepEqual([r.action, r.scroll.button], [null, 0], `${size}: ${how}`)
+        drawn = draw(r.scroll)
+        const chosen = mine(drawn, true).find((b) => b.index === 0)
+        assert.ok(chosen && chosen.y >= drawn.regions.detail.top, `${size}: ${how} scrolled the panel to the chosen button`)
+        assert.match(drawn.text, /< Approve, include #16 ✓ >/)
+        assert.match(lastLine(drawn), /^Enter(?: to|:) send · /)
+      }
+    }
+    // Some of a card's buttons on screen (a line under them, "sent: …", is cut with the second
+    // row of buttons): ← → move among those only, and Enter presses only those.
+    const answered = JSON.parse(readFileSync(t.file, "utf8"))
+    answered.items.find((i) => i.id === 1).sent = { label: "Not yet", at: "2026-10-13T09:00:00Z" }
+    const partView = buildView(answered, null, { now: new Date(NOW) })
+    let partial = null
+    for (const width of [120, 88, 60]) {
+      for (let height = 14; height <= 40 && !partial; height++) {
+        const d = renderBoard(partView, { width, height, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {} } })
+        const seen = new Set(d.buttons.filter((b) => b.key === "#1").map((b) => b.index))
+        if (seen.size > 0 && seen.size < 4) partial = { width, height, seen }
+      }
+    }
+    assert.ok(partial, "a size with some of the buttons on screen")
+    {
+      const draw = (scroll) => renderBoard(partView, { width: partial.width, height: partial.height, interactive: true, now: new Date(NOW), scroll })
+      let drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1 })
+      for (let i = 0; i < 6; i++) {
+        const r = handleInput(drawn.scroll, { type: "key", name: "right" }, drawn)
+        assert.ok(partial.seen.has(r.scroll.button), `${partial.width}x${partial.height}: → chose ${r.scroll.button}, on screen are ${[...partial.seen]}`)
+        drawn = draw(r.scroll)
+        const enter = handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action
+        assert.equal(enter?.type, "send")
+      }
+    }
+    // Snapshots: as drawn, and the details after → (scrolled to the chosen button); colour on and off.
+    for (const [name, flags] of [["short-plain.txt", []], ["short-color.txt", ["--color"]]]) {
+      let all = ""
+      for (const [width, height] of SHORT) {
+        for (const [label, keys] of [["as drawn", ""], ["details, → chooses and scrolls to it", "\r\x1b[C"]]) {
+          const r = t.pane(["--width", String(width), "--height", String(height), ...flags], keys)
+          assert.equal(r.status, 0, r.stderr)
+          all += `===== ${label} · ${width}x${height} =====\n${r.stdout}`
+        }
+      }
+      const snap = join(FIXTURES, name)
+      if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, all)
+      assert.equal(all, readFileSync(snap, "utf8"), `snapshot ${name} (UPDATE_SNAPSHOTS=1 to rewrite)`)
+    }
+    // End to end at each size through the pane and the fake Herdr: question click + Enter, → Enter,
+    // → → Enter, a double click then Enter: no prompt, no focus.
+    for (const [width, height] of SHORT) {
+      const size = ["--width", String(width), "--height", String(height)]
+      const screen = t.pane(size).stdout
+      assert.match(screen, /↓ card cut off: open it for the rest/)
+      const click = clickOn(screen, "Question: Approve")
+      for (const keys of [`${click}\r`, "\x1b[C\r", "\x1b[C\x1b[C\r", `${click}${click}\r`]) {
+        const r = t.pane(size, keys)
+        assert.equal(r.status, 0, r.stderr)
+      }
+      assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus")), [], `${width}x${height}: nothing sent`)
+      assert.match(t.pane(size, `${click}\r`).stdout, /── card 1 /, `${width}x${height}: Enter opened the details`)
+    }
+  } finally {
+    t.done()
+  }
+})
+
+test("the details' key line fits at 80 and 88 columns with a button chosen (short form when the long one doesn't fit)", () => {
+  const t = setup({ agents, tabs })
+  try {
+    seedQuestion(t)
+    const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
+    for (const width of [80, 88, 100, 120]) {
+      for (const button of [0, 3]) {
+        const drawn = renderBoard(view, { width, height: 40, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {}, card: "#1", button, detail: { key: "#1", offset: 0 } } })
+        const keys = drawn.text.split("\n").at(-1)
+        assert.match(keys, button ? /^Enter to answer in the chat · / : /^Enter to send · /, `${width}`)
+        assert.doesNotMatch(keys, /…/, `${width}: not cut`)
+        assert.match(keys, /Esc/)
+        assert.ok(keys.length <= width)
+      }
+    }
+  } finally {
+    t.done()
+  }
+})
