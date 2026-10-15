@@ -38,7 +38,7 @@ Checkout redesign mockup: approve
   has 12 boards, before and after, e.g. Cart, Address and the payment step.
   Needs you:
 ── ↓ 10 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
-Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
+Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next link) · t go to tab · q quit
 ===== card 2 · 120 columns =====
 Job board · my-app                                                                                                 10:30
 
@@ -161,7 +161,7 @@ CSV export on the Orders page (PR #48): try it, then merge
   Added 08:00 · last changed 09:10
 
 ── end of card 4 ───────────────────────────────────────────────────────────────────────────────────────────────────────
-Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit
+Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
 ===== card 1 · 88 columns =====
 Job board · my-app                                                                 10:30
 
@@ -325,4 +325,4 @@ CSV export on the Orders page (PR #48): try it, then merge
 
   Added 08:00 · last changed 09:10
 ── end of card 4 ───────────────────────────────────────────────────────────────────────
-Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit
+Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit

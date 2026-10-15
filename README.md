@@ -94,7 +94,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
-| `c` | copy the card's first link, or its text (Alt+c does nothing) |
+| `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
 | `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
@@ -181,7 +181,11 @@ is read again only when the file changes.
   `data:` or `file:`, never a `user:password@` part, and never an invisible character.
 - **Copy.** `c` puts the selected card's first link on the clipboard, or the card's text when
   it has no link (OSC 52, at most 8000 characters), with the buttons it shows (a blocked job's
-  card shows none, so none are copied), and the key line says what was copied. It happens only
+  card shows none, so none are copied), and the key line says what was copied. On a card with
+  several links, `c` again copies the next one, in the order the card and its report show them,
+  then the first again; the key line says which (`copied 2/2: Artifact https://…`) and, where it
+  fits, reads `c copy (again: next link)`. Another card, or opening or closing the details,
+  starts at the first link again. It happens only
   when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
   your terminal must allow them (most do; some ask first or need a setting such as
   "allow clipboard access").

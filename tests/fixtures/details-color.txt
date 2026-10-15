@@ -38,7 +38,7 @@
   has 12 boards, before and after, e.g. Cart, Address and the payment step.
   [1mNeeds you:[0m
 [2m──[0m[1m ↓ 10 more lines [0m[2m─────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[2mEsc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit[0m
+[2mEsc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next link) · t go to tab · q quit[0m
 ===== card 2 · 120 columns =====
 [1mJob board · my-app[0m                                                                                                 [2m10:30[0m
 
@@ -161,7 +161,7 @@
   [2mAdded 08:00 · last changed 09:10[0m
 
 [2m──[0m[1m end of card 4 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[2mEsc close · ↑↓ scroll · f more · c copy · t go to tab · q quit[0m
+[2mEsc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit[0m
 ===== card 1 · 88 columns =====
 [1mJob board · my-app[0m                                                                 [2m10:30[0m
 
@@ -325,4 +325,4 @@
 
   [2mAdded 08:00 · last changed 09:10[0m
 [2m──[0m[1m end of card 4 [0m[2m───────────────────────────────────────────────────────────────────────[0m
-[2mEsc close · ↑↓ scroll · f more · c copy · t go to tab · q quit[0m
+[2mEsc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit[0m

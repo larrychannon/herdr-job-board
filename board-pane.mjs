@@ -31,7 +31,9 @@
 //                           Enter presses it; with no button chosen, Enter or f shows or hides
 //                           More… (the rest of the job's report), and Enter closes the details
 //                           when there is no More…; o is Other…; Esc closes them
-//   c                       copy the card's first link, or its text (OSC 52)
+//   c                       copy the card's first link, or its text (OSC 52); c again copies its
+//                           next link, round to the first; a new card or opening or closing
+//                           its details starts at the first again
 //   d, click on Done's line open Done (a third column); d or a click on its header folds it.
 //                           Folded, Tab skips it. The choice holds while the pane runs
 //   t                       go to the job's tab (herdr agent focus)
@@ -64,7 +66,8 @@ import {
   barTick,
   boardPath,
   buildView,
-  copyPayload,
+  copyMessage,
+  copyPlace,
   createAnswerer,
   emptyBoard,
   focusAgent,
@@ -79,6 +82,7 @@ import {
   screenDiff,
   textWidth,
   tokenText,
+  nextCopy,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -130,7 +134,7 @@ function compose(data, file, env, layout) {
 /**
  * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
  * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
- * only that card. t switches to the job's tab. m switches mouse capture off and on. Resolves to
+ * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t switches to the job's tab. m switches mouse capture off and on. Resolves to
  * the footer message, if any.
  */
 async function perform(action, ctx) {
@@ -148,9 +152,10 @@ async function perform(action, ctx) {
   if (!entry) return null
   if (action.type === "copy") {
     try {
-      const { text, what } = copyPayload(entry)
-      ctx.write(osc52(text))
-      return what === "link" ? `copied ${text}` : `copied card ${entry.id ?? entry.job}`
+      const { payload, cycle } = nextCopy(ctx.copy, entry, copyPlace(ctx.drawn.scroll))
+      ctx.copy = cycle
+      ctx.write(osc52(payload.text))
+      return copyMessage(payload, entry)
     } catch (e) {
       return `couldn't copy: ${String(e?.message ?? "").slice(0, 100)}`
     }
@@ -182,7 +187,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (opts.once) {
     let data = await load(file, env)
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
-    const ctx = { answers, env, wait: true, mouse: true, drawn: null, write: (text) => process.stdout.write(text) }
+    const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
     const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links, frame: Number.isInteger(frame) ? frame : null }
@@ -199,6 +204,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         data = await load(file, env)
       }
       drawn = draw(scroll)
+      if (ctx.copy && ctx.copy.place !== copyPlace(drawn.scroll)) ctx.copy = null
     }
     process.stdout.write(`${drawn.text}\n`)
     return 0
@@ -236,7 +242,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     out.write(`\x1b[?2026h${patch}\x1b[?2026l`)
     for (const { y } of drawn.bars) shownLines[y - 1] = null
   })
-  const ctx = { answers, env, wait: false, mouse: true, drawn: null, write: (text) => out.write(text) }
+  const ctx = { answers, env, wait: false, mouse: true, drawn: null, copy: null, write: (text) => out.write(text) }
   // A footer message (copied, mouse mode, …) shows for a few seconds.
   let message = null
   let messageTimer
@@ -267,6 +273,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     })
     drawn = result.drawn
     scroll = drawn.scroll
+    // Another card, or its details opened or closed: the next c starts at the first link.
+    if (ctx.copy && ctx.copy.place !== copyPlace(scroll)) ctx.copy = null
     // Only the lines that changed: a tick of the working bar rewrites just its lines.
     const lines = drawn.text.split("\n")
     const diff = screenDiff(shownLines, lines, cols, (l) => textWidth(l.replace(ANSI, "")))

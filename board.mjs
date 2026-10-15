@@ -999,7 +999,7 @@ function headerLine(view, section, selected, interactive) {
 
 const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - painted.width))
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
-const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: ${mouse} · q quit`
+const HINT = (mouse, copy = "c copy") => `Tab section · ↑↓ card · Enter details · ${copy} · d done · m mouse: ${mouse} · q quit`
 const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mouse: ${mouse} · q`
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
@@ -1007,9 +1007,11 @@ const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ car
 const doneLine = (view) => [{ t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
-const detailHint = (wide, buttons, more) =>
+// On a card with several links, the long lines say that c again copies the next one.
+const NEXT_COPY = "c copy (again: next link)"
+const detailHint = (wide, buttons, more, copy = "c copy") =>
   wide
-    ? ["Esc close", "↑↓ scroll", buttons && "←→ choose", more && "f more", "c copy", "t go to tab", "q quit"].filter(Boolean).join(" · ")
+    ? ["Esc close", "↑↓ scroll", buttons && "←→ choose", more && "f more", copy, "t go to tab", "q quit"].filter(Boolean).join(" · ")
     : ["Esc", "↑↓", buttons && "←→", more && "f more", "c copy", "t tab", "q"].filter(Boolean).join(" · ")
 
 // --- card details -------------------------------------------------------------------------
@@ -1401,22 +1403,59 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
 }
 
 /**
- * What c copies for a card: its first link (in the title, description, ask, then the report's
- * links, summary and needs), else the card as plain text. { text, what: "link" | "card" }.
+ * The links c steps through on a card, in order: those in its title, description and ask, then
+ * the report's links, summary and needs; each once. [{ url, label }], label "" when it has none.
  */
-export function copyPayload(entry) {
+export function copyLinks(entry) {
   const report = reportFacts(entry.report)
   const facts = report && !report.unavailable ? report : null
-  const sources = [entry.title, entry.desc, entry.ask, ...(facts ? [...facts.links.map((l) => l.url), facts.summary, ...facts.needs.map((n) => n.text)] : [])]
-  for (const text of sources) {
-    const [first] = findUrls(text)
-    if (first) return { text: first.url, what: "link" }
+  const found = []
+  const add = (url, label = "") => {
+    if (url && !found.some((l) => l.url === url)) found.push({ url, label })
+  }
+  for (const text of [entry.title, entry.desc, entry.ask]) for (const { url } of findUrls(text)) add(url)
+  if (facts) {
+    for (const l of facts.links) if (findUrls(l.url)[0]?.url === l.url) add(l.url, clean(l.label))
+    for (const text of [facts.summary, ...facts.needs.map((n) => n.text)]) for (const { url } of findUrls(text)) add(url)
+  }
+  return found
+}
+
+/**
+ * What c copies for a card: link number `n` (from 0, wrapping round) of copyLinks, else the card
+ * as plain text. { text, what: "link" | "card", label, n, of } (n from 1, of the link count).
+ */
+export function copyPayload(entry, n = 0) {
+  const links = copyLinks(entry)
+  if (links.length) {
+    const i = ((Math.trunc(n) % links.length) + links.length) % links.length
+    return { text: links[i].url, what: "link", label: links[i].label, n: i + 1, of: links.length }
   }
   const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, clean(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
   // Only the buttons the card shows: a blocked job's card has none to copy.
   const options = shownOptions(entry).map((o) => o.label)
   if (options.length) parts.push(`buttons: ${options.join(" · ")}`)
-  return { text: parts.filter(Boolean).join("\n\n"), what: "card" }
+  return { text: parts.filter(Boolean).join("\n\n"), what: "card", label: "", n: 0, of: 0 }
+}
+
+/** Where c was pressed: the selected card, in the list or in its details. */
+export const copyPlace = (scroll) => (scroll?.detail ? `details ${scroll.detail.key}` : `list ${scroll?.card ?? ""}`)
+
+/**
+ * c pressed on `entry` at `place` (copyPlace). It copies the next link while the place and the
+ * card's links stay the same since the last press (`cycle`), else the first. { payload, cycle }.
+ */
+export function nextCopy(cycle, entry, place) {
+  const sig = copyLinks(entry).map((l) => l.url).join("\n")
+  const n = cycle && cycle.place === place && cycle.sig === sig ? cycle.next : 0
+  const payload = copyPayload(entry, n)
+  return { payload, cycle: { place, sig, next: payload.of ? payload.n % payload.of : 0 } }
+}
+
+/** The footer note for a copy: "copied 2/2: Artifact https://…", one link "copied https://…". */
+export function copyMessage(payload, entry) {
+  if (payload.what !== "link") return `copied card ${entry.id ?? entry.job}`
+  return payload.of > 1 ? `copied ${payload.n}/${payload.of}: ${payload.label ? `${payload.label} ` : ""}${payload.text}` : `copied ${payload.text}`
 }
 
 // --- the board -----------------------------------------------------------------------------
@@ -1711,12 +1750,14 @@ export function renderBoard(view, opts = {}) {
     const send = !seen || chosen > count ? "" : chosen < count ? (wide ? "Enter to send" : "Enter: send") : wide ? "Enter to answer in the chat" : "Enter: chat"
     // The long key line when it fits after the Enter part, else the short one.
     const fits = (keys) => textWidth(send ? `${send} · ${keys}` : keys) <= width
-    const keyLine = (long, short) => (fits(long) ? long : short)
+    const keyLine = (...lines) => lines.find(fits) ?? lines.at(-1)
+    const selectedKey = detailEntry ? scroll.detail.key : scroll.card
+    const several = selectedKey && entries[selectedKey] ? copyLinks(entries[selectedKey]).length > 1 : false
     const keys = detailInfo
-      ? keyLine(detailHint(wide, detailInfo.buttons, detailInfo.more), detailHint(false, detailInfo.buttons, detailInfo.more))
+      ? keyLine(...(several ? [detailHint(wide, detailInfo.buttons, detailInfo.more, NEXT_COPY)] : []), detailHint(wide, detailInfo.buttons, detailInfo.more), detailHint(false, detailInfo.buttons, detailInfo.more))
       : send
         ? keyLine(CHOSEN_HINT(true), CHOSEN_HINT(false))
-        : keyLine(HINT(mouse), HINT_NARROW(mouse))
+        : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "note" }, { t: " · ", s: "dim" }] : []), ...(send ? [{ t: send, s: "head" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
