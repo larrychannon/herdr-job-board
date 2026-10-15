@@ -4,17 +4,18 @@ Job board · my-app                                                             
 1▸Login page redesign: approve                  2 h 20 min   2 Search filters mockup: approve                1 h 30 min
   New sign-in screen with SSO buttons and a clearer error      Filter panel for the search page with saved filters. 4
   message. 3 small choices to confirm.                         choices, e.g. whether saved filters are per user.
-  → Open the mockup, reply ok or change                        → Reply ok or change
+  Needs you: Open the mockup, reply ok or change               Needs you: Reply ok or change
 
 3 Billing fix (PR #12): review                      50 min   4 Docs move (PR #14): merge                         45 min
   Invoices now round each line, not the total. Fixes the       The docs move to the shared site. No content changes.
-  one-cent differences customers reported.                     → Say merge (after #12)
-  → Try the invoice page on :3000, then say merge
+  one-cent differences customers reported.                     Needs you: Say merge (after #12)
+  Needs you: Try the invoice page on :3000, then say
+    merge
 
 5 Deploy v1.4: go                                   30 min
   After #12 and #14 merge: tag v1.4 and deploy it to
   production.
-  → Say go once merged
+  Question: Say go once merged
   [ Go ✓ ]  [ Not now ]  [ Other… ]
 
 DOING (2)                                                    TO DO (4)
@@ -32,7 +33,6 @@ DOING (2)                                                    TO DO (4)
 
                                                              11 Upgrade the test runner                           1 min
                                                                 The current version reaches end of life next month.
-
 
 
 

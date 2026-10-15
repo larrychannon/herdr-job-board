@@ -253,7 +253,7 @@ test("board: a card shows the title, the description over up to 3 lines, and the
     ok(dir, ["add", "waiting", "Deploy v1.4: approve", "--desc", "Ships the new invoice page to production. Needs #12 and #14 merged first.", "--ask", "Say go"])
     ok(dir, ["add", "todo", "Long one", "--desc", long])
     const text = ok(dir, ["ls", "--width", "60"])
-    assert.match(text, /1 Deploy v1\.4: approve +just now\n  Ships the new invoice page to production\. Needs #12 and\n  #14 merged first\.\n  → Say go\n/)
+    assert.match(text, /1 Deploy v1\.4: approve +just now\n  Ships the new invoice page to production\. Needs #12 and\n  #14 merged first\.\n  Needs you: Say go\n/)
     const longLines = text.split("2 Long one")[1].split("\n").slice(1, 5)
     assert.equal(longLines.filter((l) => l.startsWith("  word")).length, 3, "3 lines of description at most")
     assert.match(longLines[2], /…$/)
@@ -313,7 +313,7 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     write({ status: "done", summary: "built", needs_user: ["Review and merge PR #21", "Deploy: ./deploy.sh"] })
     assert.match(ok(dir, ["job-report", "range"]), /1 → waiting on you: Build range control\n {2}ask: Review and merge PR #21\n {2}ask: Deploy/)
     assert.deepEqual([items(dir)[0].column, items(dir)[0].ask], ["waiting", "Review and merge PR #21\nDeploy: ./deploy.sh"])
-    assert.match(ok(dir, ["ls", "--width", "60"]), /→ Review and merge PR #21\n {2}→ Deploy: \.\/deploy\.sh\n/)
+    assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge PR #21\n {2}Needs you: Deploy: \.\/deploy\.sh\n/)
 
     // A follow-up run of the same job gets its own item; the open question stays in Waiting.
     ok(dir, ["job-start", "range", "--title", "Range control: fixes", "--report", report])

@@ -4,12 +4,12 @@ Job board · my-app                                     10:30
 1▸Login page redesign: approve                    2 h 20 min
   New sign-in screen with SSO buttons and a clearer error
   message. 3 small choices to confirm.
-  → Open the mockup, reply ok or change
+  Needs you: Open the mockup, reply ok or change
 
 2 Search filters mockup: approve                  1 h 30 min
   Filter panel for the search page with saved filters. 4
   choices, e.g. whether saved filters are per user.
-  → Reply ok or change
+  Needs you: Reply ok or change
 ↓ 3 more
 
 DOING (2)

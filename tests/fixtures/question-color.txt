@@ -1,0 +1,328 @@
+===== nothing chosen · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m   [2m2 [0m[1mPick a name[0m                                       [2m30 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs          [2mQuestion:[0m Which name?
+  move, #15 search filters, #17 export to CSV (+ optional      [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+  #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Includ…
+  [1;30;47m[ Approve, include #16 ✓ ][0m  [30;47m[ Approve, #16 later ][0m
+  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                         [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                                    [1mTO DO (0)[0m
+[2mnothing[0m                                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+===== → chooses the suggested button · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m   [2m2 [0m[1mPick a name[0m                                       [2m30 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs          [2mQuestion:[0m Which name?
+  move, #15 search filters, #17 export to CSV (+ optional      [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+  #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Includ…
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m
+  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                         [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                                    [1mTO DO (0)[0m
+[2mnothing[0m                                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[1mEnter to send[0m[2m · [0m[2m←→ choose · Esc cancel · ↑↓ card · c copy · q quit[0m
+===== a click on the question · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m   [2m2 [0m[1mPick a name[0m                                       [2m30 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs          [2mQuestion:[0m Which name?
+  move, #15 search filters, #17 export to CSV (+ optional      [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+  #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Includ…
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m
+  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                         [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                                    [1mTO DO (0)[0m
+[2mnothing[0m                                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[1mEnter to send[0m[2m · [0m[2m←→ choose · Esc cancel · ↑↓ card · c copy · q quit[0m
+===== details, a click on the question · 120 columns =====
+[1mJob board · my-app[0m                                                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m   [2m2 [0m[1mPick a name[0m                                       [2m30 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs          [2mQuestion:[0m Which name?
+  move, #15 search filters, #17 export to CSV (+ optional      [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+  #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
+    deploy to production, then the data backfill)? Includ…
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m
+  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                         [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                                    [1mTO DO (0)[0m
+[2mnothing[0m                                                      [2mnothing[0m
+
+
+[2m──[0m[1m card 1 [0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mRelease v1.4: all reviewed, approve?[0m
+  [2mWaiting on you for 7 h 16 min[0m
+
+  [1mWhat it is[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark
+  mode).
+
+  [1mWhat you need to do[0m
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
+    keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+  [2mAdded 03:14[0m
+
+
+
+[2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
+===== nothing chosen · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;30;47m[ Approve, include #16 ✓ ][0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m2 [0m[1mPick a name[0m                                                                     [2m30 min[0m
+  [2mQuestion:[0m Which name?
+  [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                                                       [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                    [1mTO DO (0)[0m
+[2mnothing[0m                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+===== → chooses the suggested button · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m2 [0m[1mPick a name[0m                                                                     [2m30 min[0m
+  [2mQuestion:[0m Which name?
+  [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                                                       [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                    [1mTO DO (0)[0m
+[2mnothing[0m                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[1mEnter to send[0m[2m · [0m[2m←→ choose · Esc cancel · ↑↓ card · c copy · q quit[0m
+===== a click on the question · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m2 [0m[1mPick a name[0m                                                                     [2m30 min[0m
+  [2mQuestion:[0m Which name?
+  [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                                                       [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                    [1mTO DO (0)[0m
+[2mnothing[0m                                      [2mnothing[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2;32mDONE · 0 today ▸[0m
+[1mEnter to send[0m[2m · [0m[2m←→ choose · Esc cancel · ↑↓ card · c copy · q quit[0m
+===== details, a click on the question · 88 columns =====
+[1mJob board · my-app[0m                                                                 [2m10:30[0m
+
+[1m▸ [0m[1;7;33mWAITING ON YOU (3)[0m
+[1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode).
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+[2m2 [0m[1mPick a name[0m                                                                     [2m30 min[0m
+  [2mQuestion:[0m Which name?
+  [30;47m[ Alpha ][0m  [30;47m[ Beta ][0m  [30;47m[ Other… ][0m
+
+[2m3 [0m[1mDocs move (PR #14): merge[0m                                                       [2m20 min[0m
+  [2mNeeds you:[0m Say merge (after #12)
+
+[1;34mDOING (0)[0m                                    [1mTO DO (0)[0m
+[2mnothing[0m                                      [2mnothing[0m
+[2m──[0m[1m card 1 [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mRelease v1.4: all reviewed, approve?[0m
+  [2mWaiting on you for 7 h 16 min[0m
+
+  [1mWhat it is[0m
+  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  export to CSV (+ optional #16 dark mode).
+
+  [1mWhat you need to do[0m
+  [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
+    the data backfill)? Include #16 or keep it for later?
+  [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+  [2msent: Approve, include #16 · 10:08[0m
+
+  [2mAdded 03:14[0m
+
+
+
+[2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────[0m
+[1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m

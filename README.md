@@ -15,17 +15,17 @@ Job board · my-app                                                             
 1▸Login page redesign: approve                                                2 h 20 min
   New sign-in screen with SSO buttons and a clearer error message. 3 small choices to
   confirm.
-  → Open the mockup, reply ok or change
+  Needs you: Open the mockup, reply ok or change
 
 2 Search filters mockup: approve                                              1 h 30 min
   Filter panel for the search page with saved filters. 4 choices, e.g. whether saved
   filters are per user.
-  → Reply ok or change
+  Needs you: Reply ok or change
 
 3 Billing fix (PR #12): review                                                    50 min
   Invoices now round each line, not the total. Fixes the one-cent differences customers
   reported.
-  → Try the invoice page on :3000, then say merge
+  Needs you: Try the invoice page on :3000, then say merge
 ↓ 2 more
 
 DOING (2)                                    TO DO (4)
@@ -52,8 +52,9 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 ```
 
 - **WAITING ON YOU** runs across the top: what needs you. Each card shows its title, a
-  description of up to 3 lines and, highlighted, what you should do (`→ …`). A card can carry
-  **answer buttons** (below). An agent that is **blocked** on a question or an approval shows
+  description of up to 3 lines and what you should do, as plain text after a dim label:
+  `Question:` when the card's buttons answer it, else `Needs you:`. A card can carry
+  **answer buttons** (below), straight under the question. An agent that is **blocked** on a question or an approval shows
   here by itself, even when nobody put it on the board.
 - **DOING | TO DO** share the bottom in two columns. Doing cards show the live state of the
   job's agent from `herdr agent list` (working, done, idle, no agent) and their age. A card
@@ -72,9 +73,10 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   never hidden without saying so.
 - **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
   WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green; the agent's state green
-  (working), red (blocked), cyan (idle or done) or grey (no agent); the `→` line amber, the
-  suggested button highlighted, and a Waiting card's age red after a day. `NO_COLOR` turns
-  colour off.
+  (working), red (blocked), cyan (idle or done) or grey (no agent); every button filled grey
+  (the suggested one bold, with ✓; the chosen one blue), while the question stays plain text in
+  no button's colour; and a Waiting card's age red after a day. `NO_COLOR` turns colour off;
+  the buttons keep their `[ … ]` and `< … >`.
 - **The working bar** ticks about 6 times a second, and only while one is on screen: with no
   working card in view (none working, scrolled away, or under the details) there is no timer at
   all. Each tick rewrites only the bar's cells, and the layout, the selection and the scroll
@@ -88,7 +90,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
-| `←` `→` on a card with buttons | choose a button (the suggested one first); then `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen |
+| `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text (Alt+c does nothing) |
@@ -96,7 +98,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on Done's line or header opens or folds it |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it |
 | `q`, `r` | quit; redraw |
 
 The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
@@ -119,7 +121,7 @@ Checkout redesign mockup: approve
   choices, each with a suggested answer.
 
   What you need to do
-  → Open the canvas, then OK all suggestions or comment
+  Question: Open the canvas, then OK all suggestions or comment
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
   From the job
@@ -143,8 +145,9 @@ Checkout redesign mockup: approve
 
 - **The title**, then where the card is, in words: "Waiting on you for 7 h 30 min", "Doing for
   2 h", "Done at 01:10".
-- **What it is**: the description. **What you need to do**: the ask and the card's buttons,
-  which work here as on the card (`←` `→` choose one, `Enter` or a click presses it).
+- **What it is**: the description. **What you need to do**: the ask and the card's buttons
+  right under it, which work here as on the card (`←` `→` or a click on the question choose
+  one, `Enter` or a click on the button presses it), then what was sent.
 - **From the job**: one line with the agent's live state and its tab (`t` goes there).
 - **What the job reported**, rewritten for people, from the card's report file: the summary's
   first one or two sentences; **Needs you**, what the report asks of you (each over at most two
@@ -199,18 +202,20 @@ node board.mjs add waiting "Release notes: approve" \
 ```
 5 Release notes: approve                                            12 min
   Draft notes for v1.4, written from the merged PRs.
-  → Read the draft, then answer
+  Question: Read the draft, then answer
   [ Approve ✓ ]  [ Needs changes ]  [ Other… ]
 ```
 
-Choose a button with `←` `→` (the suggested one, ✓, comes first; the chosen one shows as
-`< … >`) and press `Enter`, or click it.
+The question is text, the buttons are the filled boxes right under it. Choose a button with
+`←` `→`, or click the question (either way the suggested one, ✓, comes first; the chosen one
+shows as `< … >`, and the key line says `Enter to send`), then press `Enter`; or click the
+button itself. A click on the question never sends.
 
 - Click a button, or choose it and press Enter: the board hands
   `Board card <id> (<title>): <label>` to the agent in the pane that opened the board, with
   `herdr agent prompt`. Nothing else from the card is sent.
 - **Other…** (`o`) switches to that pane so you can type your answer; nothing is typed for you.
-- The card then shows `sent: Approve · 10:42`. Pressing a button again asks "send again?" first;
+- The card then shows `sent: Approve · 10:42`, under the buttons. Pressing a button again asks "send again?" first;
   presses run one at a time, so a double click sends once. The coordinator moves or closes the
   card when it acts on your answer.
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
@@ -320,7 +325,7 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    ```
 
    - `done` with no `needs_user` → Done.
-   - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `→` line each). An
+   - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `Needs you:` line each). An
      entry may be text or an object such as `{ "question": "…", "suggested_answer": "…" }`.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
@@ -467,8 +472,9 @@ another file.
   `herdr pane send-text`. Even then, a button only sends its own label, with the card's id and
   title, to the coordinator, and only when you press it.
 - **No answer without choosing.** Enter on a card opens its details; it presses a button only
-  after you chose one with ← → (the first ← or → picks the suggested one, or the first button
-  when the card has no `--suggest`). A click on a button presses it at once.
+  after you chose one with ← → or a click on the question (either picks the suggested one, or
+  the first button when the card has no `--suggest`). A click on a button presses it at once; a
+  click on the question only chooses, and the question is never drawn as a button.
 - **Links and the clipboard.** A hyperlink's target is exactly the URL shown, checked against a
   strict pattern; nothing else from a card becomes a link. The board writes the clipboard only
   when you press `c`, with only the selected card's link or text; it never reads the clipboard.

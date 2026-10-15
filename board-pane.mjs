@@ -24,7 +24,8 @@
 //   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   select a card (the view follows)
 //   PgUp PgDn               scroll a page           g G        first / last card
 //   mouse wheel             scroll the section under the pointer
-//   click, double click     select a card, open its details
+//   click, double click     select a card, open its details; a click on a card's question
+//                           chooses its suggested button (or the first) for Enter, never sends
 //   Enter                   open the selected card's details (no button chosen); Esc closes them
 //   in the details          ↑ ↓ PgUp PgDn g G scroll; ← → choose one of the card's buttons and
 //                           Enter presses it; with no button chosen, Enter or f shows or hides
@@ -36,11 +37,13 @@
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)
 //   q quit, r redraw
-// Waiting cards can carry answer buttons (board.mjs add … --option): ← → choose one (the
-// suggested first; only buttons on screen, so none on a card whose job is blocked), Enter (or a
-// click on it) sends "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent
-// prompt`; o (or Other…) focuses that pane for the user to type. Presses run one at a time; a
-// card answered already asks before sending again.
+// Waiting cards can carry answer buttons (board.mjs add … --option), straight under the question
+// (plain text after a dim "Question:", never drawn like a button): ← → or a click on the
+// question choose one (the suggested first; only buttons on screen, so none on a card whose job
+// is blocked) and the key line says "Enter to send"; Enter (or a click on the button) sends
+// "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent prompt`; o (or
+// Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
+// already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // the lines that changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
 // signal and on a crash.

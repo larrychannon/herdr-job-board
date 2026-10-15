@@ -570,15 +570,17 @@ export function tokenText(view) {
 // --- drawing ----------------------------------------------------------------------------------
 
 // Only the standard 16-colour palette, so it follows the terminal's theme, dark or light; and only
-// SGR codes the renderer writes itself, never text from the board.
+// SGR codes the renderer writes itself, never text from the board. A card's question has no style
+// of its own (plain text after a dim label), so it never looks like a button; every button is
+// filled, and the chosen one is filled blue between < >.
 const STYLES = {
   title: "1",
   dim: "2",
   head: "1",
-  ask: "33",
-  button: "1",
-  suggested: "1;33",
-  selected: "1;7",
+  note: "33",
+  button: "30;47",
+  suggested: "1;30;47",
+  selected: "1;97;44",
   link: "4",
   old: "31",
   blocked: "1;31",
@@ -764,14 +766,26 @@ const asksOf = (text) =>
     .filter(Boolean)
 
 /**
- * One card, as lines of segments that already fit `width` cells: the title (bold, up to 2 lines);
- * the live status for Doing; the description wrapped over up to
- * `descMax` lines; for Waiting, what the user should do ("→ …"); the age.
+ * What a card asks of the user, as lines of segments: a dim label ("Question:" when buttons
+ * answer it, else "Needs you:"), then the text as plain body text, wrapped over at most `max`
+ * lines of `width` cells with a 2-cell hanging indent. No arrow and no colour a button uses, so
+ * it reads as text, not as something to click. Each segment carries `hit` (what a click on it
+ * means: choose the card's suggested button, never send).
  */
+function askLines(text, label, width, max, indent, urls, hit) {
+  return wrap(`${label} ${text}`, width - 2, max).map((t, i) => {
+    const head = i === 0 && (t === label || t.startsWith(`${label} `)) ? label : ""
+    const rest = t.slice(head.length)
+    const segs = [...(head ? [{ t: head, s: "dim" }] : i ? [{ t: "  " }] : []), ...(rest ? linkify(rest, "", urls) : [])]
+    return [indent, ...segs.map((seg) => ({ ...seg, ask: hit }))]
+  })
+}
+const askLabel = (buttons) => (buttons ? "Question:" : "Needs you:")
+
 /**
- * The buttons of a Waiting card: its options, then the built-in "Other…". With `selected`, the
- * selected one shows as < … > (and in reverse video), the rest as [ … ]: the same width, so the
- * card doesn't move. Each button segment carries what a click on it means.
+ * The buttons of a Waiting card: its options, then the built-in "Other…", each filled. With
+ * `selected`, the selected one shows as < … > (filled blue), the rest as [ … ]: the same width,
+ * so the card doesn't move. Each button segment carries what a click on it means.
  */
 function buttonLines(entry, width, indent, selected) {
   const options = optionsOf(entry)
@@ -803,8 +817,9 @@ function buttonLines(entry, width, indent, selected) {
 /**
  * One card, as lines of segments that already fit `width` cells: the title (bold, up to 2 lines);
  * the live status for Doing; the description wrapped over up to `descMax` lines; for Waiting,
- * what the user should do ("→ …") and its answer buttons; a note (sent, send again?, couldn't
- * send); the age. `ui`: { selected (this card has the keyboard), button (selected button), note }.
+ * what the user should do ("Question: …") with its answer buttons right under it; what was sent;
+ * a note (send again?, couldn't send); the age. `ui`: { selected (this card has the keyboard),
+ * button (selected button), note }.
  */
 function card(entry, column, width, idWidth, descMax, ui = {}) {
   const indent = { t: " ".repeat(idWidth + 1) }
@@ -829,19 +844,15 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     lines.push(line)
   }
   for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
-  if (column === "waiting" || blocked) {
-    const asks = asksOf(entry.ask)
-    for (const ask of asks.slice(0, 2)) {
-      wrap(ask, inner - 2, 2).forEach((t, i) => lines.push([indent, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
-    }
-    if (asks.length > 2) lines.push([indent, { t: `  +${asks.length - 2} more (board.mjs json)`, s: "dim" }])
-  }
-  if (shownOptions(entry, column).length) {
-    if (entry.sent?.label) {
-      const at = new Date(entry.sent.at)
-      lines.push([indent, { t: `sent: ${entry.sent.label}${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`}`, s: "dim" }])
-    }
-    lines.push(...buttonLines(entry, width, indent, ui.selected ? ui.button : -1))
+  // The buttons come straight under the question; anything else about it goes after them.
+  const buttons = shownOptions(entry, column).length > 0
+  const asks = column === "waiting" || blocked ? asksOf(entry.ask) : []
+  for (const ask of asks.slice(0, 2)) lines.push(...askLines(ask, askLabel(buttons), inner, 2, indent, urls, { key: keyOf(entry) }))
+  if (buttons) lines.push(...buttonLines(entry, width, indent, ui.selected ? ui.button : -1))
+  if (asks.length > 2) lines.push([indent, { t: `  +${asks.length - 2} more (board.mjs json)`, s: "dim" }])
+  if (buttons && entry.sent?.label) {
+    const at = new Date(entry.sent.at)
+    lines.push([indent, { t: `sent: ${entry.sent.label}${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`}`, s: "dim" }])
   }
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
   // The age, dimmed (red on a Waiting card older than a day), on the right: of the title's last
@@ -983,6 +994,8 @@ const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - pa
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
 const HINT = (mouse) => `Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: ${mouse} · q quit`
 const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mouse: ${mouse} · q`
+// The key line once a card's button is chosen (after "Enter to send").
+const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
 /** Done folded: one line, its count and ▸, for "d or a click here opens it". */
 const doneLine = (view) => [{ t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
@@ -1289,13 +1302,15 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   const options = shownOptions(entry)
   if (asks.length || options.length || blocked) {
     heading("What you need to do")
-    if (blocked && !asks.length) lines.push([ind, { t: "→ answer it in its tab (press t)", s: "ask" }])
-    for (const ask of asks) wrap(capText(ask, 2000), inner - 2, Infinity).forEach((t, i) => lines.push([ind, { t: i ? "  " : "→ ", s: "ask" }, ...linkify(t, "ask", urls)]))
+    // As on the card: the question as text, its buttons straight under it, then what was sent.
+    // Both marked as the panel's, so a click on them works over the board.
+    const hit = { key: keyOf(entry), panel: true }
+    if (blocked && !asks.length) lines.push(...askLines("answer it in its tab (press t)", askLabel(false), inner, Infinity, ind, urls, hit))
+    for (const ask of asks) lines.push(...askLines(capText(ask, 2000), askLabel(options.length > 0), inner, Infinity, ind, urls, hit))
     if (options.length) {
+      for (const l of buttonLines(entry, width, ind, button)) lines.push(l.map((seg) => (seg.button ? { ...seg, button: { ...seg.button, panel: true } } : seg)))
       const at = shortTime(entry.sent?.at, now)
       if (entry.sent?.label) lines.push([ind, { t: `sent: ${capText(entry.sent.label, 60)}${at ? ` · ${at}` : ""}`, s: "dim" }])
-      // The card's own buttons; marked as the panel's, so a click on them works over the board.
-      for (const l of buttonLines(entry, width, ind, button)) lines.push(l.map((seg) => (seg.button ? { ...seg, button: { ...seg.button, panel: true } } : seg)))
     }
     if (note) for (const t of wrap(note.t, inner, 3)) lines.push([ind, { t, s: note.s }])
   }
@@ -1407,10 +1422,11 @@ export function copyPayload(entry) {
  * ({ message, mouse }) adds to the key hint line; `frame` (a whole number) is the working bar's
  * frame on Doing cards, none for a board that stands still.
  * Returns { text, sections (per section shown: blockKeys, offset, maxOffset, page, cards),
- * regions (screen rectangles, 1-based), buttons, cardHits and moreHits (where each button, card
- * and the details' "More…" line is, for the mouse), doneToggle (the row a click folds or opens
- * Done on), bars (where each working bar on screen starts, { y, x }) and animated (how many: the
- * pane ticks only while there are some), entries (by key), scroll (as drawn) }.
+ * regions (screen rectangles, 1-based), buttons, askHits, cardHits and moreHits (where each
+ * button, question, card and the details' "More…" line is, for the mouse), doneToggle (the row a
+ * click folds or opens Done on), bars (where each working bar on screen starts, { y, x }) and
+ * animated (how many: the pane ticks only while there are some), entries (by key), scroll (as
+ * drawn) }.
  */
 export function renderBoard(view, opts = {}) {
   const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
@@ -1436,6 +1452,7 @@ export function renderBoard(view, opts = {}) {
   const sections = {}
   const regions = {}
   const buttons = []
+  const askHits = []
   const cardHits = []
   const moreHits = []
   const animated = []
@@ -1449,6 +1466,7 @@ export function renderBoard(view, opts = {}) {
       const x1 = Math.min(x + sw, left + w) - 1
       if (sw && x < left + w) {
         if (seg.button) buttons.push({ ...seg.button, y: row, x0: x, x1 })
+        if (seg.ask) askHits.push({ ...seg.ask, y: row, x0: x, x1 })
         if (seg.more) moreHits.push({ y: row, x0: x, x1 })
         if (seg.anim) animated.push({ y: row, x })
         if (seg.card) {
@@ -1664,15 +1682,27 @@ export function renderBoard(view, opts = {}) {
     if (finite) while (lines.length < height - 1) lines.push("")
     const mouse = opts.footer?.mouse || "board"
     const wide = width >= 80
-    const keys = detailInfo ? detailHint(wide, detailInfo.buttons, detailInfo.more) : textWidth(HINT(mouse)) <= width ? HINT(mouse) : HINT_NARROW(mouse)
+    // A button chosen (← →, or a click on the question): the key line starts with what Enter does.
+    const key = detailEntry ? scroll.detail.key : scroll.selected === "waiting" ? scroll.card : null
+    const count = key && scroll.card === key && entries[key] ? shownOptions(entries[key]).length : 0
+    const chosen = count ? (scroll.button ?? -1) : -1
+    const send = chosen < 0 || chosen > count ? "" : chosen < count ? (wide ? "Enter to send" : "Enter: send") : wide ? "Enter to answer in the chat" : "Enter: chat"
+    const keys = detailInfo
+      ? detailHint(wide, detailInfo.buttons, detailInfo.more)
+      : send
+        ? CHOSEN_HINT(wide)
+        : textWidth(HINT(mouse)) <= width
+          ? HINT(mouse)
+          : HINT_NARROW(mouse)
     const message = opts.footer?.message
-    lines.push(paint([...(message ? [{ t: message, s: "ask" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
+    lines.push(paint([...(message ? [{ t: message, s: "note" }, { t: " · ", s: "dim" }] : []), ...(send ? [{ t: send, s: "head" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
   return {
     text: lines.join("\n"),
     sections,
     regions,
     buttons: buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y))),
+    askHits: askHits.filter((a) => a.y <= lines.length && (a.panel || !covered(a.y))),
     cardHits: cardHits.filter((c) => c.y <= lines.length && !covered(c.y)),
     moreHits: moreHits.filter((m) => m.y <= lines.length),
     doneToggle: doneToggle && doneToggle.y <= lines.length && !covered(doneToggle.y) ? doneToggle : null,
@@ -1814,12 +1844,13 @@ const DOUBLE_CLICK_MS = 400
  * - Enter opens the selected card's details (Esc closes them), or, once ← → chose one of its
  *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
  *   mouse capture. A click selects a card, a double click opens it, a click on a button
- *   presses it.
+ *   presses it. A click on a card's question chooses its suggested button (or the first), as
+ *   the first ← → does, so Enter sends it: it never sends by itself.
  * - In the details: ↑ ↓ PgUp PgDn g G and the wheel scroll them; ← → choose one of the card's
  *   buttons and Enter presses it, as on the card; with no button chosen, Enter (or f, or a
  *   click on the line) shows or hides "More…", and when there is no more, Enter closes them.
- *   A click on the panel's buttons presses them; a click elsewhere on the panel does nothing,
- *   and above it closes the panel.
+ *   A click on the panel's buttons presses them, on its question chooses the suggested button
+ *   (never sends); a click elsewhere on the panel does nothing, and above it closes the panel.
  * Events may carry `at` (ms), used for double clicks.
  */
 export function handleInput(scroll, event, drawn) {
@@ -1907,10 +1938,12 @@ export function handleInput(scroll, event, drawn) {
     if (drawn.regions.detail && event.y >= drawn.regions.detail.top) {
       const within = (h) => h.y === event.y && event.x >= h.x0 && event.x <= h.x1
       const hit = (drawn.buttons || []).find((b) => b.panel && within(b))
+      const asked = (drawn.askHits || []).find((a) => a.panel && within(a))
       if (hit && shownCard && hit.key === detail.key) {
         choose(hit.index)
         action = press(shownCard, hit.index)
-      } else if ((drawn.moreHits || []).some(within)) toggleMore()
+      } else if (asked && shownCard && asked.key === detail.key) choose(shownCard.suggested || 0)
+      else if ((drawn.moreHits || []).some(within)) toggleMore()
       return { scroll: next, action }
     }
     delete next.detail
@@ -1923,6 +1956,7 @@ export function handleInput(scroll, event, drawn) {
   } else if (event.type === "click") {
     const hit = (drawn.buttons || []).find((b) => b.y === event.y && event.x >= b.x0 && event.x <= b.x1)
     const onCard = (drawn.cardHits || []).find((c) => c.y === event.y && event.x >= c.x0 && event.x <= c.x1)
+    const asked = (drawn.askHits || []).find((a) => !a.panel && a.y === event.y && event.x >= a.x0 && event.x <= a.x1)
     const section = sectionAt(drawn.regions, event.x, event.y)
     if (hit) {
       selectSection("waiting")
@@ -1938,6 +1972,11 @@ export function handleInput(scroll, event, drawn) {
       if (double) {
         next.detail = { key: onCard.key, offset: 0 }
         next.button = -1
+      } else if (asked && asked.key === onCard.key) {
+        // The question: choose the suggested button (or the first) for Enter, never send. Only
+        // buttons the card shows count, so a card without any (or a blocked job's) gets none.
+        const c = (drawn.sections[section]?.cards || []).find((x) => x.key === onCard.key)
+        if (c?.buttons) next.button = c.suggested || 0
       }
     } else if (section) selectSection(section)
     next.lastClick = onCard && !hit ? { key: onCard.key, at: event.at ?? 0 } : null
@@ -2007,7 +2046,7 @@ export function sendDecision(item, label, confirm, nowMs) {
   return {
     send: false,
     confirm: { id: item.id, label, at: nowMs },
-    note: { t: `send again? "${item.sent.label}" was sent already; press ${label} again to send it`, s: "ask" },
+    note: { t: `send again? "${item.sent.label}" was sent already; press ${label} again to send it`, s: "note" },
   }
 }
 

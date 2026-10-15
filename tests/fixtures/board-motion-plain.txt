@@ -3,9 +3,10 @@ Job board · my-app                                                             
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
-  → Reply with a name                                          Invoices round per line. Preview:
+  Needs you: Reply with a name                                 Invoices round per line. Preview:
                                                                http://localhost:3000/invoices
-                                                               → Try http://localhost:3000/invoices, then say merge
+                                                               Question: Try http://localhost:3000/invoices, then say
+                                                                 merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
 DOING (4)                                                    TO DO (1)
@@ -36,7 +37,6 @@ DOING (4)                                                    TO DO (1)
 
 
 
-
 DONE · 1 today ▸
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== Done open (d) · frame 3 · 120 columns =====
@@ -44,9 +44,10 @@ Job board · my-app                                                             
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
-  → Reply with a name                                          Invoices round per line. Preview:
+  Needs you: Reply with a name                                 Invoices round per line. Preview:
                                                                http://localhost:3000/invoices
-                                                               → Try http://localhost:3000/invoices, then say merge
+                                                               Question: Try http://localhost:3000/invoices, then say
+                                                                 merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
 DOING (4)                                TO DO (1)                                DONE (1) ▾
@@ -78,18 +79,17 @@ DOING (4)                                TO DO (1)                              
 
 
 
-
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== Done folded · frame 0 · 88 columns =====
 Job board · my-app                                                                 10:30
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                                                       2 days
-  → Reply with a name
+  Needs you: Reply with a name
 
 2 Billing fix (PR #12): review                                                    30 min
   Invoices round per line. Preview: http://localhost:3000/invoices
-  → Try http://localhost:3000/invoices, then say merge
+  Question: Try http://localhost:3000/invoices, then say merge
   [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
 DOING (4)                                    TO DO (1)
@@ -126,11 +126,11 @@ Job board · my-app                                                             
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                                                       2 days
-  → Reply with a name
+  Needs you: Reply with a name
 
 2 Billing fix (PR #12): review                                                    30 min
   Invoices round per line. Preview: http://localhost:3000/invoices
-  → Try http://localhost:3000/invoices, then say merge
+  Question: Try http://localhost:3000/invoices, then say merge
   [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
 DOING (4)                     TO DO (1)                     DONE (1) ▾

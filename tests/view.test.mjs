@@ -8,7 +8,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { animates, animationTimer, asText, barTick, buildView, copyPayload, detailLines, handleInput, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES } from "../board.mjs"
+import { animates, animationTimer, asText, barTick, buildView, copyPayload, detailLines, handleInput, markSent, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -97,8 +97,15 @@ test("colours: the 16-colour palette, by section, status, ask and age; off witho
     has("2;32", "DONE · 1 today ▸") // folded
     has("32", "working")
     has("90", "no agent")
-    has("33", "→ ")
-    has("1;33", "[ Merge ✓ ]") // the suggested button
+    // The question is text: a dim label, then the words with no style of their own; every
+    // button is filled (the suggested one bold), so only the buttons look like something to click.
+    has("2", "Needs you:")
+    has("2", "Question:")
+    assert.ok(on.includes(`Question:${ESC}[0m Try `), "the question's words carry no colour")
+    assert.doesNotMatch(on, /→/, "no arrow")
+    has("1;30;47", "[ Merge ✓ ]") // the suggested button
+    has("30;47", "[ Not yet ]")
+    has("30;47", "[ Other… ]")
     has("31", "2 days") // a Waiting card older than a day
     // NO_COLOR in the pane's env: interactive colour is off (the --once default is off anyway).
     const piped = spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "40"], { cwd: t.base, env: { ...t.env, NO_COLOR: "1" }, encoding: "utf8" })
@@ -218,7 +225,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     // they show as the card's buttons.
     r = t.pane([], "\x1b[B\r")
     assert.match(r.stdout, /── card 2/)
-    assert.match(r.stdout, /What you need to do\n {2}→ Try http:\/\/localhost:3000\/invoices, then say merge\n {2}\[ Merge ✓ \] {2}\[ Not yet \] {2}\[ Other… \]/)
+    assert.match(r.stdout, /What you need to do\n {2}Question: Try http:\/\/localhost:3000\/invoices, then say merge\n {2}\[ Merge ✓ \] {2}\[ Not yet \] {2}\[ Other… \]/)
     assert.match(r.stdout.trimEnd().split("\n").at(-1), /←→ choose/)
   } finally {
     t.done()
@@ -446,7 +453,7 @@ test("a Waiting card whose job is blocked shows no buttons, so none can be chose
     }
     // In the panel: what to do instead, and no ←→ on the key line.
     const panel = t.pane(["--width", "120", "--height", "60"], "\r").stdout
-    assert.match(panel, /What you need to do\n {2}→ Open the canvas, then OK all suggestions or comment\n\n/, "the ask, and no buttons under it")
+    assert.match(panel, /What you need to do\n {2}Needs you: Open the canvas, then OK all suggestions or comment\n\n/, "the ask, and no buttons under it")
     assert.match(panel, /Job checkout-mockup is blocked: it needs you in its tab/)
     assert.doesNotMatch(panel.trimEnd().split("\n").at(-1), /←→/)
     // End to end through the pane and the fake Herdr: → Enter and o, on the board and in the panel.
@@ -1082,6 +1089,147 @@ test("copy: a card whose job is blocked copies without its hidden buttons", () =
     assert.equal(copyPayload({ ...card, live: "" }).text, "#1 Pick a name\n\n→ Choose one\n\nbuttons: Alpha · Beta", "buttons on screen are copied")
     assert.equal(copyPayload({ ...card, live: "blocked" }).text, "#1 Pick a name\n\n→ Choose one", "hidden ones never")
     assert.equal(copyPayload({ ...card, column: "doing", live: "" }).text, "#1 Pick a name\n\n→ Choose one", "nor on a card out of Waiting")
+  } finally {
+    t.done()
+  }
+})
+
+// --- the question reads as text, the buttons as buttons (0.3.4) -------------------------------
+
+/** A board like the one that misled the user: a long question over 3 buttons and Other…, sent once. */
+function seedQuestion(t) {
+  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode).", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16")
+  markSent(t.file, 1, "Approve, include #16", new Date("2026-10-13T10:08:00Z"))
+  t.board("2026-10-13T10:00:00Z", "add", "waiting", "Pick a name", "--ask", "Which name?", "--option", "Alpha", "--option", "Beta")
+  t.board("2026-10-13T10:10:00Z", "add", "waiting", "Docs move (PR #14): merge", "--ask", "Say merge (after #12)")
+}
+// A click on the first line that has `text` (after the line that has `after`), from a plain screen.
+const clickOn = (screen, text, after = "") => {
+  const lines = screen.split("\n")
+  const from = after ? lines.findIndex((l) => l.includes(after)) : 0
+  const y = lines.findIndex((l, i) => i > from - (after ? 0 : 1) && l.includes(text))
+  assert.ok(y >= 0, `"${text}" on screen`)
+  return `\x1b[<0;${[...lines[y].slice(0, lines[y].indexOf(text))].length + 3};${y + 1}M`
+}
+const BUTTON_CODES = ["30;47", "1;30;47", "1;97;44"]
+
+test("question snapshots: the ask as text with its buttons right under it, then what was sent; nothing chosen, → chosen, a click on the question, in the details; 120 and 88 columns; colour on and off", () => {
+  const t = setup({ agents, tabs })
+  try {
+    seedQuestion(t)
+    for (const [name, flags] of [["question-plain.txt", []], ["question-color.txt", ["--color"]]]) {
+      let all = ""
+      for (const width of [120, 88]) {
+        const size = ["--width", String(width), "--height", "40"]
+        const plain = t.pane(size).stdout
+        for (const [label, keys] of [
+          ["nothing chosen", ""],
+          ["→ chooses the suggested button", "\x1b[C"],
+          ["a click on the question", clickOn(plain, "Question: Approve")],
+          ["details, a click on the question", "\r" + clickOn(t.pane(size, "\r").stdout, "Question: Approve", "── card 1")],
+        ]) {
+          const r = t.pane([...size, ...flags], keys)
+          assert.equal(r.status, 0, r.stderr)
+          all += `===== ${label} · ${width} columns =====\n${r.stdout}`
+        }
+      }
+      const snap = join(FIXTURES, name)
+      if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, all)
+      assert.equal(all, readFileSync(snap, "utf8"), `snapshot ${name} (UPDATE_SNAPSHOTS=1 to rewrite)`)
+    }
+    // The card reads top to bottom: the question, its buttons right under it, then what was sent.
+    for (const width of [120, 88]) {
+      const screen = t.pane(["--width", String(width), "--height", "40"]).stdout
+      assert.match(screen, /Question: Approve the whole release[^\n]*\n(?: {4}[^\n]*\n)? {2}\[ Approve, include #16 ✓ \] {2}\[ Approve, #16 later \]/, `${width}: buttons straight under the question`)
+      assert.match(screen, /\[ Other… \][^\n]*\n {2}sent: Approve, include #16 · 10:08/, `${width}: sent after the buttons`)
+      assert.match(screen, /Needs you: Say merge \(after #12\)/, `${width}: a question with no buttons`)
+      assert.doesNotMatch(screen, /→ /, `${width}: no arrow`)
+    }
+    // No button in the question's style, and the question in none of the buttons': with colour,
+    // the label is dim, the words carry no style, and every button (chosen or not) is filled.
+    const on = t.pane(["--width", "120", "--height", "40", "--color"], "\x1b[C").stdout
+    assert.ok(on.includes(`${ESC}[2mQuestion:${ESC}[0m Approve the whole release`), "dim label, plain words")
+    const buttonCodes = [...on.matchAll(/\x1b\[([0-9;]*)m[[<] /g)].map((m) => m[1])
+    assert.ok(buttonCodes.length >= 7, "every button found")
+    for (const code of buttonCodes) assert.ok(BUTTON_CODES.includes(code), `button drawn in ${code}`)
+    assert.ok(buttonCodes.includes("1;97;44"), "the chosen one, filled blue")
+    const askCodes = [...on.matchAll(/\x1b\[([0-9;]*)m(?:Question:|Needs you:)/g)].map((m) => m[1])
+    assert.deepEqual([...new Set(askCodes)], ["2"])
+    assert.ok(!BUTTON_CODES.includes("2"))
+  } finally {
+    t.done()
+  }
+})
+
+test("a click on the question chooses the suggested button (or the first) and says Enter to send; it never sends, on the board or in the details", () => {
+  const t = setup({ agents, tabs })
+  try {
+    seedQuestion(t)
+    const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
+    for (const width of [120, 88]) {
+      const draw = (scroll) => renderBoard(view, { width, height: 60, interactive: true, now: new Date(NOW), scroll })
+      const lastLine = (d) => d.text.split("\n").at(-1)
+      const click = (d, hit, at = 0) => handleInput(d.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at }, d)
+      let drawn = draw({ selected: "todo", anchors: {} })
+      assert.doesNotMatch(lastLine(drawn), /Enter to send/, `${width}: no hint before a button is chosen`)
+      // Questions and buttons never share a cell: a click is one or the other.
+      for (const a of drawn.askHits) assert.ok(!drawn.buttons.some((b) => b.y === a.y && b.x0 <= a.x1 && a.x0 <= b.x1), `${width}: a question cell is also a button's`)
+      // Card 1: the suggested button is the first.
+      let r = click(drawn, drawn.askHits.find((a) => a.key === "#1"))
+      assert.equal(r.action, null, `${width}: nothing sent`)
+      assert.deepEqual([r.scroll.selected, r.scroll.card, r.scroll.button], ["waiting", "#1", 0])
+      drawn = draw(r.scroll)
+      assert.match(drawn.text, /< Approve, include #16 ✓ >/)
+      assert.match(lastLine(drawn), /^Enter to send · ←→ choose · Esc cancel/, `${width}: the hint`)
+      // Clicking it again changes nothing and still sends nothing.
+      r = click(drawn, drawn.askHits.find((a) => a.key === "#1"), 5000)
+      assert.deepEqual([r.action, r.scroll.button], [null, 0])
+      // Enter then sends the chosen one; Esc un-chooses it instead.
+      assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" })
+      assert.equal(handleInput(drawn.scroll, { type: "key", name: "escape" }, drawn).scroll.button, -1)
+      // Card 2 has no --suggest: its first button.
+      r = click(drawn, drawn.askHits.find((a) => a.key === "#2"))
+      assert.deepEqual([r.action, r.scroll.card, r.scroll.button], [null, "#2", 0])
+      // Card 3 has no buttons: the click only selects it.
+      r = click(draw(r.scroll), drawn.askHits.find((a) => a.key === "#3"))
+      assert.deepEqual([r.action, r.scroll.card, r.scroll.button], [null, "#3", -1])
+      assert.doesNotMatch(lastLine(draw(r.scroll)), /Enter to send/)
+      // A double click on the question opens the details, with no button chosen.
+      drawn = draw({ selected: "todo", anchors: {} })
+      const q = drawn.askHits.find((a) => a.key === "#1")
+      r = click(drawn, q, 1000)
+      drawn = draw(r.scroll)
+      r = click(drawn, drawn.askHits.find((a) => a.key === "#1"), 1100)
+      assert.deepEqual([r.action, r.scroll.detail?.key, r.scroll.button], [null, "#1", -1])
+      // In the details: the same, on the panel's question.
+      drawn = draw(r.scroll)
+      assert.doesNotMatch(lastLine(drawn), /Enter to send/)
+      const inPanel = drawn.askHits.find((a) => a.panel && a.key === "#1")
+      assert.ok(inPanel && inPanel.y >= drawn.regions.detail.top, `${width}: the panel's question can be clicked`)
+      assert.ok(!drawn.askHits.some((a) => !a.panel && a.y >= drawn.regions.detail.top), `${width}: the board's under the panel can't`)
+      r = click(drawn, inPanel)
+      assert.deepEqual([r.action, r.scroll.detail?.key, r.scroll.button], [null, "#1", 0], `${width}: chosen in the panel, not sent`)
+      drawn = draw(r.scroll)
+      assert.match(drawn.text, /── card 1[^\n]*\n(?:.*\n)*? {2}< Approve, include #16 ✓ >/)
+      assert.match(lastLine(drawn), /^Enter to send · Esc close/)
+      assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" })
+      // Other… chosen: Enter opens the chat, and the hint says so.
+      drawn = draw({ ...drawn.scroll, button: 3 })
+      assert.match(lastLine(drawn), /^Enter to answer in the chat/)
+    }
+    // End to end through the pane and the fake Herdr: clicks on the question send nothing.
+    const size = ["--width", "120", "--height", "40"]
+    const click = clickOn(t.pane(size).stdout, "Question: Approve")
+    const r = t.pane(size, click + click.replace(/M$/, "m"))
+    assert.match(r.stdout, /< Approve, include #16 ✓ >/)
+    assert.match(r.stdout.trimEnd().split("\n").at(-1), /^Enter to send/)
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus")), [], "no prompt, no focus")
+    // Enter after it: card 1 was answered already, so it asks first, as any press does.
+    assert.match(t.pane(size, `${click}\r`).stdout.replace(/\n {2}/g, " "), /send again\? "Approve, include #16" was sent already/)
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [])
+    // Card 2 wasn't: Enter sends exactly its first button's label.
+    t.pane(size, `${clickOn(t.pane(size).stdout, "Question: Which name?")}\r`)
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [["agent", "prompt", "w9:p1", "Board card 2 (Pick a name): Alpha"]])
   } finally {
     t.done()
   }
