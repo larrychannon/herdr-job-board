@@ -43,6 +43,11 @@ const flag = (name) => {
 }
 const pane = (id) => state.panes.find((p) => p.pane_id === id)
 
+if (args[0] === "--version") {
+  save()
+  process.stdout.write(`herdr ${state.version || "0.9.3"}\n`)
+  process.exit(0)
+}
 const [group, command, target] = args
 const key = `${group} ${command}`
 // FAKE_HERDR_DELAY_MS slows `agent prompt` down, to test presses that overlap a send.
@@ -78,6 +83,13 @@ if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
   ok({ type: "ok" })
 }
 if (key === "pane send-keys") ok({ type: "ok" })
+if (key === "workspace list") ok({ workspaces: [...new Set(state.panes.map((p) => p.workspace_id))].map((workspace_id) => ({ workspace_id })), type: "workspace_list" })
+if (key === "plugin list") ok({ plugins: state.plugins || [], type: "plugin_list" })
+if (key === "session list") {
+  save()
+  process.stdout.write(JSON.stringify({ sessions: state.sessions || [] }))
+  process.exit(0)
+}
 if (key === "pane send-text") {
   // The board quits on "q".
   if (args[3] === "q" && pane(target)?.running?.includes("board-pane.mjs")) delete pane(target).running

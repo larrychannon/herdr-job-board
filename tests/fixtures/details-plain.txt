@@ -163,26 +163,26 @@ CSV export on the Orders page (PR #48): try it, then merge
 ── end of card 4 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
 ===== card 1 · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 2 need you                                                    10:30
 
-▸ WAITING ON YOU (2)
-1▸Checkout redesign mockup: approve                                           7 h 30 min
-  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-  each with a suggested answer.
-  Question: Open the canvas, then OK all suggestions or comment
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
+▸ 1 ! Checkout redesign mockup: approve                                       7 h 30 min
+      12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
+      each with a suggested answer.
+      Question: Open the canvas, then OK all suggestions or comment
+      [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+  2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
-  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
-  sell gift cards with coupons until fixed.
-  Question: Pick one
-  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+DOING (1) ──────────────────────────────────────────────────────────────────────────────
+  3   Order history UI: build                                            working  12 min
 
-DOING (1)                                    TO DO (3)
-3 Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
-  working                                      From the roadmap.
-  The order list and filters from the
+TO DO (3) ──────────────────────────────────────────────────────────────────────────────
+  5   TODO-MARK Export to PDF                                                 3 h 30 min
+  6   TODO-MARK Nightly backup check                                          3 h 29 min
+  7   TODO-MARK Rotate the API keys                                           3 h 28 min
+
+DONE · 7 today ▸
+
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -204,26 +204,26 @@ Checkout redesign mockup: approve
 ── ↓ 13 more lines ─────────────────────────────────────────────────────────────────────
 Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
 ===== card 2 · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 2 need you                                                    10:30
 
-▸ WAITING ON YOU (2)
-1 Checkout redesign mockup: approve                                           7 h 30 min
-  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-  each with a suggested answer.
-  Question: Open the canvas, then OK all suggestions or comment
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
+  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+▸ 2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
+      Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+      0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
+      sell gift cards with coupons until fixed.
+      Question: Pick one
+      [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-2▸Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
-  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
-  sell gift cards with coupons until fixed.
-  Question: Pick one
-  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+DOING (1) ──────────────────────────────────────────────────────────────────────────────
+  3   Order history UI: build                                            working  12 min
 
-DOING (1)                                    TO DO (3)
-3 Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
-  working                                      From the roadmap.
-  The order list and filters from the
+TO DO (3) ──────────────────────────────────────────────────────────────────────────────
+  5   TODO-MARK Export to PDF                                                 3 h 30 min
+  6   TODO-MARK Nightly backup check                                          3 h 29 min
+  7   TODO-MARK Rotate the API keys                                           3 h 28 min
+
+DONE · 7 today ▸
 ── card 2 ──────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -245,26 +245,26 @@ Coupons AND gift cards discount an order twice: fix?
 ── end of card 2 ───────────────────────────────────────────────────────────────────────
 Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 ===== card 3 · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 2 need you                                                    10:30
 
-WAITING ON YOU (2)
-1 Checkout redesign mockup: approve                                           7 h 30 min
-  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-  each with a suggested answer.
-  Question: Open the canvas, then OK all suggestions or comment
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+WAITING ON YOU (2) ─────────────────────────────────────────────────────────────────────
+  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+  2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
-  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
-  sell gift cards with coupons until fixed.
-  Question: Pick one
-  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+▸ DOING (1) ────────────────────────────────────────────────────────────────────────────
+▸ 3   Order history UI: build                                            working  12 min
+      The order list and filters from the approved mockup.
 
-▸ DOING (1)                                  TO DO (3)
-3▸Order history UI: build           12 min   5 TODO-MARK Export to PDF       3 h 30 min
-  working                                      From the roadmap.
-  The order list and filters from the
+TO DO (3) ──────────────────────────────────────────────────────────────────────────────
+  5   TODO-MARK Export to PDF                                                 3 h 30 min
+  6   TODO-MARK Nightly backup check                                          3 h 29 min
+  7   TODO-MARK Rotate the API keys                                           3 h 28 min
+
+DONE · 7 today ▸
+
+
+
+
 ── card 3 ──────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -286,26 +286,26 @@ Order history UI: build
 ── end of card 3 ───────────────────────────────────────────────────────────────────────
 Esc close · ↑↓ scroll · c copy · t go to tab · q quit
 ===== card 4 · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 2 need you                                                    10:30
 
-WAITING ON YOU (2)
-1 Checkout redesign mockup: approve                                           7 h 30 min
-  12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-  each with a suggested answer.
-  Question: Open the canvas, then OK all suggestions or comment
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
+WAITING ON YOU (2) ─────────────────────────────────────────────────────────────────────
+  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+  2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-2 Coupons AND gift cards discount an order twice: fix?                        7 h 47 min
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
-  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
-  sell gift cards with coupons until fixed.
-  Question: Pick one
-  [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
+DOING (1) ──────────────────────────────────────────────────────────────────────────────
+  3   Order history UI: build                                            working  12 min
 
-DOING (1)                     TO DO (3)                     ▸ DONE (7) ▾
-3 Order history UI: build     5 TODO-MARK Export to PDF      4▸CSV export on the Orders
-  working                       From the roadmap.              page (PR #48): try it, …
-  The order list and            3 h 30 min                     09:10
+TO DO (3) ──────────────────────────────────────────────────────────────────────────────
+  5   TODO-MARK Export to PDF                                                 3 h 30 min
+  6   TODO-MARK Nightly backup check                                          3 h 29 min
+  7   TODO-MARK Rotate the API keys                                           3 h 28 min
+
+▸ DONE (7) ▾ ───────────────────────────────────────────────────────────────────────────
+▸ 4 ✓ CSV export on the Orders page (PR #48): try it, then merge                   09:10
+ 13 ✓ DONE-MARK shipped thing 6                                                    06:40
+ 12 ✓ DONE-MARK shipped thing 5                                                    05:40
+ 11 ✓ DONE-MARK shipped thing 4                                                    04:40
+ 10 ✓ DONE-MARK shipped thing 3                                                    03:40
 ── card 4 ──────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
   Done at 09:10

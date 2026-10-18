@@ -1,40 +1,40 @@
-Job board · my-app                                                                 10:30
+Job board · my-app · 5 need you                                                    10:30
 
-▸ WAITING ON YOU (5)
-1▸Login page redesign: approve                                                2 h 20 min
-  New sign-in screen with SSO buttons and a clearer error message. 3 small choices to
-  confirm.
-  Needs you: Open the mockup, reply ok or change
+▸ WAITING ON YOU (5) ───────────────────────────────────────────────────────────────────
+▸ 1 ! Login page redesign: approve                                            2 h 20 min
+      New sign-in screen with SSO buttons and a clearer error message. 3 small choices
+      to confirm.
+      Needs you: Open the mockup, reply ok or change
+  2 ! Search filters mockup: approve                                          1 h 30 min
+  3 ! Billing fix (PR #12): review                                                50 min
+  4 ! Docs move (PR #14): merge                                                   45 min
+  5 ! Deploy v1.4: go                                                             30 min
 
-2 Search filters mockup: approve                                              1 h 30 min
-  Filter panel for the search page with saved filters. 4 choices, e.g. whether saved
-  filters are per user.
-  Needs you: Reply ok or change
+DOING (2) ──────────────────────────────────────────────────────────────────────────────
+  6   Search filters: build                                              working  25 min
+  7   Docs site: fix broken links                                         working  2 min
 
-3 Billing fix (PR #12): review                                                    50 min
-  Invoices now round each line, not the total. Fixes the one-cent differences customers
-  reported.
-  Needs you: Try the invoice page on :3000, then say merge
-↓ 2 more
-
-DOING (2)                                    TO DO (4)
-6 Search filters: build             25 min    8 Export to CSV                     1 min
-  working                                       Let people download any table as CSV.
-  The filter panel from the approved            Three customers asked for it.
-  mockup, with saved filters per user.
-                                              9 Dark mode                         1 min
-7 Docs site: fix broken links        2 min      Follow the system theme. The colour
-  working                                       tokens are already in place.
-  Check every link on the new docs site
-  and fix the ones that 404.                 10 Pick next: onboarding or settings
-                                                From the roadmap: an onboarding tour or
-                                                a new settings page. You pick.    1 min
-
-                                             11 Upgrade the test runner           1 min
-                                                The current version reaches end of life
-                                                next month.
-
-
+TO DO (4) ──────────────────────────────────────────────────────────────────────────────
+  8   Export to CSV                                                                1 min
+  9   Dark mode                                                                    1 min
+ 10   Pick next: onboarding or settings                                            1 min
+ 11   Upgrade the test runner                                                      1 min
 
 DONE · 1 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit

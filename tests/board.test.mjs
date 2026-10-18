@@ -41,7 +41,7 @@ function repo(base, name = "app") {
 function envFor({ herdr = null, now = "2026-10-13T10:30:00Z", extra = {} } = {}) {
   const env = { ...process.env, TZ: "UTC", JOB_BOARD_NOW: now, NO_COLOR: "1", ...extra }
   for (const key of ["JOB_BOARD_FILE", "HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT"]) if (!(key in extra)) delete env[key]
-  if (herdr) Object.assign(env, { HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1" })
+  if (herdr) Object.assign(env, { HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1" }, extra)
   else Object.assign(env, { HERDR_ENV: "0", HERDR_WORKSPACE_ID: "", HERDR_PANE_ID: "" })
   return env
 }
@@ -159,7 +159,7 @@ function seedDemo(dir) {
 
 const agent = (name, status, workspace = "w9") => ({ name, agent_status: status, workspace_id: workspace, pane_id: `${workspace}:p${name.length}` })
 
-test("board-pane: Waiting on top, Doing | To do below, Done folded to one line; stacked at 60 (snapshots)", () => {
+test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox at 88, compact at 60; Done folded to one line (snapshots)", () => {
   const { base, done } = temp()
   try {
     const dir = repo(base, "my-app")
@@ -171,7 +171,7 @@ test("board-pane: Waiting on top, Doing | To do below, Done folded to one line; 
       const lines = r.stdout.replace(/\n$/, "").split("\n")
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
       assert.equal(lines.length, height, `exactly ${height} lines`)
-      assert.equal(lines.at(-1), width >= 82 ? "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit" : "Tab · ↑↓ · Enter · c copy · d done · mouse: board · q", "the key hint is the last line")
+      assert.equal(lines.at(-1), width >= 82 ? "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit" : "Tab · ↑↓ · Space peek · Enter · c copy · d done · q", "the key hint is the last line")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
@@ -180,38 +180,58 @@ test("board-pane: Waiting on top, Doing | To do below, Done folded to one line; 
       const snap = join(FIXTURES, `board-${width}x${height}.txt`)
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, text)
       assert.equal(text, readFileSync(snap, "utf8"), `snapshot ${snap} (UPDATE_SNAPSHOTS=1 to rewrite)`)
-      // Done is folded: one line at the bottom of the lower area, just above the key hint.
-      assert.equal(text.split("\n").at(-3), "DONE · 1 today ▸")
+      // Done is folded to one line: at the bottom of the lower area, just above the key hint, in
+      // the wide layout; right after the last section in the inbox and compact.
+      if (width >= 120) assert.equal(text.split("\n").at(-3), "DONE · 1 today ▸")
+      else assert.match(text, /\n 11   Upgrade the test runner +1 min\n(?:\n)?DONE · 1 today ▸\n/)
       assert.doesNotMatch(text, /Nightly backup check|DONE \(/)
       // d opens it: today's cards, with the time they finished.
       const open = frame(width, height, dir, "d")
-      assert.match(open, /DONE \(1\) ▾[\s\S]*12 Nightly backup check/, "Done: today's cards")
+      assert.match(open, /DONE \(1\) ▾[\s\S]*12 (?:✓ )?Nightly backup check/, "Done: today's cards")
       assert.match(open, /\b07:30\b/, "with the time they finished")
       assert.doesNotMatch(open, /DONE · /)
     }
     assert.match(frame(120, 40), /\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/, "answer buttons")
-    // Waiting doesn't fit at 88 x 40: it scrolls, says how many cards are below, and leaves the
+    // Waiting doesn't fit at 120 x 25: it scrolls, says how many cards are below, and leaves the
     // bottom half for the other sections.
-    const narrow = frame(88, 40).split("\n")
-    const more = narrow.findIndex((l) => /^↓ \d+ more$/.test(l))
-    const bottom = narrow.findIndex((l) => l.startsWith("DOING (2)"))
+    const wide = frame(120, 25).split("\n")
+    const more = wide.findIndex((l) => /^↓ \d+ more$/.test(l))
+    const bottom = wide.findIndex((l) => l.startsWith("DOING (2)"))
     assert.ok(more > 0 && more < bottom, "a ↓ marker at the end of Waiting")
-    assert.ok(bottom <= 22, `Waiting takes about half the height (Doing starts on line ${bottom + 1})`)
-    // G scrolls Waiting to its end: the last card, its buttons (the suggested one selected), and
-    // how many cards are above.
-    const end = frame(88, 40, dir, "G")
-    assert.match(end, /^↑ 2 above$/m)
+    assert.ok(bottom <= 14, `Waiting takes about half the height (Doing starts on line ${bottom + 1})`)
+    // G scrolls Waiting to its end: the last card, its buttons, and how many cards are above.
+    const end = frame(120, 25, dir, "G")
+    assert.match(end, /^↑ 4 above$/m)
     assert.match(end, /5▸Deploy v1\.4: go[\s\S]*\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/)
     assert.doesNotMatch(end.split("DOING")[0], /↓ \d+ more/)
+
+    // The inbox at 88 x 40: every card on one row, all of them in view; the selected one open
+    // under its row (description, question, buttons), with the headline count on top.
+    const inbox = frame(88, 40)
+    assert.match(inbox, /^Job board · my-app · 5 need you +10:30$/m)
+    assert.match(inbox, /^▸ 1 ! Login page redesign: approve +2 h 20 min\n {6}New sign-in screen/m)
+    for (const id of [2, 3, 4, 5]) assert.match(inbox, new RegExp(`^ {2}${id} ! .+ (min|h)$`, "m"), `card ${id} on one row`)
+    assert.doesNotMatch(inbox, /↓ \d+ more|↑ \d+ above/, "nothing out of view")
+    // G: the last card is selected and open, with its buttons.
+    assert.match(frame(88, 40, dir, "G"), /^▸ 5 ! Deploy v1\.4: go +30 min\n(?: {6}.*\n)* {6}\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/m)
 
     // With nothing waiting, Waiting is one line and the rest goes to the bottom.
     const calm = repo(base, "calm")
     ok(calm, ["add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV."])
-    const quiet = frame(88, 20, calm).split("\n")
+    const quiet = frame(120, 30, calm).split("\n")
     assert.equal(quiet[2], "▸ WAITING ON YOU (0)  Nothing needs you")
     assert.equal(quiet[3], "")
-    assert.match(quiet[4], /^DOING \(0\) +TO DO \(1\)$/)
+    // Doing with nothing in it folds to its header, and To do has the width.
+    assert.equal(quiet[4], "DOING (0) · nothing running")
+    assert.equal(quiet[5], "")
+    assert.match(quiet[6], /^TO DO \(1\)$/)
     assert.equal(quiet.at(-3), "DONE · 0 today ▸", "at the bottom, above the key hint")
+    // The inbox folds every empty section to its header, with a rule.
+    const calmInbox = frame(88, 30, calm).split("\n")
+    assert.deepEqual(
+      calmInbox.slice(2, 10).map((l) => l.replace(/ ─+$/, " ─")),
+      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "DOING (0) · nothing running ─", "", "TO DO (1) ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
+    )
   } finally {
     done()
   }
@@ -230,11 +250,11 @@ test("board ls: everything, with Done open: today's finished cards and their tim
     ok(dir, ["add", "todo", "Export to CSV"])
     for (const width of ["120", "88", "60"]) {
       const text = ok(dir, ["ls", "--width", width])
-      assert.match(text, /DONE \(2\)$/m, `${width}: Done's header, open (no ▾: there's nothing to click)`)
+      assert.match(text, /DONE \(2\)(?: ─+)?$/m, `${width}: Done's header, open (no ▾: there's nothing to click)`)
       assert.doesNotMatch(text, /DONE · /, `${width}: not folded`)
       // Newest first, each with the time it finished (beside it, or under it in a narrow column).
-      const newest = text.search(/\b3 Release notes: draft\b/)
-      assert.ok(newest >= 0 && newest < text.search(/\b2 Nightly backup check\b/), `${width}: today's cards, newest first`)
+      const newest = text.search(/\b3 (?:✓ )?Release notes: draft\b/)
+      assert.ok(newest >= 0 && newest < text.search(/\b2 (?:✓ )?Nightly backup check\b/), `${width}: today's cards, newest first`)
       assert.match(text, /\b09:15\b/)
       assert.match(text, /\b07:30\b/)
       assert.doesNotMatch(text, /Yesterday's thing/, `${width}: today's only`)
@@ -252,12 +272,16 @@ test("board: a card shows the title, the description over up to 3 lines, and the
     const long = "word ".repeat(60).trim()
     ok(dir, ["add", "waiting", "Deploy v1.4: approve", "--desc", "Ships the new invoice page to production. Needs #12 and #14 merged first.", "--ask", "Say go"])
     ok(dir, ["add", "todo", "Long one", "--desc", long])
+    // ls opens every Waiting card under its row (compact at 60 columns) …
     const text = ok(dir, ["ls", "--width", "60"])
-    assert.match(text, /1 Deploy v1\.4: approve +just now\n  Ships the new invoice page to production\. Needs #12 and\n  #14 merged first\.\n  Needs you: Say go\n/)
-    const longLines = text.split("2 Long one")[1].split("\n").slice(1, 5)
+    assert.match(text, / 1 ! Deploy v1\.4: approve +just now\n {5}Ships the new invoice page to production\. Needs #12 and\n {5}#14 merged first\.\n {5}Needs you: Say go\n/)
+    assert.match(text, /^ 2   Long one +just now$/m, "the others are one row")
+    // … and the wide layout shows every card whole.
+    const wide = ok(dir, ["ls", "--width", "120"])
+    const longLines = wide.split("2 Long one")[1].split("\n").slice(1, 5)
     assert.equal(longLines.filter((l) => l.startsWith("  word")).length, 3, "3 lines of description at most")
     assert.match(longLines[2], /…$/)
-    assert.doesNotMatch(text.split("2 Long one")[0], /…/, "nothing cut when it fits")
+    assert.doesNotMatch(wide.split("2 Long one")[0], /…/, "nothing cut when it fits")
   } finally {
     done()
   }
@@ -281,10 +305,12 @@ test("board: a blocked agent shows under Waiting, even when the board doesn't sa
     const text = ok(dir, ["ls", "--width", "60"], { herdr })
     const waiting = text.split("DOING")[0]
     assert.match(text, /WAITING ON YOU \(2\)/)
-    assert.match(waiting, /Search filters: build +just now\n\s+blocked: answer it in tab search-ui/)
-    assert.match(waiting, /• stray\n\s+blocked: answer it in tab stray/, "a blocked named agent not on the board")
+    assert.match(waiting, /Search filters: build +blocked {2}just now\n\s+blocked: answer it in tab search-ui/)
+    assert.match(waiting, /• ! stray +blocked\n\s+blocked: answer it in tab stray/, "a blocked named agent not on the board")
     assert.doesNotMatch(text, /elsewhere|idle-one/, "other workspaces and idle agents stay out")
-    assert.match(text, /DOING \(1\)\n2 Review PR #31 +just now\n\s+working/)
+    assert.match(text, /DOING \(1\) ─+\n 2   Review PR #31 +working {2}just now\n/)
+    // The wide layout: cards, the status under the title.
+    assert.match(ok(dir, ["ls", "--width", "120"], { herdr }), /2 Review PR #31 +just now[^\n]*\n\s+working/)
 
     const view = buildView({ items: items(dir) }, null)
     assert.equal(view.counts.waiting, 0, "without Herdr there is no live status")
@@ -313,7 +339,7 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     write({ status: "done", summary: "built", needs_user: ["Review and merge PR #21", "Deploy: ./deploy.sh"] })
     assert.match(ok(dir, ["job-report", "range"]), /1 → waiting on you: Build range control\n {2}ask: Review and merge PR #21\n {2}ask: Deploy/)
     assert.deepEqual([items(dir)[0].column, items(dir)[0].ask], ["waiting", "Review and merge PR #21\nDeploy: ./deploy.sh"])
-    assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge PR #21\n {2}Needs you: Deploy: \.\/deploy\.sh\n/)
+    assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge PR #21\n {5}Needs you: Deploy: \.\/deploy\.sh\n/)
 
     // A follow-up run of the same job gets its own item; the open question stays in Waiting.
     ok(dir, ["job-start", "range", "--title", "Range control: fixes", "--report", report])
@@ -390,7 +416,7 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.ok(split.includes("--no-focus"))
     assert.deepEqual(log.find((a) => a[1] === "rename"), ["pane", "rename", "w9:p101", "board"])
     const run = log.find((a) => a[1] === "run")
-    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\.git\/job-board\.json' --origin 'w9:p1'$/)
+    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\.git\/job-board\.json' --origin 'w9:p1' --version '\d+\.\d+\.\d+'$/)
     assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": "w9:p101" })
 
     assert.match(ok(dir, ["open"], { herdr }), /already open in pane w9:p101/)
@@ -425,10 +451,30 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
 
     // The board sends its answers elsewhere (opened from another pane): restarted for this one.
     const elsewhere = JSON.parse(readFileSync(herdr, "utf8"))
-    elsewhere.panes.find((p) => p.pane_id === "w9:p101").running = `node '${PANE}' --board x --origin 'w9:p7'`
+    const version = JSON.parse(readFileSync(join(SCRIPTS, "package.json"), "utf8")).version
+    elsewhere.panes.find((p) => p.pane_id === "w9:p101").running = `node '${PANE}' --board x --origin 'w9:p7' --version '${version}'`
     writeFileSync(herdr, JSON.stringify(elsewhere))
     assert.match(ok(dir, ["open"], { herdr }), /board restarted in pane w9:p101; its answers now go to w9:p1/)
-    assert.match(herdrLog(herdr).filter((a) => a[1] === "run").at(-1)[3], /--origin 'w9:p1'$/)
+    assert.match(herdrLog(herdr).filter((a) => a[1] === "run").at(-1)[3], /--origin 'w9:p1' --version '[^']+'$/)
+
+    // An older version from the same folder (an update rewrites it in place): restarted with this
+    // one, from a version that says so and from one before 0.4.0 that doesn't.
+    for (const [running, said] of [[`--origin 'w9:p1' --version '0.3.9'`, "0.3.9"], [`--origin 'w9:p1'`, "a version before 0.4.0"]]) {
+      const older = JSON.parse(readFileSync(herdr, "utf8"))
+      older.panes.find((p) => p.pane_id === "w9:p101").running = `node '${PANE}' --board x ${running}`
+      writeFileSync(herdr, JSON.stringify(older))
+      assert.match(ok(dir, ["open"], { herdr }), new RegExp(`board updated to ${version.replace(/\./g, "\\.")} in pane w9:p101 \\(it ran ${said}\\)`))
+      assert.match(herdrLog(herdr).filter((a) => a[1] === "run").at(-1)[3], new RegExp(`--version '${version}'$`))
+    }
+
+    // Called from the board's own pane (the key binding with the board focused, or a plugin
+    // action run from a shell, which Herdr runs for the focused pane): nothing is split or run.
+    const before = herdrLog(herdr).length
+    const self = board(dir, ["open"], { herdr, extra: { HERDR_PANE_ID: "w9:p101" } })
+    assert.equal(self.status, 0, self.stderr)
+    assert.match(self.stdout, /pane w9:p101 is the board itself: nothing to open/)
+    assert.deepEqual(herdrLog(herdr).slice(before).filter((a) => ["split", "run", "send-text", "rename"].includes(a[1])), [])
+    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": "w9:p101" }, "the remembered pane stays")
 
     assert.match(board(dir, ["open"]).stderr, /needs Herdr/)
   } finally {
@@ -542,7 +588,7 @@ test("board: a Doing card shows its own workspace's agent, not a namesake elsewh
     ok(dir, ["job-start", "search-ui", "--title", "Search filters: build"])
     const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working", "w2")] })
     const text = ok(dir, ["ls", "--width", "60"], { herdr })
-    assert.match(text, /1 Search filters: build +just now\n\s+no agent/)
+    assert.match(text, /1   Search filters: build +no agent {2}just now\n/)
   } finally {
     done()
   }

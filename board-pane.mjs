@@ -4,16 +4,19 @@
 // board.mjs writes it.
 //
 //   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
-//   node board-pane.mjs --once [--width N] [--height N] [--color] [--links] [--frame N] [--keys <input>] [--origin <pane>]
+//   node board-pane.mjs --once [--width N] [--height N] [--layout wide|inbox|compact] [--color] [--emoji] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
-// `board.mjs open` starts it in a split right of the calling pane. WAITING ON YOU across the
-// top; DOING and TO DO in two columns below, and DONE (today) folded to one line at the bottom
-// ("DONE · 3 today ▸"; d or a click opens it as a third column, newest first, and folds it
-// again); under 70 cells wide the sections stack. Each card: the title, the description over up
-// to 3 lines, for Waiting the ask ("→ …"), and the age; Doing shows its agent's live status from
+// `board.mjs open` starts it in a split right of the calling pane. The layout follows the
+// pane's size: from 120 cells wide, WAITING ON YOU across the top and DOING | TO DO in two
+// columns below; from 70, the inbox (the sections stacked, one row a card, the selected card
+// open under its row); under 70 cells or 24 rows, compact (rows only; Space opens the selected
+// one). DONE (today) is folded to one line ("DONE · 3 today ▸"; d or a click opens it, newest
+// first, and folds it again). A card: the title, the description over up to 3 lines, for
+// Waiting the ask and its buttons, and the age; Doing shows its agent's live status from
 // `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour
-// palette (NO_COLOR turns them off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing
-// the URL itself. It also keeps the sidebar's $board token current.
+// palette (NO_COLOR turns them off), emoji only in the section headers (BOARD_EMOJI=0 turns them
+// off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also keeps
+// the sidebar's $board token current, and restarts itself when an update rewrites its folder.
 //
 // A Doing card whose agent is working shows a small ASCII bar bouncing beside "working"; every
 // other card stands still, so the motion says what is running. It ticks about 6 times a second,
@@ -22,6 +25,7 @@
 // Every section scrolls on its own and has a selected card; the position holds across redraws
 // and new cards.
 //   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   select a card (the view follows)
+//   Space                   open or close the selected card under its row (inbox, compact)
 //   PgUp PgDn               scroll a page           g G        first / last card
 //   mouse wheel             scroll the section under the pointer
 //   click, double click     select a card, open its details; a click on a card's question
@@ -57,8 +61,10 @@
 // button pressed there is really sent.
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
 
+import { spawn } from "node:child_process"
 import { watch } from "node:fs"
-import { basename, dirname, resolve, sep } from "node:path"
+import { basename, dirname, join, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import {
   animates,
@@ -69,6 +75,7 @@ import {
   copyMessage,
   copyPlace,
   createAnswerer,
+  emojiOn,
   emptyBoard,
   focusAgent,
   handleInput,
@@ -83,6 +90,8 @@ import {
   textWidth,
   tokenText,
   nextCopy,
+  VERSION,
+  versionOf,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -91,14 +100,16 @@ const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, links: false, keys: "", origin: "", frame: null }
+  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
     else if (a === "--links") opts.links = true
     else if (a === "--color") opts.color = true
     else if (a === "--no-color") opts.color = false
-    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
+    else if (a === "--emoji") opts.emoji = true
+    else if (a === "--no-emoji") opts.emoji = false
+    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame", "--layout", "--version"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
   return opts
@@ -124,6 +135,7 @@ async function load(file, env) {
 const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date())
 
 function compose(data, file, env, layout) {
+  layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
   const view = buildView(data.state, data.agents, { now, workspace })
@@ -190,7 +202,15 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
-    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links, frame: Number.isInteger(frame) ? frame : null }
+    const layout = {
+      width: Number(opts.width) || process.stdout.columns || 100,
+      height: Number(opts.height) || Infinity,
+      color: opts.color === true,
+      links: opts.links,
+      emoji: opts.emoji === true,
+      layout: opts.layout,
+      frame: Number.isInteger(frame) ? frame : null,
+    }
     const draw = (scroll) =>
       compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
     let drawn = draw()
@@ -212,6 +232,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 
   const out = process.stdout
   const color = opts.color ?? !env.NO_COLOR
+  const emoji = opts.emoji ?? emojiOn(env)
   let data = await load(file, env)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
@@ -265,6 +286,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       width: cols - 1,
       height: out.rows || 24,
       color,
+      emoji,
       links: true,
       frame: animate ? frame : null,
       scroll,
@@ -287,12 +309,44 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     // Tick while a working bar is on screen; no timer otherwise.
     ticker.sync(animate && drawn.animated > 0)
   }
+  // An update rewrites the plugin's folder in place: this pane still runs the code it started
+  // with. Each refresh reads the folder's version; seen changed twice in a row (so the update
+  // has finished writing), the pane hands over to the new copy in the same pane (board.mjs
+  // pane-restart waits for it to quit, then starts the new one), unless the details are open or
+  // a button is chosen: then it says so, and restarts once they are closed. Outside Herdr, or in
+  // a pane `open` didn't start (no --version: Herdr's own plugin pane, which closes when the board
+  // quits), it only says so.
+  const here = dirname(fileURLToPath(import.meta.url))
+  let seen = ""
+  let restarting = false
+  const checkUpdate = () => {
+    const now = versionOf(here)
+    const changed = now && now !== VERSION
+    if (!changed) {
+      seen = ""
+      return ""
+    }
+    const ready = seen === now
+    seen = now
+    const busy = scroll.detail || (scroll.button ?? -1) >= 0
+    const canRestart = env.HERDR_ENV === "1" && env.HERDR_PANE_ID && opts.version
+    if (ready && !busy && !restarting && canRestart) {
+      restarting = true
+      const args = [join(here, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
+      spawn(process.execPath, args, { detached: true, stdio: "ignore", env }).unref()
+      quit(0)
+    }
+    return canRestart
+      ? `board ${now} is installed: this pane restarts with it${busy ? " once the details are closed and no button is chosen" : ""}`
+      : `board ${now} is installed: press q, then open the board again`
+  }
   let loading = false
   const refresh = async () => {
     if (loading) return
     loading = true
     try {
       data = await load(file, env)
+      data.notice = checkUpdate()
       paint()
     } finally {
       loading = false

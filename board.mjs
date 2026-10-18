@@ -12,8 +12,9 @@
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //   done <ref>                                                 same as move <ref> done
 //   rm <ref>
-//   ls [--width N]          the board as text: the pane's view with Done open (today's finished
-//                           cards), with live agent status
+//   ls [--width N]          the board as text: the pane's view at that width with every Waiting
+//                           card open and Done open (today's finished cards), with live agent
+//                           status; --width 120 or more shows every card whole
 //   json                    the board file as it is
 //   job-start <slug> [--id N] [--title T] [--desc D] [--report path]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
@@ -25,7 +26,15 @@
 //                           unreadable or non-final report is a quiet no-op (exit 0), for wait
 //                           scripts that call it whenever the report file changes
 //   open [--share 0.3]      open the board pane right of this pane, once per tab; its answer
-//                           buttons send to this pane
+//                           buttons send to this pane. A pane running another copy or an older
+//                           version of the board is restarted with this one
+//   restart                 restart every board pane that runs an older version of this board,
+//                           or a copy whose files are gone (after `herdr plugin install` updated it)
+//   doctor                  check the install (Node, Herdr, the plugin, this repo's board, the
+//                           key binding, the sidebar, the hooks, open panes) and print the one
+//                           command that fixes each thing missing
+//   hooks                   print the Claude Code hooks to merge into .claude/settings.json
+//   version                 print this copy's version
 //   token                   print the sidebar text, and report it to Herdr as $board
 //   path                    print the board file's path
 //
@@ -56,6 +65,19 @@ export const COLUMNS = ["todo", "doing", "waiting", "done"]
 const HEADINGS = { waiting: "WAITING ON YOU", doing: "DOING", todo: "TO DO", done: "DONE" }
 const SCRIPTS = dirname(fileURLToPath(import.meta.url))
 const PANE_SCRIPT = join(SCRIPTS, "board-pane.mjs")
+export const PLUGIN_ID = "herdr-job-board"
+export const PLUGIN_SOURCE = "larrychannon/herdr-job-board"
+
+/** A copy's version, from its herdr-plugin.toml (package.json says the same); "" when unreadable. */
+export function versionOf(dir = SCRIPTS) {
+  try {
+    return /^version\s*=\s*"([^"]+)"/m.exec(readFileSync(join(dir, "herdr-plugin.toml"), "utf8"))?.[1] ?? ""
+  } catch {
+    return ""
+  }
+}
+/** This copy's version, as it was when it started. */
+export const VERSION = versionOf()
 export const PANE_LABEL = "board"
 export const TOKEN_SOURCE = "job-board"
 const SLUG = /^[a-z][a-z0-9_-]{0,31}$/
@@ -63,8 +85,14 @@ const LOCK_WAIT_MS = 10_000
 // A lock with no owner written yet (or one from another host) counts as stale after this long.
 const LOCK_STALE_MS = 10_000
 const KEEP_DONE_MS = 14 * 24 * 3600_000
-// Under this width the board pane stacks its columns.
-export const STACK_BELOW = 70
+// The layout follows the pane's size (layoutOf): from INBOX_BELOW cells wide, columns side by
+// side; under it, the inbox (one column of one-line rows, the selected card open); under
+// COMPACT_BELOW cells or COMPACT_ROWS rows, compact (rows only, no blank lines).
+export const INBOX_BELOW = 120
+export const COMPACT_BELOW = 70
+export const COMPACT_ROWS = 24
+// Under this width the sections stack (the inbox and compact layouts).
+export const STACK_BELOW = INBOX_BELOW
 
 // --- the board file -----------------------------------------------------------------------
 
@@ -582,6 +610,8 @@ const STYLES = {
   suggested: "1;30;47",
   selected: "1;97;44",
   link: "4",
+  // The selected row's id, in reverse video (with ▸ before it, for terminals without colour).
+  cursor: "1;7",
   old: "31",
   blocked: "1;31",
   // Section headers, and the same when selected (reverse video).
@@ -593,6 +623,11 @@ const STYLES = {
   "sel-doing": "1;7;34",
   "sel-todo": "1;7",
   "sel-done": "7;32",
+  // The rule after a section's header in the inbox and compact layouts.
+  "rule-waiting": "33",
+  "rule-doing": "34",
+  "rule-todo": "2",
+  "rule-done": "2;32",
   // A job's agent.
   working: "32",
   idle: "36",
@@ -630,20 +665,58 @@ export function animationTimer(tick, { every = TICK_MS, start = setInterval, sto
     },
   }
 }
-// Wide characters (CJK, emoji) take two cells; combining marks none.
-const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u
-const ZERO = /[\p{Mn}\p{Me}\u200b-\u200f\ufe0f]/u
+// Cell widths by Unicode's East Asian Width: Wide and Fullwidth characters (CJK, Hangul, kana,
+// emoji with emoji presentation such as ✅ ⭐ 🔔) take two cells, everything else one, Ambiguous
+// ones (· … ─ ↑) included, as terminals outside CJK locales draw them. The ranges are
+// EastAsianWidth W and F from Unicode 15.0 (generated with Python's unicodedata). Combining
+// marks, the Hangul medial vowels and variation selectors take none. Code points not assigned
+// yet in the emoji blocks (U+1F000–U+1FAFF but for the alchemical and arrow ones) count as wide:
+// emoji added after Unicode 15.0 (🫩 in 16.0) are, in the terminals that know them.
+const WIDE = new RegExp(
+  `[${[
+    "\\u1100-\\u115f\\u231a-\\u231b\\u2329-\\u232a\\u23e9-\\u23ec\\u23f0\\u23f3\\u25fd-\\u25fe",
+    "\\u2614-\\u2615\\u2648-\\u2653\\u267f\\u2693\\u26a1\\u26aa-\\u26ab\\u26bd-\\u26be\\u26c4-\\u26c5",
+    "\\u26ce\\u26d4\\u26ea\\u26f2-\\u26f3\\u26f5\\u26fa\\u26fd\\u2705\\u270a-\\u270b\\u2728\\u274c",
+    "\\u274e\\u2753-\\u2755\\u2757\\u2795-\\u2797\\u27b0\\u27bf\\u2b1b-\\u2b1c\\u2b50\\u2b55",
+    "\\u2e80-\\u2e99\\u2e9b-\\u2ef3\\u2f00-\\u2fd5\\u2ff0-\\u2ffb\\u3000-\\u303e\\u3041-\\u3096",
+    "\\u3099-\\u30ff\\u3105-\\u312f\\u3131-\\u318e\\u3190-\\u31e3\\u31f0-\\u321e\\u3220-\\u3247",
+    "\\u3250-\\u4dbf\\u4e00-\\ua48c\\ua490-\\ua4c6\\ua960-\\ua97c\\uac00-\\ud7a3\\uf900-\\ufaff",
+    "\\ufe10-\\ufe19\\ufe30-\\ufe52\\ufe54-\\ufe66\\ufe68-\\ufe6b\\uff01-\\uff60\\uffe0-\\uffe6",
+    "\\u{16fe0}-\\u{16fe4}\\u{16ff0}-\\u{16ff1}\\u{17000}-\\u{187f7}\\u{18800}-\\u{18cd5}",
+    "\\u{18d00}-\\u{18d08}\\u{1aff0}-\\u{1aff3}\\u{1aff5}-\\u{1affb}\\u{1affd}-\\u{1affe}",
+    "\\u{1b000}-\\u{1b122}\\u{1b132}\\u{1b150}-\\u{1b152}\\u{1b155}\\u{1b164}-\\u{1b167}",
+    "\\u{1b170}-\\u{1b2fb}\\u{1f004}\\u{1f02c}-\\u{1f02f}\\u{1f094}-\\u{1f09f}\\u{1f0af}-\\u{1f0b0}",
+    "\\u{1f0c0}\\u{1f0cf}-\\u{1f0d0}\\u{1f0f6}-\\u{1f0ff}\\u{1f18e}\\u{1f191}-\\u{1f19a}",
+    "\\u{1f1ae}-\\u{1f1e5}\\u{1f200}-\\u{1f320}\\u{1f32d}-\\u{1f335}\\u{1f337}-\\u{1f37c}",
+    "\\u{1f37e}-\\u{1f393}\\u{1f3a0}-\\u{1f3ca}\\u{1f3cf}-\\u{1f3d3}\\u{1f3e0}-\\u{1f3f0}\\u{1f3f4}",
+    "\\u{1f3f8}-\\u{1f43e}\\u{1f440}\\u{1f442}-\\u{1f4fc}\\u{1f4ff}-\\u{1f53d}\\u{1f54b}-\\u{1f54e}",
+    "\\u{1f550}-\\u{1f567}\\u{1f57a}\\u{1f595}-\\u{1f596}\\u{1f5a4}\\u{1f5fb}-\\u{1f64f}",
+    "\\u{1f680}-\\u{1f6c5}\\u{1f6cc}\\u{1f6d0}-\\u{1f6d2}\\u{1f6d5}-\\u{1f6df}\\u{1f6eb}-\\u{1f6ef}",
+    "\\u{1f6f4}-\\u{1f6ff}\\u{1f7e0}-\\u{1f7eb}\\u{1f7f0}\\u{1f90c}-\\u{1f93a}\\u{1f93c}-\\u{1f945}",
+    "\\u{1f947}-\\u{1f9ff}\\u{1fa54}-\\u{1fa5f}\\u{1fa6e}-\\u{1faff}\\u{20000}-\\u{3fffd}",
+  ].join("")}]`,
+  "u",
+)
+const ZERO = /[\p{Mn}\p{Me}\u1160-\u11ff\u200b-\u200f\ufe0e\ufe0f]/u
 // Below U+0300 (no combining marks, nothing wide) every character is one cell: a fast path, as
 // the pane redraws several times a second while a working bar moves.
 const NARROW = /^[\u0000-\u02ff]*$/
 const cellWidth = (ch) => (ch < "\u0300" ? 1 : ZERO.test(ch) ? 0 : WIDE.test(ch) ? 2 : 1)
 export const textWidth = (text) => (NARROW.test(text) ? text.length : [...text].reduce((w, ch) => w + cellWidth(ch), 0))
 // Board text comes from agents and reports: never let it carry escape sequences, newlines or
-// bidirectional controls (which would show text in a different order than it is stored).
+// bidirectional controls (which would show text in a different order than it is stored). Nor
+// variation selectors: terminals disagree on how wide "❤️" (a narrow symbol + U+FE0F) is, one
+// cell or two, but all draw a plain "❤" in one; with the selector gone every line has the width
+// the board counts. Joiners (U+200D, a format character) go too, so a ZWJ sequence such as
+// 👨‍👩‍👧 shows as the emoji it is made of, two cells each, the same in every terminal. Skin tone
+// modifiers too: "👍🏽" is two cells in some terminals and four in others; "👍" is two in all.
+// And flags: a pair of regional indicators is two cells, three or four depending on the terminal,
+// so 🇭🇰 shows as the letters it is made of, "HK".
 const printable = (text) =>
   asText(text)
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .replace(/\p{Cf}/gu, "")
+    .replace(/[\p{Cf}\ufe0e\ufe0f\u{1f3fb}-\u{1f3ff}]/gu, "")
+    .replace(/[\u{1f1e6}-\u{1f1ff}]/gu, (c) => String.fromCharCode(c.codePointAt(0) - 0x1f1e6 + 65))
 
 /**
  * Segments [{t, s, link}] cut to `width` cells (an ellipsis marks the cut) and painted. With
@@ -815,32 +888,26 @@ function buttonLines(entry, width, indent, selected) {
 }
 
 /**
- * One card, as lines of segments that already fit `width` cells: the title (bold, up to 2 lines);
- * the live status for Doing; the description wrapped over up to `descMax` lines; for Waiting,
- * what the user should do ("Question: …") with its answer buttons right under it; what was sent;
- * a note (send again?, couldn't send); the age. `ui`: { selected (this card has the keyboard),
- * button (selected button), note }.
+ * What a card says under its title, as lines of segments indented by `indent` and fitting `width`
+ * cells: the live status for Doing (unless `status` is false: a row shows it on its own line);
+ * the description wrapped over up to `descMax` lines; for Waiting, what the user should do
+ * ("Question: …") with its answer buttons right under it; what was sent; a note (send again?,
+ * couldn't send).
  */
-function card(entry, column, width, idWidth, descMax, ui = {}) {
-  const indent = { t: " ".repeat(idWidth + 1) }
-  const inner = Math.max(4, width - idWidth - 1)
+function cardBody(entry, column, width, indent, descMax, ui = {}, { status = true } = {}) {
+  const inner = Math.max(4, width - textWidth(indent.t))
   const blocked = entry.live === "blocked"
-  const mark = entry.id == null ? "•" : String(entry.id)
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
-  const titles = wrap(entry.title, inner, 2)
-  const lines = titles.map((t, i) => [
-    i ? indent : { t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" },
-    ...linkify(t, blocked ? "blocked" : "title", urls),
-  ])
+  const lines = []
   if (blocked) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
-  } else if (column === "doing" && (entry.live || entry.reportStatus)) {
-    const status = entry.live && entry.reportStatus ? `${entry.live}, report ${entry.reportStatus}` : entry.live || `report ${entry.reportStatus}`
-    const line = [indent, { t: status, s: entry.live ? STATUS_STYLE[entry.live] || "gone" : "finished" }]
-    const bar = entry.live === "working" && Number.isInteger(ui.frame) ? ` ${frameOf(ui.frame)}` : ""
+  } else if (status && column === "doing" && (entry.live || entry.reportStatus)) {
+    const text = statusText(entry)
+    const line = [indent, { t: text, s: statusStyle(entry) }]
+    const bar = barOf(entry, ui)
     // The bar only where the whole status still fits: words before motion ("report failed" is
     // never cut to make room for it).
-    if (bar && textWidth(status + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
+    if (bar && textWidth(text + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
     lines.push(line)
   }
   for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
@@ -855,17 +922,93 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     lines.push([indent, { t: `sent: ${entry.sent.label}${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`}`, s: "dim" }])
   }
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
+  return lines
+}
+
+// A Doing card's live status in words: "working", "idle, report done", "report failed".
+const statusText = (entry) => (entry.live && entry.reportStatus ? `${entry.live}, report ${entry.reportStatus}` : entry.live || `report ${entry.reportStatus}`)
+const statusStyle = (entry) => (entry.live ? STATUS_STYLE[entry.live] || "gone" : "finished")
+// The working bar at this frame, " [=   ]", for a working agent on a board that moves; else "".
+const barOf = (entry, ui) => (entry.live === "working" && Number.isInteger(ui.frame) ? ` ${frameOf(ui.frame)}` : "")
+
+/**
+ * One card, as lines of segments that already fit `width` cells: the title (bold, up to 2 lines),
+ * then its body (cardBody), and the age. `ui`: { selected (this card has the keyboard), button
+ * (selected button), note }.
+ */
+function card(entry, column, width, idWidth, descMax, ui = {}) {
+  const indent = { t: " ".repeat(idWidth + 1) }
+  const inner = Math.max(4, width - idWidth - 1)
+  const blocked = entry.live === "blocked"
+  const mark = entry.id == null ? "•" : String(entry.id)
+  const urls = urlsIn(entry.title, entry.desc, entry.ask)
+  const titles = wrap(entry.title, inner, 2)
+  const lines = titles.map((t, i) => [
+    i ? indent : { t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" },
+    ...linkify(t, blocked ? "blocked" : "title", urls),
+  ])
+  lines.push(...cardBody(entry, column, width, indent, descMax, ui))
   // The age, dimmed (red on a Waiting card older than a day), on the right: of the title's last
   // line, else of the card's last line, else on a line of its own.
   const age = entry.age == null ? "" : formatAge(entry.age)
   if (age) {
-    const style = column === "waiting" && entry.age > 24 * 3600_000 ? "old" : "dim"
+    const style = ageStyle(entry, column)
     const used = (line) => line.reduce((w, seg) => w + textWidth(printable(seg.t)), 0)
     const room = (line) => width - used(line) - textWidth(age)
     const line = [lines[titles.length - 1], lines.at(-1)].find((l) => room(l) >= 2)
     if (line) line.push({ t: " ".repeat(room(line)) }, { t: age, s: style })
     else lines.push([indent, { t: age, s: style }])
   }
+  return lines
+}
+const ageStyle = (entry, column) => (column === "waiting" && entry.age > 24 * 3600_000 ? "old" : "dim")
+
+/** `text` cut to `width` cells, ending in "…" when it had to be cut; "" for no room. */
+const fit = (text, width) => (width <= 0 ? "" : textWidth(printable(text)) <= width ? printable(text) : ellipsize(printable(text), width))
+
+/**
+ * A card as one row, for the inbox and compact layouts: "▸199 ! Title cut with …   status  age".
+ * The selection mark, the id and the age (a Done card: the time it was finished) are never cut;
+ * the title is, with "…"; a Doing card's live status sits before the age, its working bar first
+ * to go and then its words when the title would get under 12 cells. The glyph says what the card
+ * is without colour: "!" waits on you, "✓" is done. With `ui.open` (the selected card in the
+ * inbox, a peek in compact, every Waiting card in `ls`), the card's body follows, indented to the
+ * title: description, question, buttons. A note (sending…, couldn't send) always shows.
+ */
+function cardRow(entry, column, width, idWidth, ui = {}) {
+  const blocked = entry.live === "blocked"
+  const mark = entry.id == null ? "•" : String(entry.id)
+  const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : { t: " " }
+  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }]
+  const lead = 1 + idWidth + 3
+  const indent = { t: " ".repeat(lead) }
+  const end =
+    column === "done"
+      ? { t: clockOf(new Date(entry.since)), s: "dim" }
+      : entry.age == null
+        ? null
+        : { t: formatAge(entry.age), s: ageStyle(entry, column) }
+  let status = []
+  if (blocked) status = [{ t: "blocked", s: "blocked" }]
+  else if (column === "doing" && (entry.live || entry.reportStatus)) {
+    status = [{ t: statusText(entry), s: statusStyle(entry) }]
+    const bar = barOf(entry, ui)
+    if (bar) status.push({ t: bar, s: "working", anim: true })
+  }
+  const title = printable(entry.title)
+  const right = () => [...status, ...(status.length && end ? [{ t: "  " }] : []), ...(end ? [end] : [])]
+  const roomFor = () => width - lead - segWidth(right()) - 1
+  const want = Math.min(12, textWidth(title))
+  if (roomFor() < want && status.length > 1) status = status.slice(0, 1)
+  if (roomFor() < want) status = []
+  const shown = fit(title, roomFor())
+  const style = blocked ? "blocked" : ui.selected || column === "waiting" ? "title" : ""
+  const line = [...head, ...linkify(shown, style, urlsIn(entry.title))]
+  const tail = right()
+  if (tail.length) line.push({ t: " ".repeat(Math.max(1, width - segWidth(line) - segWidth(tail))) }, ...tail)
+  const lines = [line]
+  if ((ui.open || (ui.openWaiting && column === "waiting")) && column !== "done") lines.push(...cardBody(entry, column, width, indent, DESC_LINES, ui, { status: false }))
+  else if (ui.note) for (const t of wrap(ui.note.t, width - lead, 2)) lines.push([indent, { t, s: ui.note.s }])
   return lines
 }
 
@@ -895,13 +1038,19 @@ function doneCard(entry, width, idWidth, ui = {}) {
  * A section's cards as blocks, a block being what one scroll step moves: one card, or with
  * `perRow` > 1 a row of cards side by side. [{ keys, lines }]
  */
-export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({})) {
+export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}), form = "card") {
   const entries = entriesOf(view, section)
-  const idWidth = Math.max(1, ...entries.map((e) => (e.id == null ? 1 : String(e.id).length)))
-  // Every segment of a card knows its card, so a click can find it.
+  // Rows line their titles up across sections: the widest id of the whole board.
+  const ids = form === "row" ? SECTIONS.flatMap((s) => entriesOf(view, s)) : entries
+  const idWidth = Math.max(1, ...ids.map((e) => (e.id == null ? 1 : String(e.id).length)))
+  // Every segment of a card knows its card, so a click can find it. `form` "row": one line a
+  // card (the inbox and compact layouts), the open one with its body.
   const draw = (e, w) =>
-    (section === "done" ? doneCard(e, w, idWidth, uiOf(e)) : card(e, section, w, idWidth, DESC_LINES, uiOf(e))).map((l) => l.map((seg) => ({ ...seg, card: keyOf(e) })))
-  if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width) }))
+    (form === "row" ? cardRow(e, section, w, idWidth, uiOf(e)) : section === "done" ? doneCard(e, w, idWidth, uiOf(e)) : card(e, section, w, idWidth, DESC_LINES, uiOf(e))).map((l) =>
+      l.map((seg) => ({ ...seg, card: keyOf(e) })),
+    )
+  // Rows follow each other with no blank line between them; cards have one.
+  if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width), ...(form === "row" ? { gap: 0 } : {}) }))
   const gap = 3
   const cw = Math.floor((width - gap * (perRow - 1)) / perRow)
   const blocks = []
@@ -920,8 +1069,10 @@ export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}
   return blocks
 }
 
-const heightOf = (blocks, from, to) => blocks.slice(from, to).reduce((h, b, i) => h + b.lines.length + (i ? 1 : 0), 0)
-const linesOf = (blocks, from, to) => blocks.slice(from, to).flatMap((b, i) => (i ? [[], ...b.lines] : b.lines))
+// A block's `gap`: the blank lines before it when another block comes first (1 unless it says).
+const gapOf = (b) => b.gap ?? 1
+const heightOf = (blocks, from, to) => blocks.slice(from, to).reduce((h, b, i) => h + b.lines.length + (i ? gapOf(b) : 0), 0)
+const linesOf = (blocks, from, to) => blocks.slice(from, to).flatMap((b, i) => (i && gapOf(b) ? [[], ...b.lines] : b.lines))
 const cardsIn = (blocks, from, to) => blocks.slice(from, to).reduce((n, b) => n + b.keys.length, 0)
 
 /**
@@ -969,8 +1120,19 @@ export function viewport(blocks, height, offset = 0) {
   return { ...result, lines }
 }
 
-/** Share `total` lines between sections that want `wants` lines: a fair share each, any spare to who needs it. */
-function share(wants, total) {
+/**
+ * Share `total` lines between sections that want `wants` lines: a fair share each, any spare to
+ * who needs it. With `first` (an index), that section gets what it wants before the others, as
+ * long as each other one keeps its first two lines.
+ */
+function share(wants, total, first = -1) {
+  if (first >= 0 && first < wants.length) {
+    const others = wants.filter((_, i) => i !== first)
+    const keep = others.reduce((a, w) => a + Math.min(w, 2), 0)
+    const mine = Math.min(wants[first], Math.max(Math.min(wants[first], 2), total - keep))
+    const rest = share(others, total - mine)
+    return wants.map((_, i) => (i === first ? mine : rest[i < first ? i : i - 1]))
+  }
   const got = wants.map((w) => Math.min(w, 2))
   let left = total - got.reduce((a, b) => a + b, 0)
   for (;;) {
@@ -987,13 +1149,36 @@ function share(wants, total) {
   return got
 }
 
-function headerLine(view, section, selected, interactive) {
+// An empty section folds to its header, which says so.
+const EMPTY = { waiting: "  Nothing needs you", doing: " · nothing running", todo: " · nothing to do", done: " · nothing finished today" }
+// With emoji on (emojiOn), each section's header starts with its own: one code point each, Wide
+// in Unicode's East Asian Width and drawn with emoji presentation by default, so two cells in
+// every terminal that has emoji at all, with no variation selector or joiner to disagree on.
+export const SECTION_EMOJI = { waiting: "🔔", doing: "🔨", todo: "📋", done: "🏁" }
+
+/**
+ * Whether the board draws emoji: BOARD_EMOJI=0 (or off, false, no) never, BOARD_EMOJI=1 always;
+ * else only in a UTF-8 locale (LC_ALL, LC_CTYPE or LANG) on a terminal that isn't dumb.
+ */
+export function emojiOn(env = process.env) {
+  const set = String(env.BOARD_EMOJI ?? "").trim()
+  if (set) return !/^(0|off|false|no)$/i.test(set)
+  return /utf-?8/i.test(env.LC_ALL || env.LC_CTYPE || env.LANG || "") && env.TERM !== "dumb"
+}
+
+/**
+ * A section's header: "▸ " when selected, its emoji, "TO DO (4)", the empty section's words; with
+ * `rule` (the inbox and compact layouts) a line in the section's colour to `width` cells.
+ */
+function headerLine(view, section, selected, interactive, { emoji = false, rule = false, width = 0, fold = false } = {}) {
   const count = entriesOf(view, section).length
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
+  if (emoji) segs.push({ t: `${SECTION_EMOJI[section]} ` })
   // Done open in the pane: ▾, for "d or a click here folds it again".
-  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : section === "waiting" && !count ? "head" : section })
-  if (section === "waiting" && !count) segs.push({ t: "  Nothing needs you", s: "dim" })
+  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
+  if (!count && (section === "waiting" || fold)) segs.push({ t: EMPTY[section], s: "dim" })
+  if (rule && width - segWidth(segs) > 2) segs.push({ t: " " }, { t: "─".repeat(width - segWidth(segs) - 1), s: `rule-${section}` })
   return segs
 }
 
@@ -1001,10 +1186,14 @@ const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - pa
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
 const HINT = (mouse, copy = "c copy") => `Tab section · ↑↓ card · Enter details · ${copy} · d done · m mouse: ${mouse} · q quit`
 const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mouse: ${mouse} · q`
+// Compact: rows only, so Space (peek) is worth a place.
+const HINT_COMPACT = (mouse) => `Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: ${mouse} · q`
+const HINT_COMPACT_SHORT = "Tab · ↑↓ · Space peek · Enter · c copy · d done · q"
+const HINT_TINY = "Tab · ↑↓ · Space · Enter · q"
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
 /** Done folded: one line, its count and ▸, for "d or a click here opens it". */
-const doneLine = (view) => [{ t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
+const doneLine = (view, emoji = false) => [...(emoji ? [{ t: `${SECTION_EMOJI.done} ` }] : []), { t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
 // On a card with several links, the long lines say that c again copies the next one.
@@ -1460,15 +1649,25 @@ export function copyMessage(payload, entry) {
 
 // --- the board -----------------------------------------------------------------------------
 
+/** The layout for a pane of `width` × `height` cells: "wide", "inbox" or "compact". */
+export function layoutOf(width, height = Infinity) {
+  if (width < COMPACT_BELOW || height < COMPACT_ROWS) return "compact"
+  return width < INBOX_BELOW ? "inbox" : "wide"
+}
+
 /**
  * Lay the board out in `width` × `height` cells (height Infinity: everything, no scrolling).
  * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING | TO DO below in
  * two columns, and DONE folded to one line ("DONE · 3 today ▸") at the bottom of the lower area;
  * opened (`scroll.doneOpen`), DOING | TO DO | DONE in three columns. Waiting takes what it needs
  * up to half the height (more only when the bottom doesn't need it) and shrinks to one line when
- * empty. Under STACK_BELOW cells the sections stack, Done folded the same way. Each section
+ * empty; an empty Doing folds to its header over the columns. The layout (`opts.layout`, else
+ * layoutOf the size): wide as above; the inbox and compact stack the sections, one row a card
+ * (cardRow), the selected one open (in the inbox; with `scroll.open` true in compact, false in the
+ * inbox, Space's choice), empty sections folded to their header, Done's line right after them.
+ * `emoji` puts each section's emoji before its header. Each section
  * scrolls on its own and has a selected card; `scroll` is { selected, anchors, card, button,
- * detail, doneOpen } where an anchor is a section's first visible card, so the view holds still
+ * detail, doneOpen, open } where an anchor is a section's first visible card, so the view holds still
  * as cards come and go (Done folded keeps its anchor for when it opens again), and `detail`
  * ({ key, offset, more }) opens a card's details over the lower half: an opaque panel from the
  * middle down to the key line, between a "── card N ──" rule and a closing rule, with nothing of
@@ -1480,7 +1679,8 @@ export function copyMessage(payload, entry) {
  * button, question, card and the details' "More…" line is, for the mouse), doneToggle (the row a
  * click folds or opens Done on), bars (where each working bar on screen starts, { y, x }) and
  * animated (how many: the pane ticks only while there are some), entries (by key), scroll (as
- * drawn) }.
+ * drawn), layout and open (whether the selected row is open) }. `notice` adds a line under the
+ * title (an update is installed).
  */
 export function renderBoard(view, opts = {}) {
   const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
@@ -1497,12 +1697,21 @@ export function renderBoard(view, opts = {}) {
   }
   const finite = Number.isFinite(height)
   const paint = (segs, w = width) => paintLine(segs, w, color, links)
+  const layout = ["wide", "inbox", "compact"].includes(opts.layout) ? opts.layout : layoutOf(width, height)
+  const form = layout === "wide" ? "card" : "row"
+  const emoji = opts.emoji === true
+  // The selected card is open in the inbox and closed in compact; Space (scroll.open) flips that.
+  const open = typeof scroll.open === "boolean" ? scroll.open : layout === "inbox"
 
   const clock = clockOf(now)
-  const name = `Job board${repo ? ` · ${repo}` : ""}`
-  const out = [pad(paint([{ t: name, s: "title" }], width - clock.length - 1), width - clock.length) + paint([{ t: clock, s: "dim" }], clock.length).text]
+  // The inbox and compact layouts say first how many cards need you.
+  const need = view.waiting.length
+  const name = [{ t: layout === "compact" ? repo || "Job board" : `Job board${repo ? ` · ${repo}` : ""}`, s: "title" }]
+  if (form === "row" && need) name.push({ t: " · ", s: "dim" }, { t: `${need} need${need === 1 ? "s" : ""} you`, s: "waiting" })
+  const out = [pad(paint(name, width - clock.length - 1), width - clock.length) + paint([{ t: clock, s: "dim" }], clock.length).text]
   if (error) out.push(paint([{ t: error, s: "blocked" }]).text)
-  out.push("")
+  if (opts.notice) out.push(paint([{ t: opts.notice, s: "note" }]).text)
+  if (layout !== "compact") out.push("")
   const sections = {}
   const regions = {}
   const buttons = []
@@ -1534,12 +1743,13 @@ export function renderBoard(view, opts = {}) {
     return paint(segs, w)
   }
 
-  // Cards carry their notes everywhere, so heights are the same before and after selection.
-  const noted = (e) => ({ note: notes[keyOf(e)], frame })
+  // Cards carry their notes everywhere, so heights are the same before and after selection. In
+  // `ls` (not interactive, nothing selected) every Waiting row is open.
+  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive })
   // The selected section's selected card: the one chosen, else the first one in view. Its
   // button is chosen only with ← →, never in advance.
   const uiFor = (section, perRow, w, h) => {
-    const plain = sectionBlocks(view, section, w, perRow, noted)
+    const plain = sectionBlocks(view, section, w, perRow, noted, form)
     const list = entriesOf(view, section)
     if (!interactive || scroll.selected !== section || !list.length) return plain
     const anchor = scroll.anchors[section]
@@ -1551,7 +1761,14 @@ export function renderBoard(view, opts = {}) {
     const count = shown.length ? shown.length + 1 : 0
     if (scroll.card !== keyOf(current) || !(scroll.button >= 0 && scroll.button < count)) scroll.button = -1
     scroll.card = keyOf(current)
-    return sectionBlocks(view, section, w, perRow, (e) => ({ ...noted(e), selected: keyOf(e) === scroll.card, button: keyOf(e) === scroll.card ? scroll.button : -1 }))
+    return sectionBlocks(
+      view,
+      section,
+      w,
+      perRow,
+      (e) => ({ ...noted(e), selected: keyOf(e) === scroll.card, open: keyOf(e) === scroll.card && open, button: keyOf(e) === scroll.card ? scroll.button : -1 }),
+      form,
+    )
   }
 
   // Where a section's anchor (its first visible card) is now.
@@ -1562,7 +1779,7 @@ export function renderBoard(view, opts = {}) {
     return i >= 0 ? i : Math.min(anchor.index ?? 0, Math.max(0, blocks.length - 1))
   }
   // Lines a section really uses in `h` lines (whole cards only, so often fewer).
-  const used = (section, blocks, h) => (blocks.length ? 1 + viewport(blocks, h - 1, offsetOf(section, blocks)).lines.length : Math.min(h, section === "waiting" ? 1 : 2))
+  const used = (section, blocks, h) => (blocks.length ? 1 + viewport(blocks, h - 1, offsetOf(section, blocks)).lines.length : Math.min(h, section === "waiting" || form === "row" ? 1 : 2))
   const place = (section, blocks, h) => {
     let v = viewport(blocks, h, offsetOf(section, blocks))
     // The selected card stays in view: scroll the least that shows it.
@@ -1583,6 +1800,8 @@ export function renderBoard(view, opts = {}) {
         id: e.id,
         // Only buttons on screen count: a card whose buttons are hidden has none to choose or press.
         buttons: shownOptions(e, section).length ? shownOptions(e, section).length + 1 : 0,
+        // A closed row (inbox and compact) shows no buttons: ← → there move between sections.
+        closed: form === "row" && !(interactive && section === scroll.selected && keyOf(e) === scroll.card && open),
         labels: shownOptions(e, section).map((o) => o.label),
         suggested: Math.max(0, shownOptions(e, section).findIndex((o) => o.suggested)),
         block: Math.max(0, blockCards.findIndex((keys) => keys.includes(keyOf(e)))),
@@ -1592,24 +1811,30 @@ export function renderBoard(view, opts = {}) {
     else delete scroll.anchors[section]
     return blocks.length ? v.lines : [[{ t: "nothing", s: "dim" }]]
   }
-  const header = (section) => headerLine(view, section, interactive && scroll.selected === section, interactive)
+  const header = (section, w = width) =>
+    headerLine(view, section, interactive && scroll.selected === section, interactive, { emoji, rule: form === "row", width: w, fold: form === "row" || section === "doing" })
   const room = finite ? height - out.length - (interactive ? 1 : 0) : Infinity
   // Done folded: its line, on the last row of the lower area (after a blank line when nothing
   // limits the height); a click anywhere on it opens Done.
+  // In the inbox it follows the last section, after a blank line; in compact, straight after it.
   const foldedDone = () => {
-    if (finite) while (out.length < height - (interactive ? 1 : 0) - 1) out.push("")
+    if (form === "row") {
+      if (layout === "inbox") out.push("")
+    } else if (finite) while (out.length < height - (interactive ? 1 : 0) - 1) out.push("")
     else out.push("")
     const y = out.length + 1
-    out.push(emit(doneLine(view), y, 1, width).text)
+    out.push(emit(doneLine(view, emoji), y, 1, width).text)
     regions.done = { top: y, bottom: y, left: 1, right: width }
     doneToggle = { y, x0: 1, x1: width }
   }
 
-  if (width >= STACK_BELOW) {
+  if (layout === "wide") {
     const gap = 3
-    // Done folded: DOING | TO DO share the width, and Done's line takes one row under them.
-    const bottom = doneOpen ? ["doing", "todo", "done"] : ["doing", "todo"]
-    const folded = doneOpen ? 0 : 1
+    // Done folded: DOING | TO DO share the width, and Done's line takes one row under them. An
+    // empty Doing folds to its header ("DOING (0) · nothing running") over the columns.
+    const foldDoing = !view.doing.length
+    const bottom = [...(foldDoing ? [] : ["doing"]), "todo", ...(doneOpen ? ["done"] : [])]
+    const folded = (doneOpen ? 0 : 1) + (foldDoing ? 2 : 0)
     const cw = Math.floor((width - (bottom.length - 1) * gap) / bottom.length)
     const perRow = width >= 110 ? 2 : 1
     let wBlocks = sectionBlocks(view, "waiting", width, perRow, noted)
@@ -1636,11 +1861,18 @@ export function renderBoard(view, opts = {}) {
     } else place("waiting", wBlocks, 0)
     regions.waiting = { top: wTop, bottom: out.length, left: 1, right: width }
     out.push("")
+    if (foldDoing) {
+      const y = out.length + 1
+      out.push(paint(header("doing")).text)
+      regions.doing = { top: y, bottom: y, left: 1, right: width }
+      place("doing", [], 0)
+      out.push("")
+    }
     const bTop = out.length + 1
-    const bodies = bottom.map((c, i) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
+    const bodies = bottom.map((c) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
     const last = bottom.length - 1
     const row = (cells, y) => cells.map((segs, i) => (i < last ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
-    out.push(row(bottom.map(header), out.length + 1))
+    out.push(row(bottom.map((c) => header(c, cw)), out.length + 1))
     const rows = finite ? bH - 1 : Math.max(...bodies.map((b) => b.length))
     for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || []), out.length + 1))
     bottom.forEach((c, i) => {
@@ -1650,15 +1882,23 @@ export function renderBoard(view, opts = {}) {
     if (doneOpen) doneToggle = { y: bTop, x0: regions.done.left, x1: regions.done.right }
     else foldedDone()
   } else {
+    // The inbox and compact: the sections stacked, one row a card, an empty one folded to its
+    // header; a blank line between sections in the inbox, none in compact.
     const shown = doneOpen ? SECTIONS : SECTIONS.filter((s) => s !== "done")
-    let all = shown.map((s) => sectionBlocks(view, s, width, 1, noted))
-    const wants = all.map((blocks, i) => (blocks.length ? 1 + contentHeight(blocks) : shown[i] === "waiting" ? 1 : 2))
-    const heights = finite ? share(wants, room - (shown.length - 1) - (doneOpen ? 0 : 1)) : wants
+    const gaps = layout === "compact" ? 0 : shown.length - 1
+    // What each section wants with its selected card open; the selected section's comes first,
+    // so the card open under its row shows whole when the pane can hold it.
+    // Done folded takes its line, and in the inbox the blank line before it.
+    const total = room - gaps - (doneOpen ? 0 : layout === "inbox" ? 2 : 1)
+    let all = shown.map((s) => (entriesOf(view, s).length ? uiFor(s, 1, width, finite ? total - 1 : Infinity) : []))
+    const wants = all.map((blocks) => (blocks.length ? 1 + contentHeight(blocks) : 1))
+    const heights = finite ? share(wants, total, interactive ? shown.indexOf(scroll.selected) : -1) : wants
     all = all.map((blocks, i) => (blocks.length ? uiFor(shown[i], 1, width, heights[i] - 1) : blocks))
     if (finite) {
-      // Each section keeps the lines it fills with whole cards; the rest goes to the first one
-      // (Waiting, then Doing, To do, Done) that shows more cards with it.
-      let spare = 0
+      // Each section keeps the lines it fills with whole cards; the rest, and what nobody wanted
+      // (the open row is taller than its section asked for), goes to the first one (Waiting,
+      // then Doing, To do, Done) that shows more cards with it.
+      let spare = Math.max(0, total - heights.reduce((a, b) => a + b, 0))
       shown.forEach((s, i) => {
         const u = used(s, all[i], heights[i])
         spare += heights[i] - u
@@ -1674,11 +1914,11 @@ export function renderBoard(view, opts = {}) {
       })
     }
     shown.forEach((s, i) => {
-      if (i) out.push("")
+      if (i && gaps) out.push("")
       const sTop = out.length + 1
       out.push(paint(header(s)).text)
       if (s === "done") doneToggle = { y: sTop, x0: 1, x1: width }
-      if (s !== "waiting" || all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
+      if (all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
       else place(s, all[i], 0)
       regions[s] = { top: sTop, bottom: out.length, left: 1, right: width }
     })
@@ -1757,7 +1997,10 @@ export function renderBoard(view, opts = {}) {
       ? keyLine(...(several ? [detailHint(wide, detailInfo.buttons, detailInfo.more, NEXT_COPY)] : []), detailHint(wide, detailInfo.buttons, detailInfo.more), detailHint(false, detailInfo.buttons, detailInfo.more))
       : send
         ? keyLine(CHOSEN_HINT(true), CHOSEN_HINT(false))
-        : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
+        : layout === "compact"
+          ? // The mouse mode only when it isn't the usual one, where the line is short.
+            keyLine(HINT_COMPACT(mouse), mouse === "board" ? HINT_COMPACT_SHORT : HINT_NARROW(mouse), HINT_TINY)
+          : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "note" }, { t: " · ", s: "dim" }] : []), ...(send ? [{ t: send, s: "head" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
@@ -1774,6 +2017,8 @@ export function renderBoard(view, opts = {}) {
     animated: bars.length,
     entries,
     scroll,
+    layout,
+    open,
   }
 }
 
@@ -1835,6 +2080,7 @@ const CHAR_KEYS = {
   f: "more",
   t: "tab",
   m: "mouse",
+  " ": "peek",
 }
 
 /**
@@ -2072,7 +2318,10 @@ export function handleInput(scroll, event, drawn) {
     const i = Math.max(0, Math.min(cards.indexOf(current) + (name === "up" ? -1 : 1), cards.length - 1))
     next.card = cards[i].key
     next.button = -1
-  } else if (current && current.buttons && (name === "left" || name === "right")) {
+  } else if (name === "peek") {
+    // Space: open the selected row, or close it (the inbox opens it by itself, compact doesn't).
+    if (drawn.layout && drawn.layout !== "wide") next.open = !drawn.open
+  } else if (current && current.buttons && !current.closed && (name === "left" || name === "right")) {
     // The first ← or → chooses the suggested button (or the first); then they move. Only
     // buttons on screen: a card cut short has fewer, or none.
     const seen = onScreen(current.key, false)
@@ -2245,14 +2494,18 @@ export function markSent(file, id, label, now = new Date()) {
 
 const shellQuote = (text) => `'${String(text).replace(/'/g, `'\\''`)}'`
 
-/** The board's command line. `origin` is the pane that opened it: answer buttons send there. */
+/**
+ * The board's command line. `origin` is the pane that opened it: answer buttons send there.
+ * `--version` says which version runs, so `open`, `restart` and `doctor` can tell an older one
+ * apart from this one, even when an update rewrote the same folder.
+ */
 function paneCommand(file, origin) {
-  return `node ${shellQuote(PANE_SCRIPT)} --board ${shellQuote(file)} --origin ${shellQuote(origin)}`
+  return `node ${shellQuote(PANE_SCRIPT)} --board ${shellQuote(file)} --origin ${shellQuote(origin)} --version ${shellQuote(VERSION)}`
 }
 
 /**
- * What runs in the board's pane: "board" (with the path of its script and its --origin),
- * "shell" (the user quit it) or "busy" (anything else).
+ * What runs in the board's pane: "board" (with the path of its script, its --board, --origin and
+ * --version, "" for a board from before 0.4.0), "shell" (the user quit it) or "busy" (anything else).
  */
 function paneState(pane, env) {
   const info = herdr(["pane", "process-info", "--pane", pane], env, { quiet: true })
@@ -2260,8 +2513,8 @@ function paneState(pane, env) {
   for (const p of procs) {
     const argv = (p.argv || []).map(String)
     const script = argv.find((a) => a.endsWith("board-pane.mjs"))
-    const o = argv.indexOf("--origin")
-    if (script) return { state: "board", script: resolve(p.cwd || "/", script), origin: o >= 0 ? argv[o + 1] : "" }
+    const arg = (name) => (argv.indexOf(name) >= 0 ? (argv[argv.indexOf(name) + 1] ?? "") : "")
+    if (script) return { state: "board", script: resolve(p.cwd || "/", script), board: arg("--board"), origin: arg("--origin"), version: arg("--version") }
   }
   const shell = (p) => /^-?(ba|z|da|fi|k)?sh$/.test(basename(String(p.name || p.argv?.[0] || "")))
   return { state: procs.length && procs.every(shell) ? "shell" : "busy" }
@@ -2283,6 +2536,13 @@ function openPane(fileArg, opts, env, out) {
   const target = env.HERDR_PANE_ID
   const me = herdr(["pane", "get", target], env)?.result?.pane
   if (!me) throw new Error(`herdr pane get ${target} returned nothing`)
+  // Called from the board's own pane (the key binding pressed while the board has the focus, or
+  // `herdr plugin action invoke`, which runs for the focused pane): the board is open already,
+  // and its answers must not be sent to itself. Nothing changes.
+  if (me.label === PANE_LABEL || paneState(target, env).state === "board") {
+    out(`pane ${target} is the board itself: nothing to open (open it from the pane you work in; its buttons answer that pane)`)
+    return null
+  }
   // A plugin action runs in the plugin's folder: the board belongs to the pane it was called from.
   const file = fileArg || boardPath(env.HERDR_PLUGIN_ID ? me.foreground_cwd || me.cwd : process.cwd(), env)
   if (!file) throw new Error("not inside a git repo; set JOB_BOARD_FILE")
@@ -2301,30 +2561,28 @@ function openPane(fileArg, opts, env, out) {
     pane = panes.find((p) => p.tab_id === tab && p.label === PANE_LABEL && p.pane_id !== target)?.pane_id || null
   }
   if (pane) {
-    let { state, script, origin } = paneState(pane, env)
-    // Another copy of the board runs there (an older install, a moved checkout), or one that
-    // sends its answers to another pane: quit it with its `q` key and start this one, so one
-    // `open` switches the pane over.
+    let { state, script, origin, version } = paneState(pane, env)
+    // Another copy of the board runs there (an older install, a moved checkout), an older
+    // version of this one (an update rewrites the plugin's folder in place, so the path is the
+    // same), or one that sends its answers to another pane: quit it with its `q` key and start
+    // this one, so one `open` switches the pane over.
     const otherCopy = state === "board" && !sameFile(script, PANE_SCRIPT)
-    const otherOrigin = state === "board" && !otherCopy && origin !== target
-    if (otherCopy || otherOrigin) {
-      herdr(["pane", "send-text", pane, "q"], env, { quiet: true })
-      for (let i = 0; i < 30 && state !== "shell"; i++) {
-        sleep(100)
-        ;({ state } = paneState(pane, env))
-      }
-    }
+    const older = state === "board" && !otherCopy && version !== VERSION
+    const otherOrigin = state === "board" && !otherCopy && !older && origin !== target
+    if (otherCopy || older || otherOrigin) state = quitBoard(pane, env)
     if (state === "shell") herdr(["pane", "run", pane, paneCommand(file, target)], env)
     out(
       state === "busy"
         ? `pane ${pane} is the board's, but something else runs in it now; left alone`
         : state === "board"
-          ? `board already open in pane ${pane}${otherCopy || otherOrigin ? ` (the running board, ${script}, did not quit)` : ""}`
+          ? `board already open in pane ${pane}${otherCopy || older || otherOrigin ? ` (the running board, ${script}, did not quit)` : ""}`
           : otherCopy
             ? `board switched to this copy in pane ${pane}`
-            : otherOrigin
-              ? `board restarted in pane ${pane}; its answers now go to ${target}`
-              : `board restarted in pane ${pane}`,
+            : older
+              ? `board updated to ${VERSION} in pane ${pane} (it ran ${version || "a version before 0.4.0"})`
+              : otherOrigin
+                ? `board restarted in pane ${pane}; its answers now go to ${target}`
+                : `board restarted in pane ${pane}`,
     )
   } else {
     const split = herdr(
@@ -2341,6 +2599,178 @@ function openPane(fileArg, opts, env, out) {
   return file
 }
 
+/** Quit the board running in `pane` with its `q` key, waiting up to 3 s; the pane's state after. */
+function quitBoard(pane, env) {
+  herdr(["pane", "send-text", pane, "q"], env, { quiet: true })
+  let { state } = paneState(pane, env)
+  for (let i = 0; i < 30 && state === "board"; i++) {
+    sleep(100)
+    ;({ state } = paneState(pane, env))
+  }
+  return state
+}
+
+/** Every board pane Herdr has, in every workspace: [{ pane, tab, workspace, ...paneState }]. */
+function boardPanes(env) {
+  const spaces = herdr(["workspace", "list"], env, { quiet: true })?.result?.workspaces || []
+  const ids = spaces.map((w) => w.workspace_id).filter(Boolean)
+  if (!ids.length && env.HERDR_WORKSPACE_ID) ids.push(env.HERDR_WORKSPACE_ID)
+  const found = []
+  for (const id of ids) {
+    for (const p of herdr(["pane", "list", "--workspace", id], env, { quiet: true })?.result?.panes || []) {
+      if (p.label === PANE_LABEL) found.push({ pane: p.pane_id, tab: p.tab_id, workspace: id, ...paneState(p.pane_id, env) })
+    }
+  }
+  return found
+}
+
+/**
+ * A board pane that runs an older version of the copy in `dir` (an update rewrote its folder in
+ * place, so the path is the same), or a copy whose files are gone. A pane running another copy
+ * that is still there (a checkout, say) is not stale: `open` in its tab switches it, on purpose.
+ */
+const stale = (p, dir = SCRIPTS, version = VERSION) =>
+  p.state === "board" && ((sameFile(p.script, join(dir, "board-pane.mjs")) && (p.version ? p.version !== version : atLeast(version, "0.4.0"))) || !existsSync(p.script))
+
+/**
+ * `restart`, and the pane's own restart after an update (`pane`): quit each stale board pane and
+ * start this copy in it, with the board file and coordinator pane it had. Returns the lines to print.
+ */
+function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyOrigin = "" } = {}) {
+  const panes = only ? [{ pane: only, ...paneState(only, env), ...(onlyFile ? { board: onlyFile, origin: onlyOrigin } : {}) }] : boardPanes(env).filter((p) => stale(p))
+  const lines = []
+  for (const p of panes) {
+    // Started from a pane before `restart` reached it (`pane-restart`): it is quitting already.
+    let state = p.state
+    for (let i = 0; only && i < 50 && state === "board"; i++) {
+      sleep(100)
+      ;({ state } = paneState(p.pane, env))
+    }
+    if (state === "board") state = quitBoard(p.pane, env)
+    if (state !== "shell" || !p.board) {
+      lines.push(`pane ${p.pane}: the board there did not quit; press q in it, then run \`board.mjs open\` from the pane left of it`)
+      continue
+    }
+    herdr(["pane", "run", p.pane, paneCommand(p.board, p.origin)], env)
+    lines.push(`pane ${p.pane}: board ${VERSION} started (it ran ${existsSync(p.script) ? p.version || "a version before 0.4.0" : `${p.script}, now gone`})`)
+  }
+  return lines
+}
+
+// --- doctor -------------------------------------------------------------------------------------
+
+/** "0.9.3" ≥ "0.9.10"? Dotted numbers compared part by part. */
+const atLeast = (have, need) => {
+  const a = String(have).split(".").map(Number)
+  const b = String(need).split(".").map(Number)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0)
+  return true
+}
+const readText = (path) => {
+  try {
+    return readFileSync(path, "utf8")
+  } catch {
+    return null
+  }
+}
+
+/** Herdr's config.toml: in its session folder (`herdr session list`), else $XDG_CONFIG_HOME/herdr or ~/.config/herdr. */
+function herdrConfig(env) {
+  const sessions = herdr(["session", "list", "--json"], env, { quiet: true })?.sessions
+  const dir = (Array.isArray(sessions) && (sessions.find((s) => s.default) || sessions[0])?.session_dir) || join(env.XDG_CONFIG_HOME || join(env.HOME || "", ".config"), "herdr")
+  return join(dir, "config.toml")
+}
+
+export const KEY_SNIPPET = `[[keys.command]]
+key = "prefix+b"            # any free key
+type = "plugin_action"
+command = "herdr-job-board.open"
+description = "open the job board"`
+export const SIDEBAR_SNIPPET = `[ui.sidebar.spaces]
+rows = [
+  ["state_icon", "workspace"],
+  ["branch", "git_status"],
+  ["$board"],
+]`
+
+/**
+ * `doctor`: what works and what is missing, one line each, with the one command (or the lines
+ * to paste) that fixes it. Required: Node 20+, Herdr (new enough, this pane inside it) and the
+ * plugin; optional: the key binding, the sidebar count, the Claude Code hooks. Board panes that
+ * run an older version are listed with `restart`. Exit 1 when something required is missing.
+ */
+function doctor(env, out) {
+  const lines = []
+  let missing = 0
+  const say = (mark, text, ...fix) => lines.push(`${mark.padEnd(5)} ${text}`, ...fix.map((f) => `      ${f}`))
+  const need = (ok, text, ...fix) => (ok ? say("ok", text) : (missing++, say("fix", text, ...fix)))
+  const here = `node ${shellQuote(join(SCRIPTS, "board.mjs"))}`
+  lines.push(`herdr-job-board ${VERSION || "(version unknown)"} at ${SCRIPTS}`)
+  const toml = readText(join(SCRIPTS, "herdr-plugin.toml")) || ""
+  const minHerdr = /^min_herdr_version\s*=\s*"([^"]+)"/m.exec(toml)?.[1] || "0.9.3"
+
+  const node = process.versions.node
+  need(atLeast(node, "20"), `Node.js ${node}${atLeast(node, "20") ? "" : ": the board needs 20 or newer"}`, "install Node.js 20 or newer (https://nodejs.org)")
+  const v = spawnSync(herdrBin(env), ["--version"], { encoding: "utf8", env, timeout: 5000 })
+  const herdrVersion = /(\d+\.\d+(?:\.\d+)?)/.exec(v.stdout || "")?.[1] || ""
+  if (!herdrVersion) need(false, "Herdr: not found", "install Herdr (https://herdr.dev), then run this inside it")
+  else need(atLeast(herdrVersion, minHerdr), `Herdr ${herdrVersion}${atLeast(herdrVersion, minHerdr) ? "" : `: the board needs ${minHerdr} or newer`}`, "herdr update")
+  if (!inHerdr(env)) {
+    need(false, "not inside Herdr: the rest is checked from a Herdr pane", "open a Herdr pane and run this again there")
+    out(lines.join("\n"))
+    return 1
+  }
+  const plugins = herdr(["plugin", "list", "--json"], env, { quiet: true })?.result?.plugins
+  const plugin = Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID) : null
+  const root = plugin?.plugin_root ?? ""
+  const from = plugin?.source?.kind === "github" ? `${plugin.source.owner}/${plugin.source.repo} @ ${String(plugin.source.resolved_commit || "").slice(0, 7)}` : plugin ? "a local folder (herdr plugin link)" : ""
+  need(Boolean(plugin), plugin ? `plugin installed: ${PLUGIN_ID} ${plugin.version ?? ""} from ${from}` : "plugin not installed", `herdr plugin install ${PLUGIN_SOURCE}`)
+  if (plugin && plugin.enabled === false) need(false, "plugin disabled", `herdr plugin enable ${PLUGIN_ID}`)
+  if (root && !sameFile(root, SCRIPTS)) say("note", `this is another copy than the installed one (${root}); the key binding and \`restart\` use the installed one`)
+  const cli = root ? `node ${shellQuote(join(root, "board.mjs"))}` : here
+
+  const file = boardPath(process.cwd(), env)
+  if (!file) say("note", "not in a git repo: each repo has its own board; run this from one to check it")
+  else {
+    let cards = null
+    try {
+      cards = readBoard(file).items.length
+    } catch (e) {
+      need(false, `board file unreadable: ${clean(e.message).slice(0, 160)}`, `fix or move ${file}`)
+    }
+    if (cards !== null) say("ok", `this repo's board: ${file} (${cards} card${cards === 1 ? "" : "s"}${existsSync(file) ? "" : ", created on the first add"})`)
+  }
+
+  const config = herdrConfig(env)
+  const text = readText(config) ?? ""
+  const keyed = /command\s*=\s*"herdr-job-board\.open"/.test(text)
+  say(keyed ? "ok" : "add", keyed ? "key binding for the board (herdr-job-board.open)" : `no key binding: add this to ${config}, then run \`herdr server reload-config\``, ...(keyed ? [] : KEY_SNIPPET.split("\n")))
+  if (!keyed) say("", `(until then: ${cli} open)`)
+  const sidebar = /"\$board"/.test(text)
+  say(sidebar ? "ok" : "add", sidebar ? "sidebar shows the board's counts ($board)" : `no "$board" in the sidebar: add it to the rows in ${config}, e.g.`, ...(sidebar ? [] : SIDEBAR_SNIPPET.split("\n")))
+  const settings = [join(env.HOME || "", ".claude", "settings.json"), ...(file ? [".claude/settings.json", ".claude/settings.local.json"].map((f) => join(dirname(dirname(file)), f)) : [])]
+  const hooked = settings.find((f) => /board-hook\.mjs|job-board\.mjs\\?"? hook/.test(readText(f) ?? ""))
+  say(hooked ? "ok" : "opt", hooked ? `Claude Code hooks (in ${hooked})` : "Claude Code hooks not set up (only for a Claude Code coordinator): print them with", ...(hooked ? [] : [`${cli} hooks`]))
+
+  // Open panes, against the installed copy (this one when it isn't installed).
+  const refDir = root || SCRIPTS
+  const refVersion = (root ? plugin.version : VERSION) || VERSION
+  const panes = boardPanes(env)
+  const old = panes.filter((p) => stale(p, refDir, refVersion))
+  for (const p of panes.filter((p) => p.state === "board" && !old.includes(p) && !sameFile(p.script, join(refDir, "board-pane.mjs")))) {
+    say("note", `pane ${p.pane} (tab ${p.tab}) runs another copy: ${p.script}`)
+  }
+  if (!panes.length) say("ok", "no board pane open")
+  else if (!old.length) say("ok", `${panes.length} board pane${panes.length === 1 ? "" : "s"} open`)
+  else {
+    for (const p of old) say("fix", `pane ${p.pane} (tab ${p.tab}) runs ${p.version || "a version before 0.4.0"}, not ${refVersion}`)
+    missing++
+    lines.push(`      ${atLeast(refVersion, "0.4.0") ? `${cli} restart` : "press q in it, then open the board again"}`)
+  }
+  out(lines.join("\n"))
+  return missing ? 1 : 0
+}
+
 // --- the command line -----------------------------------------------------------------------
 
 function usage(message) {
@@ -2349,7 +2779,7 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest"])
+const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin"])
 const SWITCHES = new Set(["clear-options", "if-final"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
@@ -2403,7 +2833,35 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     if (command === "open") {
       only(opts, ["share"], command)
       const file = openPane(env.JOB_BOARD_FILE ? boardPath(process.cwd(), env) : null, opts, env, out)
-      syncToken(file, env)
+      if (file) syncToken(file, env)
+      return 0
+    }
+    if (command === "version") {
+      out(VERSION)
+      return 0
+    }
+    if (command === "doctor") {
+      only(opts, [], command)
+      return doctor(env, out)
+    }
+    if (command === "hooks") {
+      only(opts, [], command)
+      const r = spawnSync(process.execPath, [join(SCRIPTS, "hooks", "board-hook.mjs"), "--print-settings"], { encoding: "utf8", env })
+      raw(r.stdout.trimEnd())
+      return r.status ?? 1
+    }
+    if (command === "restart" || command === "pane-restart") {
+      // pane-restart <pane> --board F --origin O: a board pane's own restart after an update.
+      if (!inHerdr(env)) throw new Error("restarting board panes needs Herdr (HERDR_ENV=1)")
+      if (command === "pane-restart") {
+        only(opts, ["board", "origin"], command)
+        if (rest.length !== 1 || !opts.board) throw usage("usage: board.mjs pane-restart <pane> --board <file> [--origin <pane>]")
+        for (const line of restartPanes(env, { pane: rest[0], file: opts.board, origin: opts.origin ?? "" })) out(line)
+        return 0
+      }
+      only(opts, [], command)
+      const lines = restartPanes(env)
+      out(lines.length ? lines.join("\n") : `every board pane runs ${VERSION}: nothing to restart`)
       return 0
     }
     const file = boardPath(process.cwd(), env)
@@ -2553,7 +3011,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       default:
-        throw usage(`unknown command "${command}" (add, move, edit, done, rm, ls, json, job-start, job-report, open, token, path)`)
+        throw usage(`unknown command "${command}" (add, move, edit, done, rm, ls, json, job-start, job-report, open, restart, doctor, hooks, version, token, path)`)
     }
   } catch (error) {
     err(`board: ${error.message}`)
