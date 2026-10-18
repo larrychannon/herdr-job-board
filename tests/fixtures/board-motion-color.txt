@@ -81,74 +81,74 @@
 
 [2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
 ===== Done folded · frame 0 · 88 columns =====
-[1mJob board · my-app[0m                                                                 [2m10:30[0m
+[1mJob board · my-app[0m[2m · [0m[1;33m2 need you[0m                                                    [2m10:30[0m
 
-[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
-[1m1▸[0m[1mOld question: pick a name[0m                                                       [31m2 days[0m
-  [2mNeeds you:[0m Reply with a name
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m [33m───────────────────────────────────────────────────────────────────[0m
+[1m▸[0m[1;7m1[0m [1;33m![0m [1mOld question: pick a name[0m                                                    [31m2 days[0m
+     [2mNeeds you:[0m Reply with a name
+[1m [0m[2m2[0m [1;33m![0m [1mBilling fix (PR #12): review[0m                                                 [2m30 min[0m
 
-[2m2 [0m[1mBilling fix (PR #12): review[0m                                                    [2m30 min[0m
-  Invoices round per line. Preview: [4mhttp://localhost:3000/invoices[0m
-  [2mQuestion:[0m Try [4mhttp://localhost:3000/invoices[0m, then say merge
-  [1;30;47m[ Merge ✓ ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+[1;34mDOING (4)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
+[1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [=   ][0m  [2m25 min[0m
+[1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
+[1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [=   ][0m  [2m20 min[0m
+[1m [0m[2m8[0m   Release notes: draft                                               [90mno agent[0m  [2m18 min[0m
 
-[1;34mDOING (4)[0m                                    [1mTO DO (1)[0m
-[2m3 [0m[1mSearch filters: build[0m             [2m25 min[0m   [2m5 [0m[1mExport to CSV[0m                     [2m23 min[0m
-  [32mworking, report done[0m[32m [=   ][0m                  Let people download any table as CSV.
-  The filter panel from the approved
-  mockup.
-
-[2m4 [0m[1mDocs: fix links[0m                   [2m24 min[0m
-  [36midle[0m
-
-[2m7 [0m[1mAPI client: regenerate[0m            [2m20 min[0m
-  [32mworking[0m[32m [=   ][0m
-  From the new OpenAPI file.
-
-[2m8 [0m[1mRelease notes: draft[0m              [2m18 min[0m
-  [90mno agent[0m
-
-
-
-
-
-
-
-
-
-
-
+[1mTO DO (1)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1m [0m[2m5[0m   Export to CSV                                                                [2m23 min[0m
 
 [2;32mDONE · 1 today ▸[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 [2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
 ===== Done open (d) · frame 3 · 88 columns =====
-[1mJob board · my-app[0m                                                                 [2m10:30[0m
+[1mJob board · my-app[0m[2m · [0m[1;33m2 need you[0m                                                    [2m10:30[0m
 
-[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m
-[1m1▸[0m[1mOld question: pick a name[0m                                                       [31m2 days[0m
-  [2mNeeds you:[0m Reply with a name
+[1m▸ [0m[1;7;33mWAITING ON YOU (2)[0m [33m───────────────────────────────────────────────────────────────────[0m
+[1m▸[0m[1;7m1[0m [1;33m![0m [1mOld question: pick a name[0m                                                    [31m2 days[0m
+     [2mNeeds you:[0m Reply with a name
+[1m [0m[2m2[0m [1;33m![0m [1mBilling fix (PR #12): review[0m                                                 [2m30 min[0m
 
-[2m2 [0m[1mBilling fix (PR #12): review[0m                                                    [2m30 min[0m
-  Invoices round per line. Preview: [4mhttp://localhost:3000/invoices[0m
-  [2mQuestion:[0m Try [4mhttp://localhost:3000/invoices[0m, then say merge
-  [1;30;47m[ Merge ✓ ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
+[1;34mDOING (4)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
+[1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [   =][0m  [2m25 min[0m
+[1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
+[1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [   =][0m  [2m20 min[0m
+[1m [0m[2m8[0m   Release notes: draft                                               [90mno agent[0m  [2m18 min[0m
 
-[1;34mDOING (4)[0m                     [1mTO DO (1)[0m                     [2;32mDONE (1) ▾[0m
-[2m3 [0m[1mSearch filters: build[0m       [2m5 [0m[1mExport to CSV[0m      [2m23 min[0m   [2m6 [0mNightly backup check
-  [32mworking, report done[0m          Let people download any       [2m09:30[0m
-  The filter panel from the     table as CSV.
-  approved mockup.   [2m25 min[0m
+[1mTO DO (1)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1m [0m[2m5[0m   Export to CSV                                                                [2m23 min[0m
 
-[2m4 [0m[1mDocs: fix links[0m    [2m24 min[0m
-  [36midle[0m
+[2;32mDONE (1) ▾[0m [2;32m─────────────────────────────────────────────────────────────────────────────[0m
+[1m [0m[2m6[0m [2;32m✓[0m Nightly backup check                                                          [2m09:30[0m
 
-[2m7 [0m[1mAPI client: regenerate[0m
-  [32mworking[0m[32m [   =][0m
-  From the new OpenAPI
-  file.              [2m20 min[0m
 
-[2m8 [0m[1mRelease notes: draft[0m
-  [90mno agent[0m           [2m18 min[0m
+
+
+
+
+
+
+
 
 
 

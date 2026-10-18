@@ -4,16 +4,19 @@
 // board.mjs writes it.
 //
 //   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
-//   node board-pane.mjs --once [--width N] [--height N] [--color] [--links] [--frame N] [--keys <input>] [--origin <pane>]
+//   node board-pane.mjs --once [--width N] [--height N] [--layout wide|inbox|compact] [--color] [--emoji] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
-// `board.mjs open` starts it in a split right of the calling pane. WAITING ON YOU across the
-// top; DOING and TO DO in two columns below, and DONE (today) folded to one line at the bottom
-// ("DONE · 3 today ▸"; d or a click opens it as a third column, newest first, and folds it
-// again); under 70 cells wide the sections stack. Each card: the title, the description over up
-// to 3 lines, for Waiting the ask ("→ …"), and the age; Doing shows its agent's live status from
+// `board.mjs open` starts it in a split right of the calling pane. The layout follows the
+// pane's size: from 120 cells wide, WAITING ON YOU across the top and DOING | TO DO in two
+// columns below; from 70, the inbox (the sections stacked, one row a card, the selected card
+// open under its row); under 70 cells or 24 rows, compact (rows only; Space opens the selected
+// one). DONE (today) is folded to one line ("DONE · 3 today ▸"; d or a click opens it, newest
+// first, and folds it again). A card: the title, the description over up to 3 lines, for
+// Waiting the ask and its buttons, and the age; Doing shows its agent's live status from
 // `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour
-// palette (NO_COLOR turns them off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing
-// the URL itself. It also keeps the sidebar's $board token current.
+// palette (NO_COLOR turns them off), emoji only in the section headers (BOARD_EMOJI=0 turns them
+// off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also keeps
+// the sidebar's $board token current, and restarts itself when an update rewrites its folder.
 //
 // A Doing card whose agent is working shows a small ASCII bar bouncing beside "working"; every
 // other card stands still, so the motion says what is running. It ticks about 6 times a second,
@@ -22,6 +25,7 @@
 // Every section scrolls on its own and has a selected card; the position holds across redraws
 // and new cards.
 //   Tab / Shift-Tab, ← →   select a section        ↑ ↓, j k   select a card (the view follows)
+//   Space                   open or close the selected card under its row (inbox, compact)
 //   PgUp PgDn               scroll a page           g G        first / last card
 //   mouse wheel             scroll the section under the pointer
 //   click, double click     select a card, open its details; a click on a card's question
@@ -57,8 +61,10 @@
 // button pressed there is really sent.
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
 
-import { watch } from "node:fs"
-import { basename, dirname, resolve, sep } from "node:path"
+import { spawn } from "node:child_process"
+import { statSync, watch } from "node:fs"
+import { basename, dirname, join, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import {
   animates,
@@ -69,6 +75,7 @@ import {
   copyMessage,
   copyPlace,
   createAnswerer,
+  emojiOn,
   emptyBoard,
   focusAgent,
   handleInput,
@@ -83,6 +90,18 @@ import {
   textWidth,
   tokenText,
   nextCopy,
+  atLeast,
+  COPY_FILES,
+  lastRestart,
+  LATE_START_MS,
+  logRestart,
+  PLUGIN_SOURCE,
+  UPDATE_SETTLE_MS,
+  VERSION,
+  VERIFY_AGAIN,
+  VERIFY_TIMEOUT_MS,
+  verifyCopy,
+  versionOf,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -91,14 +110,16 @@ const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, links: false, keys: "", origin: "", frame: null }
+  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
     else if (a === "--links") opts.links = true
     else if (a === "--color") opts.color = true
     else if (a === "--no-color") opts.color = false
-    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
+    else if (a === "--emoji") opts.emoji = true
+    else if (a === "--no-emoji") opts.emoji = false
+    else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame", "--layout", "--version"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
   return opts
@@ -124,6 +145,7 @@ async function load(file, env) {
 const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date())
 
 function compose(data, file, env, layout) {
+  layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
   const view = buildView(data.state, data.agents, { now, workspace })
@@ -168,6 +190,14 @@ async function perform(action, ctx) {
   return null
 }
 
+// Times the pane compares with each other (a paint, a click, an update standing still) come from
+// a monotonic clock: a step of the wall clock (NTP) can't make a button look just drawn, or an
+// update look older or newer than it is.
+const clock = () => performance.now()
+// Timed-out checks of a new copy: wait this much longer before each new try; give up after VERIFY_TRIES.
+const VERIFY_BACKOFF_MS = 60_000
+const VERIFY_TRIES = 3
+
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
 
 async function main(argv = process.argv.slice(2), env = process.env) {
@@ -190,13 +220,22 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
-    const layout = { width: Number(opts.width) || process.stdout.columns || 100, height: Number(opts.height) || Infinity, color: opts.color === true, links: opts.links, frame: Number.isInteger(frame) ? frame : null }
+    const layout = {
+      width: Number(opts.width) || process.stdout.columns || 100,
+      height: Number(opts.height) || Infinity,
+      color: opts.color === true,
+      links: opts.links,
+      emoji: opts.emoji === true,
+      layout: opts.layout,
+      frame: Number.isInteger(frame) ? frame : null,
+    }
     const draw = (scroll) =>
       compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
-      event.at = Date.now()
+      if (event.type !== "key" && !ctx.mouse) continue
+      event.at = clock()
       const { scroll, action } = handleInput(drawn.scroll, event, drawn)
       if (action) {
         ctx.drawn = drawn
@@ -212,6 +251,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 
   const out = process.stdout
   const color = opts.color ?? !env.NO_COLOR
+  const emoji = opts.emoji ?? emojiOn(env)
   let data = await load(file, env)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
@@ -265,6 +305,9 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       width: cols - 1,
       height: out.rows || 24,
       color,
+      emoji,
+      // The paint's time: buttons that appear or move get it as their first-seen time.
+      at: clock(),
       links: true,
       frame: animate ? frame : null,
       scroll,
@@ -287,12 +330,91 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     // Tick while a working bar is on screen; no timer otherwise.
     ticker.sync(animate && drawn.animated > 0)
   }
+  // An update rewrites the plugin's folder in place: this pane still runs the code it started
+  // with. Each refresh reads the folder's version and the size and time of its files. Once a new
+  // version has stood still for UPDATE_SETTLE_MS (a half-written update keeps changing), the new
+  // copy is checked (verifyCopy: its files parse, and its `board.mjs version` says that
+  // version); only then does the pane hand over to it in the same pane (board.mjs pane-restart
+  // waits for it to quit, then starts the new one). A copy that fails the check (a broken
+  // update, a rollback to a board before 0.4.0, which has no pane-restart) is not started: the
+  // pane keeps running and says why, until the folder changes again. It waits while the details
+  // are open or a button is chosen. Outside Herdr, or in a pane `open` didn't start (no
+  // --version: Herdr's own plugin pane, which closes when the board quits), it only says so.
+  const here = dirname(fileURLToPath(import.meta.url))
+  const settleMs = Number(env.JOB_BOARD_UPDATE_SETTLE_MS) || UPDATE_SETTLE_MS
+  const backoffMs = Number(env.JOB_BOARD_VERIFY_BACKOFF_MS) || VERIFY_BACKOFF_MS
+  const filesOf = () =>
+    ["herdr-plugin.toml", ...COPY_FILES]
+      .map((f) => {
+        try {
+          const s = statSync(join(here, f))
+          return `${s.size}:${s.mtimeMs}`
+        } catch {
+          return "-"
+        }
+      })
+      .join(" ")
+  let update = null
+  let failed = null
+  let checking = false
+  let restarting = false
+  // The last restart in this pane failed (pane-restart logged why): say so until it is closed.
+  // Not a "didn't start" logged just before this board started: this board is the late one.
+  const last = lastRestart(env, env.HERDR_PANE_ID)
+  const late = last?.kind === "start" && Date.now() - Date.parse(last.at) < LATE_START_MS
+  const startNotice = last?.ok === false && !late ? `the last restart in this pane failed: ${last.error}` : ""
+  if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
+  const checkUpdate = () => {
+    const now = versionOf(here)
+    if (!now || now === VERSION) {
+      update = null
+      return startNotice
+    }
+    const sig = `${now} ${filesOf()}`
+    if (failed?.sig === sig) return failed.notice
+    if (update?.sig !== sig) update = { sig, since: clock(), timeouts: 0, retryAt: 0 }
+    const busy = scroll.detail || (scroll.button ?? -1) >= 0
+    const canRestart = env.HERDR_ENV === "1" && env.HERDR_PANE_ID && opts.version
+    if (!canRestart) return `board ${now} is installed: press q, then open the board again`
+    if (clock() - update.since >= settleMs && clock() >= update.retryAt && !busy && !checking && !restarting) {
+      checking = true
+      const mine = update
+      verifyCopy(here, now, env, file).then((reason) => {
+        checking = false
+        // The folder changed while it was checked: check again once it is still.
+        if (`${versionOf(here)} ${filesOf()}` !== sig) return
+        // A step ran out of time: try again later, a little later each time (a copy that hangs
+        // would otherwise keep a CPU busy), and after VERIFY_TRIES timeouts in a row give up.
+        if (reason === VERIFY_AGAIN) {
+          mine.timeouts++
+          mine.retryAt = clock() + backoffMs * mine.timeouts
+          if (mine.timeouts < VERIFY_TRIES) return
+          const limit = Number(env.JOB_BOARD_VERIFY_TIMEOUT_MS) || VERIFY_TIMEOUT_MS
+          reason = `the new copy took too long to start (a check ran over ${limit >= 1000 ? `${Math.round(limit / 1000)} s` : `${limit} ms`}, ${mine.timeouts} times)`
+        }
+        if (reason) {
+          // An older version (a rollback) was put there on purpose: installing again would undo it.
+          const fix = atLeast(VERSION, now) ? `quit (q) and open the board again to run ${now}` : `run herdr plugin install ${PLUGIN_SOURCE} again`
+          failed = { sig, notice: `${atLeast(VERSION, now) ? "board" : "update to"} ${now} ${atLeast(VERSION, now) ? "can't take over this pane by itself" : "failed to start"}: ${reason}; ${fix}` }
+          data.notice = failed.notice
+          paint()
+          return
+        }
+        restarting = true
+        const args = [join(here, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
+        spawn(process.execPath, args, { detached: true, stdio: "ignore", env }).unref()
+        quit(0)
+      }, crash)
+    }
+    return `board ${now} is installed: this pane restarts with it${busy ? " once the details are closed and no button is chosen" : ""}`
+  }
   let loading = false
   const refresh = async () => {
     if (loading) return
     loading = true
     try {
       data = await load(file, env)
+      data.notice = checkUpdate()
       paint()
     } finally {
       loading = false
@@ -335,8 +457,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
           refresh()
           continue
         }
+        // Mouse capture off (m): the terminal shouldn't report clicks; one that does anyway
+        // selects nothing and presses nothing.
+        if (event.type !== "key" && !ctx.mouse) continue
         if (!drawn) continue
-        event.at = Date.now()
+        event.at = clock()
         const result = handleInput(scroll, event, drawn)
         scroll = result.scroll
         if (result.action) {

@@ -79,8 +79,9 @@ test("colours: the 16-colour palette, by section, status, ask and age; off witho
   const t = setup({ agents, tabs })
   try {
     seed(t)
-    const on = t.pane(["--color"]).stdout
-    const off = t.pane().stdout
+    // The wide layout, where every card shows whole; the inbox's colours have a test of their own.
+    const on = t.pane(["--color", "--width", "120"]).stdout
+    const off = t.pane(["--width", "120"]).stdout
     for (const [name, text] of [["board-view-color.txt", on], ["board-view-plain.txt", off]]) {
       const snap = join(FIXTURES, name)
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, text)
@@ -153,7 +154,7 @@ test("OSC 8: the visible text is the URL itself; only whole URLs become links", 
   const t = setup({ agents, tabs })
   try {
     seed(t)
-    const text = t.pane(["--links", "--color"]).stdout
+    const text = t.pane(["--links", "--color", "--width", "120"]).stdout
     const links = [...text.matchAll(/\x1b\]8;;([^\x1b]*)\x1b\\([^\x1b]*)\x1b\]8;;\x1b\\/g)]
     assert.ok(links.length >= 2)
     for (const [, target, shown] of links) {
@@ -742,7 +743,7 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
     const click = `\x1b[<0;${x};${y + 1}M`
     let r = t.pane([], click)
     assert.match(r.stdout, /▸ TO DO \(1\)/, "the click selected To do")
-    assert.match(r.stdout, /\d+▸Export to CSV/, "and the card")
+    assert.match(r.stdout, /▸ ?\d+ {3}Export to CSV/, "and the card (the inbox at 88: its row marked)")
     assert.doesNotMatch(r.stdout, /── card/)
     r = t.pane([], click + click)
     assert.match(r.stdout, /── card 5 /, "a double click opens it")
@@ -869,7 +870,7 @@ test("Alt+c (ESC c in one read) is not c: no copy; Esc on its own is still Esc",
   assert.deepEqual(parseInput("\x1b").map((e) => e.name), ["escape"])
   assert.deepEqual(parseInput("\x1b\x1b").map((e) => e.name), ["escape", "escape"])
   assert.deepEqual(parseInput("\x1b\x1b[A").map((e) => e.name), ["escape", "up"])
-  assert.deepEqual(parseInput("\x1bé c").map((e) => e.name), ["copy"], "a multi-byte Alt chord is skipped whole")
+  assert.deepEqual(parseInput("\x1béxc").map((e) => e.name), ["copy"], "a multi-byte Alt chord is skipped whole")
   const t = setup({ agents, tabs })
   try {
     seed(t)
@@ -934,9 +935,11 @@ test("board snapshots: Done folded (default) and open, Doing with working and id
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, all)
       assert.equal(all, readFileSync(snap, "utf8"), `snapshot ${name} (UPDATE_SNAPSHOTS=1 to rewrite)`)
     }
-    // At 88 with Done open, Doing is 27 cells: "working, report done" fits, with the bar it
-    // wouldn't, so that card keeps its words and goes without.
-    for (const [width, keys, bars] of [[120, "", 2], [120, "d", 2], [88, "", 2], [88, "d", 1]]) {
+    // At 100 in the wide layout with Done open, Doing is 31 cells: "working, report done" fits,
+    // with the bar it wouldn't, so that card keeps its words and goes without. The inbox (88)
+    // has the row's width for it.
+    for (const [width, keys, bars, layout] of [[120, "", 2], [120, "d", 2], [88, "", 2], [88, "d", 2], [100, "d", 1, "wide"]]) {
+      if (layout) continue // --once has no layout flag: this one is checked with renderBoard below
       const at = (frame) => t.pane(["--width", String(width), "--height", "40", ...(frame == null ? [] : ["--frame", String(frame)])], keys).stdout
       assert.deepEqual(barsOf(at(null)), [], "no frame: nothing moves (ls, --once)")
       // Only working cards carry the bar; every frame is the same screen but for it.
@@ -951,6 +954,13 @@ test("board snapshots: Done folded (default) and open, Doing with working and id
       else assert.match(first, / {2}working, report done(?! \[)/)
       assert.match(first, / {2}idle(?! \[)/, "idle stands still")
       assert.match(first, / {2}no agent(?! \[)/, "no agent stands still")
+    }
+    {
+      const state = JSON.parse(readFileSync(t.file, "utf8"))
+      const view = buildView(state, motionAgents, { now: new Date(NOW), workspace: "w9" })
+      const text = renderBoard(view, { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 0, layout: "wide", scroll: { selected: "waiting", anchors: {}, doneOpen: true } }).text
+      assert.deepEqual(barsOf(text), [WORKING_FRAMES[0]], "wide at 88 with Done open: one bar")
+      assert.match(text, / {2}working, report done(?! \[)/, "the words, without the bar")
     }
     // Colour: the bar is the working green; NO_COLOR or no --color, plain text.
     const on = t.pane(["--width", "88", "--height", "40", "--frame", "0", "--color"]).stdout
@@ -967,8 +977,9 @@ test("the working bar: only on screen counts (scrolled away or under the details
     seedMotion(t)
     const state = JSON.parse(readFileSync(t.file, "utf8"))
     const draw = (agents, scroll = {}, opts = {}) =>
-      renderBoard(buildView(state, agents, { now: new Date(NOW), workspace: "w9" }), { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 2, scroll: { selected: "waiting", anchors: {}, ...scroll }, ...opts })
-    // `animated` counts exactly the bars on screen.
+      renderBoard(buildView(state, agents, { now: new Date(NOW), workspace: "w9" }), { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 2, layout: "wide", scroll: { selected: "waiting", anchors: {}, ...scroll }, ...opts })
+    // `animated` counts exactly the bars on screen (in the wide layout at 88, where the panel
+    // covers one of the two working cards).
     const counted = (drawn) => {
       assert.equal(drawn.animated, barsOf(drawn.text).length, "animated = bars drawn")
       return drawn.animated
@@ -1058,7 +1069,7 @@ test("the live pane: the bar moves about 6 times a second rewriting only its lin
   const children = []
   const run = (extraEnv = {}) => {
     // Its own process group, so a failed assertion can't leave the pane running.
-    const child = spawn("script", ["-qefc", `stty cols 89 rows 24; exec node ${JSON.stringify(PANE)} --board ${JSON.stringify(t.file)} --interval 1`, "/dev/null"], { cwd: t.base, env: { ...t.env, ...extraEnv }, detached: true })
+    const child = spawn("script", ["-qefc", `stty cols 121 rows 24; exec node ${JSON.stringify(PANE)} --board ${JSON.stringify(t.file)} --interval 1`, "/dev/null"], { cwd: t.base, env: { ...t.env, ...extraEnv }, detached: true })
     children.push(child)
     const run = { out: "", child }
     child.stdout.on("data", (d) => (run.out += d.toString("latin1")))
@@ -1190,11 +1201,13 @@ test("question snapshots: the ask as text with its buttons right under it, then 
       assert.equal(all, readFileSync(snap, "utf8"), `snapshot ${name} (UPDATE_SNAPSHOTS=1 to rewrite)`)
     }
     // The card reads top to bottom: the question, its buttons right under it, then what was sent.
+    // (The inbox at 88 shows the selected card's: card 1 first, then card 3 two rows down.)
     for (const width of [120, 88]) {
       const screen = t.pane(["--width", String(width), "--height", "40"]).stdout
-      assert.match(screen, /Question: Approve the whole release[^\n]*\n(?: {4}[^\n]*\n)? {2}\[ Approve, include #16 ✓ \] {2}\[ Approve, #16 later \]/, `${width}: buttons straight under the question`)
-      assert.match(screen, /\[ Other… \][^\n]*\n {2}sent: Approve, include #16 · 10:08/, `${width}: sent after the buttons`)
-      assert.match(screen, /Needs you: Say merge \(after #12\)/, `${width}: a question with no buttons`)
+      const indent = width < 120 ? " {5}" : " {2}"
+      assert.match(screen, new RegExp(`Question: Approve the whole release[^\\n]*\\n(?: +[^\\n]*\\n)?${indent}\\[ Approve, include #16 ✓ \\] {2}\\[ Approve, #16 later \\]`), `${width}: buttons straight under the question`)
+      assert.match(screen, new RegExp(`\\[ Other… \\][^\\n]*\\n${indent}sent: Approve, include #16 · 10:08`), `${width}: sent after the buttons`)
+      assert.match(width < 120 ? t.pane(["--width", "88", "--height", "40"], "\x1b[B\x1b[B").stdout : screen, /Needs you: Say merge \(after #12\)/, `${width}: a question with no buttons`)
       assert.doesNotMatch(screen, /→ /, `${width}: no arrow`)
     }
     // No button in the question's style, and the question in none of the buttons': with colour,
@@ -1218,8 +1231,9 @@ test("a click on the question chooses the suggested button (or the first) and sa
   try {
     seedQuestion(t)
     const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
-    for (const width of [120, 88]) {
-      const draw = (scroll) => renderBoard(view, { width, height: 60, interactive: true, now: new Date(NOW), scroll })
+    // Wide, where every card shows its question (at 120, and at 88 too); the inbox below.
+    for (const [width, layout] of [[120], [88, "wide"]]) {
+      const draw = (scroll) => renderBoard(view, { width, height: 60, interactive: true, now: new Date(NOW), layout, scroll })
       const lastLine = (d) => d.text.split("\n").at(-1)
       const click = (d, hit, at = 0) => handleInput(d.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at }, d)
       let drawn = draw({ selected: "todo", anchors: {} })
@@ -1269,6 +1283,27 @@ test("a click on the question chooses the suggested button (or the first) and sa
       drawn = draw({ ...drawn.scroll, button: 3 })
       assert.match(lastLine(drawn), /^Enter to answer in the chat/)
     }
+    // The inbox: only the selected card shows its question; a click on it chooses, never sends.
+    {
+      const draw = (scroll) => renderBoard(view, { width: 88, height: 40, interactive: true, now: new Date(NOW), scroll })
+      const click = (d, hit) => handleInput(d.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at: 0 }, d)
+      let drawn = draw()
+      assert.equal(drawn.layout, "inbox")
+      assert.deepEqual([...new Set(drawn.askHits.map((a) => a.key))], ["#1"], "one question on screen: the selected card's")
+      let r = click(drawn, drawn.askHits[0])
+      assert.deepEqual([r.action, r.scroll.card, r.scroll.button], [null, "#1", 0], "chosen, not sent")
+      drawn = draw(r.scroll)
+      assert.match(drawn.text.split("\n").at(-1), /^Enter to send/)
+      assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" })
+      // ↓ opens the next card: card 2's first button (no --suggest) by a click on its question.
+      drawn = draw(handleInput(draw().scroll, { type: "key", name: "down" }, draw()).scroll)
+      r = click(drawn, drawn.askHits.find((a) => a.key === "#2"))
+      assert.deepEqual([r.action, r.scroll.card, r.scroll.button], [null, "#2", 0])
+      // In the details: the panel's question, the same.
+      drawn = draw({ ...draw().scroll, detail: { key: "#1", offset: 0 } })
+      r = click(drawn, drawn.askHits.find((a) => a.panel))
+      assert.deepEqual([r.action, r.scroll.detail?.key, r.scroll.button], [null, "#1", 0])
+    }
     // End to end through the pane and the fake Herdr: clicks on the question send nothing.
     const size = ["--width", "120", "--height", "40"]
     const click = clickOn(t.pane(size).stdout, "Question: Approve")
@@ -1298,24 +1333,27 @@ function seedShort(t) {
   t.board("2026-10-13T10:29:00Z", "add", "todo", "Dark mode", "--desc", "Follow the system theme; the colour tokens are in place.")
   t.board("2026-10-13T10:29:00Z", "add", "todo", "Upgrade the test runner", "--desc", "The current version reaches end of life next month.")
 }
-// The sizes where the card's question shows but its buttons don't (the review's sweep).
+// The sizes where the card's question shows but its buttons don't (the review's sweep): the wide
+// layout in a short pane (pinned with --layout: the pane draws compact under 24 rows), and
+// compact with the selected row open (Space), the card cut under its question.
 const SHORT = [
-  [120, 20],
-  [88, 20],
-  [60, 26],
+  { width: 120, height: 20, layout: "wide", keys: "", scroll: { selected: "todo" } },
+  { width: 88, height: 20, layout: "wide", keys: "", scroll: { selected: "todo" } },
+  { width: 60, height: 14, keys: " ", scroll: { selected: "waiting", open: true } },
+  { width: 95, height: 14, keys: " ", scroll: { selected: "waiting", open: true } },
 ]
 
-test("short panes (120x20, 88x20, 60x26): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
+test("short panes (wide 120x20 and 88x20, compact 60x14 and 95x14 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
   const t = setup({ agents, tabs })
   try {
     seedShort(t)
     const view = buildView(JSON.parse(readFileSync(t.file, "utf8")), null, { now: new Date(NOW) })
-    for (const [width, height] of SHORT) {
+    for (const { width, height, layout, scroll: start } of SHORT) {
       const size = `${width}x${height}`
-      const draw = (scroll) => renderBoard(view, { width, height, interactive: true, now: new Date(NOW), scroll })
+      const draw = (scroll) => renderBoard(view, { width, height, layout, interactive: true, now: new Date(NOW), scroll })
       const lastLine = (d) => d.text.split("\n").at(-1)
       const mine = (d, panel = false) => d.buttons.filter((b) => b.key === "#1" && !b.panel === !panel)
-      let drawn = draw({ selected: "todo", anchors: {} })
+      let drawn = draw({ ...start, anchors: {} })
       // The precondition: the question on screen, none of its buttons, and a line that says the card goes on.
       assert.ok(drawn.askHits.some((a) => a.key === "#1"), `${size}: question on screen`)
       assert.deepEqual(mine(drawn), [], `${size}: buttons off screen`)
@@ -1352,7 +1390,7 @@ test("short panes (120x20, 88x20, 60x26): a card cut off above its buttons says 
       assert.match(lastLine(drawn), /^Enter(?: to|:) send · /, `${size}`)
       assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" }, `${size}: now Enter sends what is shown`)
       for (const how of ["right", "question"]) {
-        drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1, detail: { key: "#1", offset: 0 } })
+        drawn = draw({ ...start, selected: "waiting", anchors: {}, card: "#1", button: -1, detail: { key: "#1", offset: 0 } })
         assert.deepEqual(mine(drawn, true), [], `${size}`)
         if (how === "right") r = handleInput(drawn.scroll, { type: "key", name: "right" }, drawn)
         else {
@@ -1396,11 +1434,11 @@ test("short panes (120x20, 88x20, 60x26): a card cut off above its buttons says 
     // Snapshots: as drawn, and the details after → (scrolled to the chosen button); colour on and off.
     for (const [name, flags] of [["short-plain.txt", []], ["short-color.txt", ["--color"]]]) {
       let all = ""
-      for (const [width, height] of SHORT) {
+      for (const { width, height, layout, keys: pre } of SHORT) {
         for (const [label, keys] of [["as drawn", ""], ["details, → chooses and scrolls to it", "\r\x1b[C"]]) {
-          const r = t.pane(["--width", String(width), "--height", String(height), ...flags], keys)
+          const r = t.pane(["--width", String(width), "--height", String(height), ...(layout ? ["--layout", layout] : []), ...flags], pre + keys)
           assert.equal(r.status, 0, r.stderr)
-          all += `===== ${label} · ${width}x${height} =====\n${r.stdout}`
+          all += `===== ${label} · ${width}x${height}${layout ? ` ${layout}` : pre ? " (Space)" : ""} =====\n${r.stdout}`
         }
       }
       const snap = join(FIXTURES, name)
@@ -1409,17 +1447,17 @@ test("short panes (120x20, 88x20, 60x26): a card cut off above its buttons says 
     }
     // End to end at each size through the pane and the fake Herdr: question click + Enter, → Enter,
     // → → Enter, a double click then Enter: no prompt, no focus.
-    for (const [width, height] of SHORT) {
-      const size = ["--width", String(width), "--height", String(height)]
-      const screen = t.pane(size).stdout
+    for (const { width, height, layout, keys: pre } of SHORT) {
+      const size = ["--width", String(width), "--height", String(height), ...(layout ? ["--layout", layout] : [])]
+      const screen = t.pane(size, pre).stdout
       assert.match(screen, /↓ card cut off: open it for the rest/)
       const click = clickOn(screen, "Question: Approve")
       for (const keys of [`${click}\r`, "\x1b[C\r", "\x1b[C\x1b[C\r", `${click}${click}\r`]) {
-        const r = t.pane(size, keys)
+        const r = t.pane(size, pre + keys)
         assert.equal(r.status, 0, r.stderr)
       }
       assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus")), [], `${width}x${height}: nothing sent`)
-      assert.match(t.pane(size, `${click}\r`).stdout, /── card 1 /, `${width}x${height}: Enter opened the details`)
+      assert.match(t.pane(size, `${pre}${click}\r`).stdout, /── card 1 /, `${width}x${height}: Enter opened the details`)
     }
   } finally {
     t.done()

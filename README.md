@@ -1,83 +1,99 @@
 # herdr-job-board
 
-A board beside your chat for work you hand to coding agents: **WAITING ON YOU** on top,
-**DOING**, **TO DO** and **DONE** below. It is a [Herdr](https://herdr.dev) plugin: the board
+A board beside your chat for work you hand to coding agents: **WAITING ON YOU** first, then
+**DOING**, **TO DO** and **DONE**. It is a [Herdr](https://herdr.dev) plugin: the board
 opens in a split pane next to the pane you are in and redraws itself every 3 seconds.
 
 It is made for a *coordinator*: the agent (or person) that starts jobs in other panes and
 asks you for decisions. The coordinator writes the board with a small CLI; you read it at a
 glance, without scrolling the chat to find what needs you.
 
+The layout follows the pane's size. In a pane narrower than 120 columns (the usual case: a
+quarter of the screen) it is an **inbox**: one column, one row a card, the selected card open
+under its row with its description, question and buttons. This is 95 × 30:
+
 ```
-Job board · my-app                                                                 10:30
+Job board · my-app · 3 need you                                                           10:30
 
-▸ WAITING ON YOU (5)
-1▸Login page redesign: approve                                                2 h 20 min
-  New sign-in screen with SSO buttons and a clearer error message. 3 small choices to
-  confirm.
-  Needs you: Open the mockup, reply ok or change
+▸ 🔔 WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────────
+▸ 1 ! Login page redesign: approve                                                   2 h 20 min
+      New sign-in screen with SSO buttons and a clearer error message. 3 small choices to
+      confirm.
+      Question: Open the mockup, reply ok or change
+      [ OK all ✓ ]  [ I'll comment ]  [ Other… ]
+  2 ! Search filters mockup: approve                                                 1 h 30 min
+  3 ! Billing fix (PR #12): review                                                       50 min
 
-2 Search filters mockup: approve                                              1 h 30 min
-  Filter panel for the search page with saved filters. 4 choices, e.g. whether saved
-  filters are per user.
-  Needs you: Reply ok or change
+🔨 DOING (2) ──────────────────────────────────────────────────────────────────────────────────
+  4   Search filters: build                                              working [=   ]  25 min
+  5   Docs site: fix broken links                                                   idle  2 min
 
-3 Billing fix (PR #12): review                                                    50 min
-  Invoices now round each line, not the total. Fixes the one-cent differences customers
-  reported.
-  Needs you: Try the invoice page on :3000, then say merge
-↓ 2 more
+📋 TO DO (4) ──────────────────────────────────────────────────────────────────────────────────
+  6   Export to CSV                                                                       1 min
+  7   Dark mode                                                                           1 min
+  8   Pick next: onboarding or settings                                                   1 min
+  9   Upgrade the test runner                                                             1 min
 
-DOING (2)                                    TO DO (4)
-6 Search filters: build             25 min    8 Export to CSV                     1 min
-  working [=   ]                                Let people download any table as CSV.
-  The filter panel from the approved            Three customers asked for it.
-  mockup, with saved filters per user.
-                                              9 Dark mode                         1 min
-7 Docs site: fix broken links        2 min      Follow the system theme. The colour
-  idle                                          tokens are already in place.
-  Check every link on the new docs site
-  and fix the ones that 404.                 10 Pick next: onboarding or settings
-                                                From the roadmap: an onboarding tour or
-                                                a new settings page. You pick.    1 min
+🏁 DONE · 1 today ▸
 
-                                             11 Upgrade the test runner           1 min
-                                                The current version reaches end of life
-                                                next month.
-
-
-
-DONE · 1 today ▸
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ```
 
-- **WAITING ON YOU** runs across the top: what needs you. Each card shows its title, a
-  description of up to 3 lines and what you should do, as plain text after a dim label:
-  `Question:` when the card's buttons answer it, else `Needs you:`. A card can carry
-  **answer buttons** (below), straight under the question. An agent that is **blocked** on a question or an approval shows
-  here by itself, even when nobody put it on the board.
-- **DOING | TO DO** share the bottom in two columns. Doing cards show the live state of the
-  job's agent from `herdr agent list` (working, done, idle, no agent) and their age. A card
-  whose agent is **working** shows a small ASCII bar bouncing beside the word (`working [=   ]`);
-  idle, done, blocked and gone agents stand still, so the motion itself says what is running.
-- **DONE** is folded to one line at the bottom, `DONE · 3 today ▸`, so it takes no room. `d`
-  or a click on that line opens it as a third column (today's finished cards, newest first,
-  with the time they finished, under `DONE (3) ▾`); `d` or a click on its header folds it
+| Pane | Layout |
+|---|---|
+| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), DOING and TO DO in two columns below; an empty Doing folds to one line over To do |
+| 70 to 119 columns | **inbox**, as above: the sections stacked, one row a card (`id`, `!` for a card that waits on you, the title, the agent's state, the age), the selected card open; an empty section folds to its header ("DOING (0) · nothing running") |
+| under 70 columns, or under 24 rows | **compact**: the same rows, no blank lines, a shorter key line; `Space` opens the selected card under its row (a peek), `Enter` its details |
+
+A row never cuts the id or the age; a title that doesn't fit ends in `…`, and a section that
+can't show every card says how many are above and below it. Resize the pane and the board lays
+itself out again at once.
+
+- **WAITING ON YOU** is first: what needs you. A card shows its title, a description of up to
+  3 lines and what you should do, as plain text after a dim label: `Question:` when the card's
+  buttons answer it, else `Needs you:`; its **answer buttons** (below) come straight under the
+  question. In the inbox that is the selected card; `ls` and the wide layout show every Waiting
+  card that way. The title line counts what needs you ("3 need you"). An agent that is
+  **blocked** on a question or an approval shows here by itself, even when nobody put it on the
+  board.
+- **DOING** shows the live state of each job's agent from `herdr agent list` (working, done,
+  idle, no agent) and its age. A card whose agent is **working** shows a small ASCII bar
+  bouncing beside the word (`working [=   ]`); idle, done, blocked and gone agents stand still,
+  so the motion itself says what is running.
+- **DONE** is folded to one line, `DONE · 3 today ▸`, so it takes no room. `d` or a click on
+  that line opens it (today's finished cards, newest first, with the time they finished, under
+  `DONE (3) ▾`; a third column in the wide layout); `d` or a click on its header folds it
   again. Folded, `Tab` skips it. The choice holds until the pane closes; it always starts
   folded.
-- Waiting gets about half the height. With nothing waiting it shrinks to one line ("Nothing
-  needs you") and the rest goes to the bottom. Under 70 columns the sections stack, with Done's
-  line at the bottom.
+- In the wide layout Waiting gets about half the height; with nothing waiting it shrinks to one
+  line ("Nothing needs you"). In the inbox and compact layouts the selected section's open card
+  is placed first, then each section gets a fair share.
 - **Every section scrolls on its own**, and the place you scrolled to holds while the board
   redraws and new cards arrive. "↑ 2 above" and "↓ 3 more" say what is out of view; a card is
   never hidden without saying so. A card taller than its section (in a short pane) is cut with
   "↓ card cut off: open it for the rest" under it; open it to see the rest, buttons included.
 - **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
-  WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green; the agent's state green
-  (working), red (blocked), cyan (idle or done) or grey (no agent); every button filled grey
-  (the suggested one bold, with ✓; the chosen one blue), while the question stays plain text in
-  no button's colour; and a Waiting card's age red after a day. `NO_COLOR` turns colour off;
-  the buttons keep their `[ … ]` and `< … >`.
+  WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green, each header followed by a rule
+  in its colour in the inbox and compact layouts; the "need you" count amber; the selected row's
+  id in reverse video; the agent's state green (working), red (blocked), cyan (idle or done) or
+  grey (no agent); every button filled grey (the suggested one bold, with ✓; the chosen one
+  blue), while the question stays plain text in no button's colour; and a Waiting card's age red
+  after a day. Colour is never the only sign: the selection is marked `▸`, a waiting card `!`,
+  the agent's state is a word, an empty section says so, and the buttons keep their `[ … ]` and
+  `< … >`. `NO_COLOR` turns colour off.
+- **Emoji**: each section's header starts with one (🔔 Waiting, 🔨 Doing, 📋 To do, 🏁 Done) in a
+  UTF-8 locale. Each is a single character that Unicode makes two cells wide, with no variation
+  selector or joiner, so terminals agree on its width. `BOARD_EMOJI=0` turns them off
+  (`BOARD_EMOJI=1` turns them on outside a UTF-8 locale).
+- **Wide text**: widths follow Unicode's East Asian Width, so Chinese, Cantonese, Japanese and
+  Korean titles and emoji line up. Where terminals disagree, the board draws the one form they
+  all agree on: no variation selectors (`❤️` shows as `❤`), no joiners (a family emoji shows as
+  the people in it), no skin tones (`👍🏽` shows as `👍`), and a flag as its letters (`🇭🇰` shows
+  as `HK`). Herdr 0.9.3 was checked to agree with the board's count on every one of these.
+- **No borders**: the sections are set apart by spacing and the coloured rule after each header,
+  not by boxes. A box's right edge shows every cell a terminal counts differently from the board
+  (a newer emoji than the terminal knows, a terminal set to draw ambiguous-width characters such
+  as `─` and `│` two cells wide), and it costs 4 columns of a narrow pane.
 - **The working bar** ticks about 6 times a second, and only while one is on screen: with no
   working card in view (none working, scrolled away, or under the details) there is no timer at
   all. Each tick rewrites only the bar's cells, and the layout, the selection and the scroll
@@ -89,9 +105,10 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | | |
 |---|---|
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
-| `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows |
+| `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows. In the inbox the selected card is open under its row |
+| `Space` | in the inbox and compact layouts: open or close the selected card under its row (the inbox opens it by itself, compact doesn't) |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
-| `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details |
+| `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
@@ -99,7 +116,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `q`, `r` | quit; redraw |
 
 The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
@@ -240,22 +257,83 @@ button itself. A click on the question never sends.
 
 Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
 
+1. Install it:
+
+   ```sh
+   herdr plugin install larrychannon/herdr-job-board
+   ```
+
+2. Check it, from a Herdr pane in a repo: `doctor` says what works and, for anything missing,
+   the one command (or the lines to paste) that fixes it.
+
+   ```sh
+   BOARD="$(herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-job-board") | .plugin_root')/board.mjs"
+   node "$BOARD" doctor
+   ```
+
+   ```
+   herdr-job-board 0.4.0 at /home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876
+   ok    Node.js 22.23.2
+   ok    Herdr 0.9.3
+   ok    plugin installed: herdr-job-board 0.4.0 from larrychannon/herdr-job-board @ 1a2b3c4
+   ok    this repo's board: /home/me/my-app/.git/job-board.json (12 cards)
+   add   no key binding: add this to /home/me/.config/herdr/config.toml, then run `herdr server reload-config`
+         [[keys.command]]
+         …
+   ok    sidebar shows the board's counts ($board)
+   opt   Claude Code hooks not set up (only for a Claude Code coordinator): print them with
+         node '/home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876/board.mjs' hooks
+   ok    1 board pane open
+   ```
+
+   It exits 1 only when something the board needs is missing (Node, Herdr, the plugin, or a
+   board pane on an older version); the key binding, the sidebar and the hooks are optional.
+
+3. Open the board: the key binding (below), or `node "$BOARD" open` from the pane you work in.
+
+`open` splits the calling pane to the right (30% wide), keeps your focus where it is and
+remembers the pane: a second `open` in the same tab reuses it, starts the board again if it
+was quit, and restarts it if another copy or an older version of the board runs there. The
+pane that runs `open` is the one answer buttons send to. Run from the board's own pane, it does
+nothing. Don't use `herdr plugin action invoke open` from a shell: Herdr runs a plugin action for
+the pane that has the focus in its window, not for the shell that asked, so it opens the board
+beside whatever pane is focused.
+
+### Update
+
+Install it again: Herdr 0.9.3 has no `plugin update`, and installing over an installed plugin
+replaces its files in the same folder.
+
 ```sh
 herdr plugin install larrychannon/herdr-job-board
 ```
 
-Open the board with the plugin's `open` action (bind a key, see below), or from any shell or
-agent inside Herdr:
+An open board pane (0.4.0 or newer) sees its folder's new version, waits until it has stood
+still for 5 seconds (an update writes several files), checks the new copy (its files parse, its
+`version` says that version, and its pane draws a frame of this board outside Herdr, which links
+every import) and only then restarts itself with it, in the same pane, with the same board and
+coordinator. It waits while a card's details are open or a button is chosen, and says so. A copy
+that fails the check is never started: the pane keeps running and says why, with "run herdr
+plugin install larrychannon/herdr-job-board again" for a broken update, or "quit (q) and open the
+board again to run X" for an older version put there on purpose (a board before 0.4.0 can't take
+over a pane by itself). A check that takes too long is tried again a minute later, then later
+still; after 3 timeouts in a row the pane says "the new copy took too long to start". Once the
+old board has quit, the restart waits up to 10 seconds for the shell to get back to its prompt (a
+prompt hook such as a zsh `precmd`, a git prompt or direnv shows as busy for a moment) and for the
+new board to show; a pane that stays busy is logged as a failed restart. Restarts are logged to
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started in a pane within a
+few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
+skips, not failures. A pane from before 0.4.0 can't:
+`node "$BOARD" restart` restarts every board pane, in every workspace, that runs an older version
+of the installed board (or a copy whose files are gone), and `doctor` lists them. It looks at
+each pane again right before typing `q` into it, and types it only into a board still on the old
+version; it leaves alone a pane with no board file to start again, one whose board was quit
+meanwhile, and one that already restarted itself. If a new board doesn't stay running, the reason
+is printed in the pane only when the pane is a shell at that moment. `open` in a
+tab does the same for that tab's pane.
 
-```sh
-BOARD="$(herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-job-board") | .plugin_root')/board.mjs"
-node "$BOARD" open
-```
-
-`open` splits the calling pane to the right (30% wide), keeps your focus where it is and
-remembers the pane: a second `open` in the same tab reuses it, starts the board again if it
-was quit, and restarts it if an older copy of the board runs there. The pane that runs `open`
-is the one answer buttons send to.
+The key binding, the sidebar token and the hooks don't change: the plugin's folder is the same
+after an update.
 
 ### Key binding
 
@@ -296,11 +374,15 @@ rows = [
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]` | Change a card. New `--option`s replace the old ones. |
 | `done <ref>` | Same as `move <ref> done`. |
 | `rm <ref>` | Remove a card. |
-| `ls [--width N]` | Print the board as the pane shows it, with live agent status, but with Done open: today's finished cards and the time they finished. |
+| `ls [--width N]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, but with Done open: today's finished cards and the time they finished. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
 | `json` | Print the board file. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one). |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
-| `open [--share 0.3]` | Open the board pane right of this pane. |
+| `open [--share 0.3]` | Open the board pane right of this pane (or restart it there with this version). |
+| `restart` | Restart every board pane that runs an older version of this board, or a copy whose files are gone, in every workspace. |
+| `doctor` | Check the install and print the one fix for each thing missing; exit 1 when something required is. |
+| `hooks` | Print the Claude Code hooks to merge into `.claude/settings.json`. |
+| `version` | Print the board's version. |
 | `token` | Print the sidebar text and report it to Herdr. |
 | `path` | Print the board file's path. |
 
@@ -371,8 +453,11 @@ settings and merge them into `.claude/settings.json` (this project) or
 `~/.claude/settings.json` (everywhere):
 
 ```sh
-node "$(herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-job-board") | .plugin_root')/hooks/board-hook.mjs" --print-settings
+node "$BOARD" hooks
 ```
+
+(`$BOARD` as under Install; `hooks/board-hook.mjs --print-settings` prints the same.) The path
+in them is the plugin's folder, which an update keeps, so they keep working after one.
 
 Each session's turn record is kept next to the board, in `.git/job-board.turns/`, and removed
 after 7 days.
@@ -507,7 +592,10 @@ node --test
 ```
 
 Herdr is faked (`tests/fixtures/fake-herdr.mjs`); nothing touches your real Herdr session.
-`UPDATE_SNAPSHOTS=1 node --test` rewrites the render snapshots.
+`UPDATE_SNAPSHOTS=1 node --test` rewrites the render snapshots. `board-pane.mjs --once --width N
+--height N [--layout wide|inbox|compact] [--color] [--emoji] [--keys …]` prints one frame.
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## License
 

@@ -1,22 +1,22 @@
-Job board · my-app                                                                 10:30
+Job board · my-app                                                                                                 10:30
 
 ▸ WAITING ON YOU (2)
-1▸Old question: pick a name                                                       2 days
-  Needs you: Reply with a name
+1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
+  Needs you: Reply with a name                                 Invoices round per line. Preview:
+                                                               http://localhost:3000/invoices
+                                                               Question: Try http://localhost:3000/invoices, then say
+                                                                 merge
+                                                               [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
-2 Billing fix (PR #12): review                                                    30 min
-  Invoices round per line. Preview: http://localhost:3000/invoices
-  Question: Try http://localhost:3000/invoices, then say merge
-  [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+DOING (2)                                                    TO DO (1)
+3 Search filters: build                             25 min   5 Export to CSV                                     23 min
+  working, report done                                         Let people download any table as CSV.
+  The filter panel from the approved mockup.
 
-DOING (2)                                    TO DO (1)
-3 Search filters: build             25 min   5 Export to CSV                     23 min
-  working, report done                         Let people download any table as CSV.
-  The filter panel from the approved
-  mockup.
-
-4 Docs: fix links                   24 min
+4 Docs: fix links                                   24 min
   no agent
+
+
 
 
 

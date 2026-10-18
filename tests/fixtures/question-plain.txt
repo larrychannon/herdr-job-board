@@ -15,10 +15,10 @@ Job board · my-app                                                             
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-DOING (0)                                                    TO DO (0)
-nothing                                                      nothing
+DOING (0) · nothing running
 
-
+TO DO (0)
+nothing
 
 
 
@@ -56,10 +56,10 @@ Job board · my-app                                                             
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-DOING (0)                                                    TO DO (0)
-nothing                                                      nothing
+DOING (0) · nothing running
 
-
+TO DO (0)
+nothing
 
 
 
@@ -97,10 +97,10 @@ Job board · my-app                                                             
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-DOING (0)                                                    TO DO (0)
-nothing                                                      nothing
+DOING (0) · nothing running
 
-
+TO DO (0)
+nothing
 
 
 
@@ -138,10 +138,10 @@ Job board · my-app                                                             
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-DOING (0)                                                    TO DO (0)
-nothing                                                      nothing
+DOING (0) · nothing running
 
-
+TO DO (0)
+nothing
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -163,149 +163,149 @@ Release v1.4: all reviewed, approve?
 ── end of card 1 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 ===== nothing chosen · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 3 need you                                                    10:30
 
-▸ WAITING ON YOU (3)
-1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
-  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
-    the data backfill)? Include #16 or keep it for later?
-  [ Approve, include #16 ✓ ]  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
-  sent: Approve, include #16 · 10:08
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
+▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
+     All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+     export to CSV (+ optional #16 dark mode).
+     Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+       the data backfill)? Include #16 or keep it for later?
+     [ Approve, include #16 ✓ ]  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+     sent: Approve, include #16 · 10:08
+ 2 ! Pick a name                                                                  30 min
+ 3 ! Docs move (PR #14): merge                                                    20 min
 
-2 Pick a name                                                                     30 min
-  Question: Which name?
-  [ Alpha ]  [ Beta ]  [ Other… ]
+DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-3 Docs move (PR #14): merge                                                       20 min
-  Needs you: Say merge (after #12)
-
-DOING (0)                                    TO DO (0)
-nothing                                      nothing
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== → chooses the suggested button · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 3 need you                                                    10:30
 
-▸ WAITING ON YOU (3)
-1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
-  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
-    the data backfill)? Include #16 or keep it for later?
-  < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
-  sent: Approve, include #16 · 10:08
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
+▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
+     All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+     export to CSV (+ optional #16 dark mode).
+     Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+       the data backfill)? Include #16 or keep it for later?
+     < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+     sent: Approve, include #16 · 10:08
+ 2 ! Pick a name                                                                  30 min
+ 3 ! Docs move (PR #14): merge                                                    20 min
 
-2 Pick a name                                                                     30 min
-  Question: Which name?
-  [ Alpha ]  [ Beta ]  [ Other… ]
+DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-3 Docs move (PR #14): merge                                                       20 min
-  Needs you: Say merge (after #12)
-
-DOING (0)                                    TO DO (0)
-nothing                                      nothing
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== a click on the question · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 3 need you                                                    10:30
 
-▸ WAITING ON YOU (3)
-1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
-  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
-    the data backfill)? Include #16 or keep it for later?
-  < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
-  sent: Approve, include #16 · 10:08
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
+▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
+     All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+     export to CSV (+ optional #16 dark mode).
+     Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+       the data backfill)? Include #16 or keep it for later?
+     < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+     sent: Approve, include #16 · 10:08
+ 2 ! Pick a name                                                                  30 min
+ 3 ! Docs move (PR #14): merge                                                    20 min
 
-2 Pick a name                                                                     30 min
-  Question: Which name?
-  [ Alpha ]  [ Beta ]  [ Other… ]
+DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-3 Docs move (PR #14): merge                                                       20 min
-  Needs you: Say merge (after #12)
-
-DOING (0)                                    TO DO (0)
-nothing                                      nothing
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== details, a click on the question · 88 columns =====
-Job board · my-app                                                                 10:30
+Job board · my-app · 3 need you                                                    10:30
 
-▸ WAITING ON YOU (3)
-1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
-  Question: Approve the whole release (merges, tag v1.4, deploy to production, then
-    the data backfill)? Include #16 or keep it for later?
-  < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
-  sent: Approve, include #16 · 10:08
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
+▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
+     All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+     export to CSV (+ optional #16 dark mode).
+     Question: Approve the whole release (merges, tag v1.4, deploy to production, then
+       the data backfill)? Include #16 or keep it for later?
+     < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
+     sent: Approve, include #16 · 10:08
+ 2 ! Pick a name                                                                  30 min
+ 3 ! Docs move (PR #14): merge                                                    20 min
 
-2 Pick a name                                                                     30 min
-  Question: Which name?
-  [ Alpha ]  [ Beta ]  [ Other… ]
+DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-3 Docs move (PR #14): merge                                                       20 min
-  Needs you: Say merge (after #12)
+TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
 
-DOING (0)                                    TO DO (0)
-nothing                                      nothing
+DONE · 0 today ▸
+
+
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min

@@ -43,6 +43,11 @@ const flag = (name) => {
 }
 const pane = (id) => state.panes.find((p) => p.pane_id === id)
 
+if (args[0] === "--version") {
+  save()
+  process.stdout.write(`herdr ${state.version || "0.9.3"}\n`)
+  process.exit(0)
+}
 const [group, command, target] = args
 const key = `${group} ${command}`
 // FAKE_HERDR_DELAY_MS slows `agent prompt` down, to test presses that overlap a send.
@@ -64,7 +69,16 @@ if (key === "pane rename") {
   ok({ type: "ok" })
 }
 if (key === "pane run") {
-  pane(target).running = args[3]
+  // refuse_run: Herdr fails the command (a pane-restart that can't start the new board).
+  if (pane(target)?.refuse_run) fail(`pane ${target} refused the command`)
+  // run_becomes: what runs there after the command instead of it (null: the shell again, e.g. a
+  // board that exits at once; text: something slow that isn't a board yet).
+  if (pane(target) && "run_becomes" in pane(target)) {
+    if (pane(target).run_becomes == null) delete pane(target).running
+    else pane(target).running = pane(target).run_becomes
+  } else pane(target).running = args[3]
+  // run_then: what process-info shows from then on, one entry a call (see `next`).
+  if (pane(target)?.run_then) pane(target).next = [...pane(target).run_then]
   ok({ type: "ok" })
 }
 if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
@@ -78,6 +92,13 @@ if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
   ok({ type: "ok" })
 }
 if (key === "pane send-keys") ok({ type: "ok" })
+if (key === "workspace list") ok({ workspaces: [...new Set(state.panes.map((p) => p.workspace_id))].map((workspace_id) => ({ workspace_id })), type: "workspace_list" })
+if (key === "plugin list") ok({ plugins: state.plugins || [], type: "plugin_list" })
+if (key === "session list") {
+  save()
+  process.stdout.write(JSON.stringify({ sessions: state.sessions || [] }))
+  process.exit(0)
+}
 if (key === "pane send-text") {
   // The board quits on "q".
   if (args[3] === "q" && pane(target)?.running?.includes("board-pane.mjs")) delete pane(target).running
@@ -86,6 +107,13 @@ if (key === "pane send-text") {
 if (key === "pane process-info") {
   const p = pane(flag("--pane"))
   const argv = p?.running ? p.running.split(" ").map((a) => a.replace(/'/g, "")) : ["/bin/bash"]
+  // `next`: what runs there from the next call on (null: a shell), for a pane that changes
+  // between two looks (quit, or restarted by itself).
+  if (p?.next?.length) {
+    const n = p.next.shift()
+    if (n) p.running = n
+    else delete p.running
+  }
   ok({ process_info: { foreground_processes: [{ argv, name: argv[0].split("/").pop() }] }, type: "pane_process_info" })
 }
 fail(`fake herdr: unsupported command: ${args.join(" ")}`)

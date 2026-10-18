@@ -36,8 +36,10 @@ function state({ waiting = 6, doing = 2, todo = 3, withOptions = [] } = {}) {
   return { version: 1, next_id: id + 1, items, panes: {} }
 }
 
+// The wide layout (the pane draws it from 120 columns) at 88 columns, where these tests'
+// mouse positions were measured; the inbox and compact layouts have tests of their own.
 const draw = (s, opts = {}) =>
-  renderBoard(buildView(s, opts.agents ?? null, { now: NOW, workspace: "w9" }), { width: 88, height: 40, now: NOW, interactive: true, ...opts })
+  renderBoard(buildView(s, opts.agents ?? null, { now: NOW, workspace: "w9" }), { width: 88, height: 40, now: NOW, interactive: true, layout: "wide", ...opts })
 
 /** Feed events one by one, redrawing after each, as the pane does. */
 function feed(s, events, opts = {}) {
@@ -150,14 +152,18 @@ test("keys: Tab / Shift-Tab and ← → move between sections; ↑ ↓ select ca
 
 test("Done: folded by default; d or a click on its line opens it, d or a click on its header folds it; nothing else moves", () => {
   const s = state({ waiting: 2, doing: 2, todo: 12 })
-  for (const [width, height] of [[88, 40], [120, 40], [60, 30]]) {
-    const at = { width, height }
+  for (const [width, height, layout] of [[88, 40, "wide"], [120, 40, undefined], [88, 40, undefined], [60, 30, undefined]]) {
+    const at = { width, height, layout }
     const folded = draw(s, at)
     const lines = folded.text.split("\n")
-    assert.equal(lines.at(-2), "DONE · 1 today ▸", `${width}: one line, just above the key hint`)
+    // Wide: at the bottom, just above the key hint; the inbox and compact: after the last section.
+    const y = folded.layout === "wide" ? height - 1 : lines.indexOf("DONE · 1 today ▸") + 1
+    assert.equal(lines[y - 1], "DONE · 1 today ▸", `${width} ${folded.layout}: one line`)
+    if (folded.layout === "wide") assert.equal(y, height - 1, "just above the key hint")
+    else assert.match(lines[y - 2 - (folded.layout === "inbox" ? 1 : 0)], /^ +\d+ {3}Later \d+ +30 min$/, "right after To do")
     assert.equal(folded.sections.done, undefined, "no Done section to scroll or select")
-    assert.deepEqual(folded.doneToggle, { y: height - 1, x0: 1, x1: width })
-    if (width >= 70) assert.match(folded.text, /^DOING \(2\) +TO DO \(12\)$/m, `${width}: Doing and To do share the width`)
+    assert.deepEqual(folded.doneToggle, { y, x0: 1, x1: width })
+    if (folded.layout === "wide") assert.match(folded.text, /^DOING \(2\) +TO DO \(12\)$/m, `${width}: Doing and To do share the width`)
     // d opens it; d again folds it.
     const open = feed(s, [key("done")], at).drawn
     assert.match(open.text, /DONE \(1\) ▾/)
@@ -165,12 +171,12 @@ test("Done: folded by default; d or a click on its line opens it, d or a click o
     assert.doesNotMatch(open.text, /DONE · /)
     assert.equal(feed(s, [key("done"), key("done")], at).drawn.text, folded.text)
     // A click on the folded line opens it; a click on the open header folds it.
-    const clickLine = feed(s, [{ type: "click", x: 3, y: height - 1 }], at).drawn
+    const clickLine = feed(s, [{ type: "click", x: 3, y }], at).drawn
     assert.equal(clickLine.text, open.text)
     const header = find(open, "DONE (1)")
     assert.equal(feed(s, [key("done"), { type: "click", x: header.x + 2, y: header.y }], at).drawn.text, folded.text)
     // The wheel on the folded line does nothing; Enter, c, ↑ ↓ never reach Done.
-    assert.equal(feed(s, [{ type: "wheel", dir: "down", x: 3, y: height - 1 }], at).drawn.text, folded.text)
+    assert.equal(feed(s, [{ type: "wheel", dir: "down", x: 3, y }], at).drawn.text, folded.text)
   }
   // The selection and every section's scroll position hold as Done opens and folds.
   const todoHeader = find(draw(s), "TO DO (12)")
@@ -275,8 +281,10 @@ test("buttons: → chooses one (the suggested first), Enter presses it; Enter al
   assert.equal(feed(s, [key("down"), key("next")]).drawn.scroll.selected, "doing", "Tab still changes section")
 
   for (const width of [88, 120]) {
-    const drawn = draw(s, { width })
-    const notNow = find(drawn, "[ Not now ]", 1)
+    const drawn = draw(s, { width, layout: undefined, ...(width < 120 ? { scroll: { selected: "waiting", anchors: {}, card: "#3" } } : {}) })
+    // The inbox shows the selected card's buttons only (card 3's here); wide shows every card's.
+    const inbox = drawn.layout === "inbox"
+    const notNow = find(drawn, "[ Not now ]", inbox ? 0 : 1)
     assert.ok(notNow, `card 3's button is on screen at ${width}`)
     const press = (x, y) => handleInput(drawn.scroll, { type: "click", x, y }, drawn).action
     assert.deepEqual(press(notNow.x, notNow.y), { type: "send", id: 3, key: "#3", label: "Not now" }, `${width}: first cell`)
@@ -284,7 +292,8 @@ test("buttons: → chooses one (the suggested first), Enter presses it; Enter al
     assert.equal(press(notNow.x + 11, notNow.y), null, `${width}: just past it`)
     assert.equal(press(notNow.x, notNow.y + 1), null, `${width}: the line below`)
     const other = find(drawn, "[ Other… ]", 0)
-    assert.deepEqual(press(other.x + 1, other.y), { type: "other", id: 2, key: "#2" })
+    assert.deepEqual(press(other.x + 1, other.y), inbox ? { type: "other", id: 3, key: "#3" } : { type: "other", id: 2, key: "#2" })
+    if (inbox) assert.equal(find(drawn, "[ Other… ]", 1), undefined, "card 2's row is closed: no buttons")
   }
   // At 120 two cards share a row: card 2's buttons sit in the right half.
   assert.ok(find(draw(s, { width: 120 }), "[ Not now ]", 0).x > 60)
