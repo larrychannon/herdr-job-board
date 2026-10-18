@@ -14,7 +14,8 @@
 //   rm <ref>
 //   ls [--width N]          the board as text: the pane's view at that width with every Waiting
 //                           card open and Done open (today's finished cards), with live agent
-//                           status; --width 120 or more shows every card whole
+//                           status; piped with no --width (or --width 120 or more), the wide
+//                           layout, every card whole
 //   json                    the board file as it is
 //   job-start <slug> [--id N] [--title T] [--desc D] [--report path]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
@@ -1710,7 +1711,9 @@ export function renderBoard(view, opts = {}) {
   if (form === "row" && need) name.push({ t: " · ", s: "dim" }, { t: `${need} need${need === 1 ? "s" : ""} you`, s: "waiting" })
   const out = [pad(paint(name, width - clock.length - 1), width - clock.length) + paint([{ t: clock, s: "dim" }], clock.length).text]
   if (error) out.push(paint([{ t: error, s: "blocked" }]).text)
-  if (opts.notice) out.push(paint([{ t: opts.notice, s: "note" }]).text)
+  // A notice (an update installed, or one that failed to start) wraps over up to 3 lines: its
+  // end says what to do.
+  if (opts.notice) for (const t of wrap(opts.notice, width, 3)) out.push(paint([{ t, s: "note" }]).text)
   if (layout !== "compact") out.push("")
   const sections = {}
   const regions = {}
@@ -2141,6 +2144,17 @@ export function parseInput(text) {
 const sectionAt = (regions, x, y) =>
   SECTIONS.find((s) => regions[s] && y >= regions[s].top && y <= regions[s].bottom && x >= regions[s].left && x <= regions[s].right)
 const DOUBLE_CLICK_MS = 400
+// A click this soon after another one on the same cell, where something else is drawn now (the
+// first click opened a card and moved the rows), is never a button press.
+const MOVED_MS = 1000
+/** What a click at (x, y) lands on in `drawn`: "button #2 0", "card #2", or "". */
+const targetAt = (drawn, x, y) => {
+  const within = (h) => h.y === y && x >= h.x0 && x <= h.x1
+  const b = (drawn.buttons || []).find((h) => !h.panel && within(h))
+  if (b) return `button ${b.key} ${b.index}`
+  const c = (drawn.cardHits || []).find(within)
+  return c ? `card ${c.key}` : ""
+}
 
 /**
  * One input event against the screen the user sees (`drawn`, from renderBoard): the new state
@@ -2286,7 +2300,22 @@ export function handleInput(scroll, event, drawn) {
     const onCard = (drawn.cardHits || []).find((c) => c.y === event.y && event.x >= c.x0 && event.x <= c.x1)
     const asked = (drawn.askHits || []).find((a) => !a.panel && a.y === event.y && event.x >= a.x0 && event.x <= a.x1)
     const section = sectionAt(drawn.regions, event.x, event.y)
-    if (hit) {
+    // The click before this one: a button that its first half put under the pointer (it opened
+    // its card, and the rows moved) is never pressed by the second half. A click on a button
+    // within a double click's time of the click that selected its card is that double click;
+    // one on the same cell soon after, where something else is drawn now, only selects.
+    const last = next.lastClick
+    const since = (event.at ?? 0) - (last?.at ?? -Infinity)
+    const sameCell = last && last.x === event.x && last.y === event.y
+    const target = targetAt(drawn, event.x, event.y)
+    const moved = Boolean(sameCell && since <= MOVED_MS && last.target !== target)
+    const doubleOnButton = Boolean(hit && last && last.key === hit.key && since <= DOUBLE_CLICK_MS)
+    if (hit && (doubleOnButton || moved)) {
+      selectSection("waiting")
+      next.card = hit.key
+      next.button = -1
+      if (since <= DOUBLE_CLICK_MS && last.key === hit.key) next.detail = { key: hit.key, offset: 0 }
+    } else if (hit) {
       selectSection("waiting")
       next.card = hit.key
       next.button = hit.index
@@ -2309,7 +2338,9 @@ export function handleInput(scroll, event, drawn) {
         next.button = target >= 0 && onScreen(c.key, false).includes(target) ? target : -1
       }
     } else if (section) selectSection(section)
-    next.lastClick = onCard && !hit ? { key: onCard.key, at: event.at ?? 0 } : null
+    // What this click selected, and what was under it, for the next one. The screen it sees
+    // next is redrawn from this click, so `target` is what it landed on, not what replaced it.
+    next.lastClick = onCard || hit ? { key: (hit || onCard).key, at: event.at ?? 0, x: event.x, y: event.y, target } : null
   } else if (event.type === "wheel") {
     const target = sectionAt(drawn.regions, event.x, event.y)
     if (target) scrollTo(target, at(target) + (event.dir === "up" ? -1 : 1))
@@ -2599,15 +2630,82 @@ function openPane(fileArg, opts, env, out) {
   return file
 }
 
-/** Quit the board running in `pane` with its `q` key, waiting up to 3 s; the pane's state after. */
+/**
+ * Quit the board running in `pane` with its `q` key, waiting up to 3 s; the pane's state after.
+ * The state is read again just before: `q` goes only to a board, never to a shell or to anything
+ * else that runs there now.
+ */
 function quitBoard(pane, env) {
-  herdr(["pane", "send-text", pane, "q"], env, { quiet: true })
   let { state } = paneState(pane, env)
+  if (state !== "board") return state
+  herdr(["pane", "send-text", pane, "q"], env, { quiet: true })
+  ;({ state } = paneState(pane, env))
   for (let i = 0; i < 30 && state === "board"; i++) {
     sleep(100)
     ;({ state } = paneState(pane, env))
   }
   return state
+}
+
+// --- restarts, logged -------------------------------------------------------------------------
+
+/** The board's own state folder: $HERDR_PLUGIN_STATE_DIR, else ${XDG_STATE_HOME:-~/.local/state}/herdr-job-board. */
+export function stateDir(env = process.env) {
+  return env.HERDR_PLUGIN_STATE_DIR || join(env.XDG_STATE_HOME || join(env.HOME || "", ".local", "state"), PLUGIN_ID)
+}
+const RESTART_LOG = "restart.log"
+
+/** Add a line to the restart log (JSON lines, kept to the last 200): { at, pane, ok, version, error }. Never throws. */
+export function logRestart(env, entry) {
+  try {
+    const dir = stateDir(env)
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const file = join(dir, RESTART_LOG)
+    const lines = (readText(file) ?? "").split("\n").filter(Boolean).slice(-199)
+    lines.push(JSON.stringify({ at: new Date().toISOString(), ...entry, error: entry.error ? clean(entry.error).slice(0, 300) : undefined }))
+    writeFileSync(`${file}.tmp`, `${lines.join("\n")}\n`, { mode: 0o600 })
+    renameSync(`${file}.tmp`, file)
+  } catch {}
+}
+
+/** The last restart logged for `pane`, or null. */
+export function lastRestart(env, pane) {
+  if (!pane) return null
+  const lines = (readText(join(stateDir(env), RESTART_LOG)) ?? "").split("\n").filter(Boolean)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const e = JSON.parse(lines[i])
+      if (e?.pane === pane) return e
+    } catch {}
+  }
+  return null
+}
+
+// How long a new version in the pane's folder must stand still before the pane checks it and
+// hands over: an update writes several files, and two refreshes can come 100 ms apart.
+export const UPDATE_SETTLE_MS = 5000
+// The files a copy needs to start: each must parse (node --check).
+export const COPY_FILES = ["board.mjs", "board-pane.mjs", "links.mjs", join("hooks", "board-hook.mjs")]
+
+/**
+ * Whether the copy in `dir` can start, before a pane hands over to it: every file it needs is
+ * there and parses (`node --check`), and `board.mjs version` prints `version` (so it is 0.4.0 or
+ * newer, with `pane-restart`). Resolves to null, or to the reason it can't, in a few words.
+ */
+export function verifyCopy(dir, version, env = process.env) {
+  const run = (args) =>
+    new Promise((done) => execFile(process.execPath, args, { env, timeout: 10_000, cwd: dir }, (error, stdout, stderr) => done({ error, stdout: String(stdout), stderr: String(stderr) })))
+  return (async () => {
+    for (const f of COPY_FILES) {
+      if (!existsSync(join(dir, f))) return `${f} is missing`
+      const r = await run(["--check", join(dir, f)])
+      if (r.error) return `${f} doesn't parse (${clean(r.stderr.split("\n").find((l) => /Error/.test(l)) || r.error.message).slice(0, 120)})`
+    }
+    const r = await run([join(dir, "board.mjs"), "version"])
+    const said = clean(r.stdout)
+    if (r.error || said !== version) return said ? `board.mjs version says ${said.slice(0, 40)}, not ${version}` : `board.mjs version failed (a board before 0.4.0 can't restart a pane)`
+    return null
+  })()
 }
 
 /** Every board pane Herdr has, in every workspace: [{ pane, tab, workspace, ...paneState }]. */
@@ -2634,25 +2732,69 @@ const stale = (p, dir = SCRIPTS, version = VERSION) =>
 
 /**
  * `restart`, and the pane's own restart after an update (`pane`): quit each stale board pane and
- * start this copy in it, with the board file and coordinator pane it had. Returns the lines to print.
+ * start this copy in it, with the board file and coordinator pane it had. Before anything is
+ * typed, the pane is checked again: a pane with no board file to start, one that is a shell or
+ * runs something else now, or one that restarted itself meanwhile, is left alone (`q` never goes
+ * to a shell). Every outcome is logged (logRestart), so a board started later in that pane can
+ * say why the last restart failed. Returns the lines to print.
  */
 function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyOrigin = "" } = {}) {
   const panes = only ? [{ pane: only, ...paneState(only, env), ...(onlyFile ? { board: onlyFile, origin: onlyOrigin } : {}) }] : boardPanes(env).filter((p) => stale(p))
   const lines = []
+  const fail = (p, error) => {
+    logRestart(env, { pane: p.pane, ok: false, version: VERSION, error })
+    lines.push(`pane ${p.pane}: ${error}`)
+  }
   for (const p of panes) {
-    // Started from a pane before `restart` reached it (`pane-restart`): it is quitting already.
-    let state = p.state
-    for (let i = 0; only && i < 50 && state === "board"; i++) {
-      sleep(100)
-      ;({ state } = paneState(p.pane, env))
-    }
-    if (state === "board") state = quitBoard(p.pane, env)
-    if (state !== "shell" || !p.board) {
-      lines.push(`pane ${p.pane}: the board there did not quit; press q in it, then run \`board.mjs open\` from the pane left of it`)
+    if (!p.board) {
+      fail(p, "not restarted: the board there has no --board file to start again; press q in it, then run `board.mjs open` from the pane left of it")
       continue
     }
-    herdr(["pane", "run", p.pane, paneCommand(p.board, p.origin)], env)
-    lines.push(`pane ${p.pane}: board ${VERSION} started (it ran ${existsSync(p.script) ? p.version || "a version before 0.4.0" : `${p.script}, now gone`})`)
+    let now = paneState(p.pane, env)
+    // pane-restart: the board in that pane asked for it and is quitting by itself.
+    for (let i = 0; only && i < 50 && now.state === "board" && !(now.version === VERSION && sameFile(now.script, PANE_SCRIPT)); i++) {
+      sleep(100)
+      now = paneState(p.pane, env)
+    }
+    if (now.state === "board" && now.version === VERSION && sameFile(now.script, PANE_SCRIPT)) {
+      lines.push(`pane ${p.pane}: already runs board ${VERSION}`)
+      continue
+    }
+    if (now.state === "busy") {
+      fail(p, "not restarted: something else runs there now")
+      continue
+    }
+    // `restart` found a board there that has been quit since: the user's choice, left alone.
+    // (pane-restart waits for exactly this: the board quitting by itself.)
+    if (now.state === "shell" && !only) {
+      lines.push(`pane ${p.pane}: not restarted: its board was quit meanwhile`)
+      continue
+    }
+    const state = now.state === "board" ? quitBoard(p.pane, env) : now.state
+    if (state !== "shell") {
+      fail(p, "the board there did not quit; press q in it, then run `board.mjs open` from the pane left of it")
+      continue
+    }
+    try {
+      herdr(["pane", "run", p.pane, paneCommand(p.board, p.origin)], env)
+    } catch (e) {
+      fail(p, `couldn't start board ${VERSION}: ${e.message}`)
+      continue
+    }
+    // It should be running within a few seconds; a board that exits at once leaves a shell, so say why there.
+    let started = paneState(p.pane, env)
+    for (let i = 0; i < 30 && started.state !== "board"; i++) {
+      sleep(100)
+      started = paneState(p.pane, env)
+    }
+    if (started.state !== "board") {
+      const why = `board ${VERSION} didn't stay running in this pane; run \`board.mjs open\` from the pane left of it, or herdr plugin install ${PLUGIN_SOURCE} again`
+      herdr(["pane", "run", p.pane, `printf '%s\\n' ${shellQuote(`job board: ${why}`)}`], env, { quiet: true })
+      fail(p, why)
+      continue
+    }
+    logRestart(env, { pane: p.pane, ok: true, version: VERSION })
+    lines.push(`pane ${p.pane}: board ${VERSION} started (it ran ${existsSync(p.script ?? "") ? p.version || "a version before 0.4.0" : `${p.script}, now gone`})`)
   }
   return lines
 }
@@ -2989,9 +3131,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         only(opts, ["width"], command)
         const view = buildView(readBoard(file), listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
         const width = Number(opts.width) || process.stdout.columns || 100
+        // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
+        const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined
         const color = !env.NO_COLOR && Boolean(process.stdout.isTTY) && !io.out
         // Everything, Done open with today's finished cards: no height limit, so folding saves nothing.
-        raw(render(view, { width, color, now, repo: repoName(file), scroll: { doneOpen: true } }))
+        raw(render(view, { width, color, now, repo: repoName(file), layout, scroll: { doneOpen: true } }))
         return 0
       }
       case "json": {

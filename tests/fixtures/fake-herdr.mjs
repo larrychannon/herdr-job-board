@@ -98,6 +98,13 @@ if (key === "pane send-text") {
 if (key === "pane process-info") {
   const p = pane(flag("--pane"))
   const argv = p?.running ? p.running.split(" ").map((a) => a.replace(/'/g, "")) : ["/bin/bash"]
+  // `next`: what runs there from the next call on (null: a shell), for a pane that changes
+  // between two looks (quit, or restarted by itself).
+  if (p?.next?.length) {
+    const n = p.next.shift()
+    if (n) p.running = n
+    else delete p.running
+  }
   ok({ process_info: { foreground_processes: [{ argv, name: argv[0].split("/").pop() }] }, type: "pane_process_info" })
 }
 fail(`fake herdr: unsupported command: ${args.join(" ")}`)

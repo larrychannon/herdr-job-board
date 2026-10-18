@@ -62,7 +62,7 @@
 // The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
 
 import { spawn } from "node:child_process"
-import { watch } from "node:fs"
+import { statSync, watch } from "node:fs"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -90,7 +90,13 @@ import {
   textWidth,
   tokenText,
   nextCopy,
+  COPY_FILES,
+  lastRestart,
+  logRestart,
+  PLUGIN_SOURCE,
+  UPDATE_SETTLE_MS,
   VERSION,
+  verifyCopy,
   versionOf,
   WORKING_FRAMES,
 } from "./board.mjs"
@@ -216,6 +222,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
+      if (event.type !== "key" && !ctx.mouse) continue
       event.at = Date.now()
       const { scroll, action } = handleInput(drawn.scroll, event, drawn)
       if (action) {
@@ -310,35 +317,67 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     ticker.sync(animate && drawn.animated > 0)
   }
   // An update rewrites the plugin's folder in place: this pane still runs the code it started
-  // with. Each refresh reads the folder's version; seen changed twice in a row (so the update
-  // has finished writing), the pane hands over to the new copy in the same pane (board.mjs
-  // pane-restart waits for it to quit, then starts the new one), unless the details are open or
-  // a button is chosen: then it says so, and restarts once they are closed. Outside Herdr, or in
-  // a pane `open` didn't start (no --version: Herdr's own plugin pane, which closes when the board
-  // quits), it only says so.
+  // with. Each refresh reads the folder's version and the size and time of its files. Once a new
+  // version has stood still for UPDATE_SETTLE_MS (a half-written update keeps changing), the new
+  // copy is checked (verifyCopy: its files parse, and its `board.mjs version` says that
+  // version); only then does the pane hand over to it in the same pane (board.mjs pane-restart
+  // waits for it to quit, then starts the new one). A copy that fails the check (a broken
+  // update, a rollback to a board before 0.4.0, which has no pane-restart) is not started: the
+  // pane keeps running and says why, until the folder changes again. It waits while the details
+  // are open or a button is chosen. Outside Herdr, or in a pane `open` didn't start (no
+  // --version: Herdr's own plugin pane, which closes when the board quits), it only says so.
   const here = dirname(fileURLToPath(import.meta.url))
-  let seen = ""
+  const settleMs = Number(env.JOB_BOARD_UPDATE_SETTLE_MS) || UPDATE_SETTLE_MS
+  const filesOf = () =>
+    ["herdr-plugin.toml", ...COPY_FILES]
+      .map((f) => {
+        try {
+          const s = statSync(join(here, f))
+          return `${s.size}:${s.mtimeMs}`
+        } catch {
+          return "-"
+        }
+      })
+      .join(" ")
+  let update = null
+  let failed = null
+  let checking = false
   let restarting = false
+  // The last restart in this pane failed (pane-restart logged why): say so until it is closed.
+  const last = lastRestart(env, env.HERDR_PANE_ID)
+  const startNotice = last?.ok === false ? `the last restart in this pane failed: ${last.error}` : ""
+  if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
   const checkUpdate = () => {
     const now = versionOf(here)
-    const changed = now && now !== VERSION
-    if (!changed) {
-      seen = ""
-      return ""
+    if (!now || now === VERSION) {
+      update = null
+      return startNotice
     }
-    const ready = seen === now
-    seen = now
+    const sig = `${now} ${filesOf()}`
+    if (failed?.sig === sig) return failed.notice
+    if (update?.sig !== sig) update = { sig, since: Date.now() }
     const busy = scroll.detail || (scroll.button ?? -1) >= 0
     const canRestart = env.HERDR_ENV === "1" && env.HERDR_PANE_ID && opts.version
-    if (ready && !busy && !restarting && canRestart) {
-      restarting = true
-      const args = [join(here, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
-      spawn(process.execPath, args, { detached: true, stdio: "ignore", env }).unref()
-      quit(0)
+    if (!canRestart) return `board ${now} is installed: press q, then open the board again`
+    if (Date.now() - update.since >= settleMs && !busy && !checking && !restarting) {
+      checking = true
+      verifyCopy(here, now, env).then((reason) => {
+        checking = false
+        // The folder changed while it was checked: check again once it is still.
+        if (`${versionOf(here)} ${filesOf()}` !== sig) return
+        if (reason) {
+          failed = { sig, notice: `update to ${now} failed to start: ${reason}; run herdr plugin install ${PLUGIN_SOURCE} again` }
+          data.notice = failed.notice
+          paint()
+          return
+        }
+        restarting = true
+        const args = [join(here, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
+        spawn(process.execPath, args, { detached: true, stdio: "ignore", env }).unref()
+        quit(0)
+      }, crash)
     }
-    return canRestart
-      ? `board ${now} is installed: this pane restarts with it${busy ? " once the details are closed and no button is chosen" : ""}`
-      : `board ${now} is installed: press q, then open the board again`
+    return `board ${now} is installed: this pane restarts with it${busy ? " once the details are closed and no button is chosen" : ""}`
   }
   let loading = false
   const refresh = async () => {
@@ -389,6 +428,9 @@ async function main(argv = process.argv.slice(2), env = process.env) {
           refresh()
           continue
         }
+        // Mouse capture off (m): the terminal shouldn't report clicks; one that does anyway
+        // selects nothing and presses nothing.
+        if (event.type !== "key" && !ctx.mouse) continue
         if (!drawn) continue
         event.at = Date.now()
         const result = handleInput(scroll, event, drawn)

@@ -265,6 +265,22 @@ test("board ls: everything, with Done open: today's finished cards and their tim
   }
 })
 
+test("board ls, piped with no --width (an agent reading it): the wide layout, every card's description", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    ok(dir, ["add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV."])
+    ok(dir, ["add", "waiting", "Deploy: approve", "--desc", "Ships the invoice page.", "--ask", "Say go"])
+    const text = ok(dir, ["ls"])
+    assert.match(text, /Let people download any table as CSV\./, "a To do card's description")
+    assert.match(text, /Ships the invoice page\.\n {2}Needs you: Say go/)
+    assert.doesNotMatch(text, / ─{3,}/, "not the inbox's rules")
+    assert.match(ok(dir, ["ls", "--width", "95"]), /^TO DO \(1\) ─+$/m, "--width still picks the layout for that width")
+  } finally {
+    done()
+  }
+})
+
 test("board: a card shows the title, the description over up to 3 lines, and the ask", () => {
   const { base, done } = temp()
   try {
