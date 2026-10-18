@@ -1977,6 +1977,16 @@ export function renderBoard(view, opts = {}) {
   // Nothing of the board under the details panel can be clicked; the panel's own buttons can.
   const covered = (y) => regions.detail && y >= regions.detail.top
   const shownButtons = buttons.filter((b) => b.y <= lines.length && (b.panel || !covered(b.y)))
+  // When each button position on screen was first drawn (for justMoved): kept from the last draw
+  // while it stays, else now. "Now" is `opts.at` (the pane's paint time, ms), else the time of the
+  // last input event (a draw follows the event that changed it), else long ago (a first draw).
+  const drawnAt = Number.isFinite(opts.at) ? opts.at : Number.isFinite(scroll.lastEventAt) ? scroll.lastEventAt : -Infinity
+  const seen = {}
+  for (const b of shownButtons) {
+    const pos = buttonPos(b)
+    seen[pos] = scroll.seen && pos in scroll.seen ? scroll.seen[pos] : drawnAt
+  }
+  scroll.seen = seen
   // Working bars on screen: not cut off, not under the panel.
   const bars = animated.filter((a) => a.y <= lines.length && !covered(a.y))
   if (interactive) {
@@ -2144,17 +2154,17 @@ export function parseInput(text) {
 const sectionAt = (regions, x, y) =>
   SECTIONS.find((s) => regions[s] && y >= regions[s].top && y <= regions[s].bottom && x >= regions[s].left && x <= regions[s].right)
 const DOUBLE_CLICK_MS = 400
-// A click this soon after another one on the same cell, where something else is drawn now (the
-// first click opened a card and moved the rows), is never a button press.
-const MOVED_MS = 1000
-/** What a click at (x, y) lands on in `drawn`: "button #2 0", "card #2", or "". */
-const targetAt = (drawn, x, y) => {
-  const within = (h) => h.y === y && x >= h.x0 && x <= h.x1
-  const b = (drawn.buttons || []).find((h) => !h.panel && within(h))
-  if (b) return `button ${b.key} ${b.index}`
-  const c = (drawn.cardHits || []).find(within)
-  return c ? `card ${c.key}` : ""
-}
+// A button drawn where it is for less than this is never pressed by a click: it appeared, or
+// moved there (a click opened a card and moved the rows, the details opened, closed or
+// scrolled, a refresh moved a section), and the click was aimed at what was there before.
+export const MOVED_MS = 1000
+/** A button's place on screen: card, index, panel or board, row and columns. */
+const buttonPos = (b) => `${b.key} ${b.index} ${b.panel ? "panel" : "board"} ${b.y} ${b.x0}-${b.x1}`
+/**
+ * Whether `b` has been on screen where it is for less than MOVED_MS at `at` (ms): renderBoard
+ * keeps, in `scroll.seen`, when each button position was first drawn.
+ */
+const justMoved = (scroll, b, at) => Number.isFinite(at) && at - (scroll.seen?.[buttonPos(b)] ?? -Infinity) < MOVED_MS
 
 /**
  * One input event against the screen the user sees (`drawn`, from renderBoard): the new state
@@ -2184,6 +2194,8 @@ const targetAt = (drawn, x, y) => {
  */
 export function handleInput(scroll, event, drawn) {
   const next = { ...scroll, selected: scroll.selected || "waiting", anchors: { ...(scroll.anchors || {}) } }
+  // The next draw notes buttons it puts in new places at this time (renderBoard, `seen`).
+  if (Number.isFinite(event.at)) next.lastEventAt = event.at
   let action = null
   const name = event.type === "key" ? event.name : event.type
   const s = next.selected
@@ -2281,11 +2293,16 @@ export function handleInput(scroll, event, drawn) {
       const within = (h) => h.y === event.y && event.x >= h.x0 && event.x <= h.x1
       const hit = (drawn.buttons || []).find((b) => b.panel && within(b))
       const asked = (drawn.askHits || []).find((a) => a.panel && within(a))
-      if (hit && shownCard && hit.key === detail.key) {
+      // A panel button that just appeared or moved there (the panel opened or scrolled) is
+      // not pressed, nor chosen: the click was aimed at what was there before.
+      if (hit && shownCard && hit.key === detail.key && justMoved(scroll, hit, event.at)) {
+        // nothing
+      } else if (hit && shownCard && hit.key === detail.key) {
         choose(hit.index)
         action = press(shownCard, hit.index)
       } else if (asked && shownCard && asked.key === detail.key) choose(shownCard.suggested || 0)
       else if ((drawn.moreHits || []).some(within)) toggleMore()
+      next.lastClick = { key: detail.key, at: event.at ?? 0, x: event.x, y: event.y, panel: true }
       return { scroll: next, action }
     }
     delete next.detail
@@ -2306,10 +2323,8 @@ export function handleInput(scroll, event, drawn) {
     // one on the same cell soon after, where something else is drawn now, only selects.
     const last = next.lastClick
     const since = (event.at ?? 0) - (last?.at ?? -Infinity)
-    const sameCell = last && last.x === event.x && last.y === event.y
-    const target = targetAt(drawn, event.x, event.y)
-    const moved = Boolean(sameCell && since <= MOVED_MS && last.target !== target)
-    const doubleOnButton = Boolean(hit && last && last.key === hit.key && since <= DOUBLE_CLICK_MS)
+    const moved = Boolean(hit && justMoved(scroll, hit, event.at))
+    const doubleOnButton = Boolean(hit && last && !last.panel && last.key === hit.key && since <= DOUBLE_CLICK_MS)
     if (hit && (doubleOnButton || moved)) {
       selectSection("waiting")
       next.card = hit.key
@@ -2340,7 +2355,7 @@ export function handleInput(scroll, event, drawn) {
     } else if (section) selectSection(section)
     // What this click selected, and what was under it, for the next one. The screen it sees
     // next is redrawn from this click, so `target` is what it landed on, not what replaced it.
-    next.lastClick = onCard || hit ? { key: (hit || onCard).key, at: event.at ?? 0, x: event.x, y: event.y, target } : null
+    next.lastClick = onCard || hit ? { key: (hit || onCard).key, at: event.at ?? 0, x: event.x, y: event.y } : null
   } else if (event.type === "wheel") {
     const target = sectionAt(drawn.regions, event.x, event.y)
     if (target) scrollTo(target, at(target) + (event.dir === "up" ? -1 : 1))
@@ -2600,13 +2615,18 @@ function openPane(fileArg, opts, env, out) {
     const otherCopy = state === "board" && !sameFile(script, PANE_SCRIPT)
     const older = state === "board" && !otherCopy && version !== VERSION
     const otherOrigin = state === "board" && !otherCopy && !older && origin !== target
-    if (otherCopy || older || otherOrigin) state = quitBoard(pane, env)
+    let meanwhile = false
+    if (otherCopy || older || otherOrigin) {
+      state = quitBoard(pane, env, (s) => !sameFile(s.script, PANE_SCRIPT) || s.version !== VERSION || s.origin !== target)
+      // Restarted meanwhile, as this copy for this pane: it is what open would start.
+      if (state === "current") [state, meanwhile] = ["board", true]
+    }
     if (state === "shell") herdr(["pane", "run", pane, paneCommand(file, target)], env)
     out(
       state === "busy"
         ? `pane ${pane} is the board's, but something else runs in it now; left alone`
         : state === "board"
-          ? `board already open in pane ${pane}${otherCopy || older || otherOrigin ? ` (the running board, ${script}, did not quit)` : ""}`
+          ? `board already open in pane ${pane}${(otherCopy || older || otherOrigin) && !meanwhile ? ` (the running board, ${script}, did not quit)` : ""}`
           : otherCopy
             ? `board switched to this copy in pane ${pane}`
             : older
@@ -2632,12 +2652,15 @@ function openPane(fileArg, opts, env, out) {
 
 /**
  * Quit the board running in `pane` with its `q` key, waiting up to 3 s; the pane's state after.
- * The state is read again just before: `q` goes only to a board, never to a shell or to anything
- * else that runs there now.
+ * The state is read again just before: `q` goes only to a board that `stillStale` (given what
+ * runs there now) says should go, never to a shell, to anything else, or to a board that
+ * restarted itself meanwhile ("current": nothing was sent).
  */
-function quitBoard(pane, env) {
-  let { state } = paneState(pane, env)
+function quitBoard(pane, env, stillStale = () => true) {
+  const before = paneState(pane, env)
+  let { state } = before
   if (state !== "board") return state
+  if (!stillStale(before)) return "current"
   herdr(["pane", "send-text", pane, "q"], env, { quiet: true })
   ;({ state } = paneState(pane, env))
   for (let i = 0; i < 30 && state === "board"; i++) {
@@ -2668,14 +2691,19 @@ export function logRestart(env, entry) {
   } catch {}
 }
 
-/** The last restart logged for `pane`, or null. */
-export function lastRestart(env, pane) {
+// A restart logged longer ago than this is about another board: Herdr reuses pane ids.
+export const RESTART_FRESH_MS = 5 * 60_000
+
+/** The last restart logged for `pane` in the last RESTART_FRESH_MS, or null. */
+export function lastRestart(env, pane, now = Date.now()) {
   if (!pane) return null
   const lines = (readText(join(stateDir(env), RESTART_LOG)) ?? "").split("\n").filter(Boolean)
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
       const e = JSON.parse(lines[i])
-      if (e?.pane === pane) return e
+      if (e?.pane !== pane) continue
+      const at = Date.parse(e.at)
+      return Number.isFinite(at) && now - at <= RESTART_FRESH_MS ? e : null
     } catch {}
   }
   return null
@@ -2689,21 +2717,42 @@ export const COPY_FILES = ["board.mjs", "board-pane.mjs", "links.mjs", join("hoo
 
 /**
  * Whether the copy in `dir` can start, before a pane hands over to it: every file it needs is
- * there and parses (`node --check`), and `board.mjs version` prints `version` (so it is 0.4.0 or
- * newer, with `pane-restart`). Resolves to null, or to the reason it can't, in a few words.
+ * there and parses (`node --check`), `board.mjs version` prints `version` (so it is 0.4.0 or
+ * newer, with `pane-restart`), and, with the board `file`, its pane draws a frame (`--once`, with
+ * Herdr out of reach), which also links every import. Resolves to null, to the reason it can't
+ * in a few words, or to VERIFY_AGAIN when a step ran out of time.
  */
-export function verifyCopy(dir, version, env = process.env) {
-  const run = (args) =>
-    new Promise((done) => execFile(process.execPath, args, { env, timeout: 10_000, cwd: dir }, (error, stdout, stderr) => done({ error, stdout: String(stdout), stderr: String(stderr) })))
+export const VERIFY_AGAIN = Symbol("check again")
+export function verifyCopy(dir, version, env = process.env, file = "") {
+  // A check that ran out of time (a busy machine) says nothing about the copy: VERIFY_AGAIN.
+  let slow = false
+  const run = (args, runEnv = env) =>
+    new Promise((done) =>
+      execFile(process.execPath, args, { env: runEnv, timeout: 20_000, cwd: dir }, (error, stdout, stderr) => {
+        if (error?.killed) slow = true
+        done({ error, stdout: String(stdout), stderr: String(stderr) })
+      }),
+    )
   return (async () => {
     for (const f of COPY_FILES) {
       if (!existsSync(join(dir, f))) return `${f} is missing`
       const r = await run(["--check", join(dir, f)])
+      if (slow) return VERIFY_AGAIN
       if (r.error) return `${f} doesn't parse (${clean(r.stderr.split("\n").find((l) => /Error/.test(l)) || r.error.message).slice(0, 120)})`
     }
     const r = await run([join(dir, "board.mjs"), "version"])
+    if (slow) return VERIFY_AGAIN
     const said = clean(r.stdout)
     if (r.error || said !== version) return said ? `board.mjs version says ${said.slice(0, 40)}, not ${version}` : `board.mjs version failed (a board before 0.4.0 can't restart a pane)`
+    // node --check doesn't link imports: draw one frame of the new pane, outside Herdr (so it
+    // runs nothing there), from this board file.
+    if (file) {
+      const dry = { ...env }
+      for (const k of ["HERDR_ENV", "HERDR_PANE_ID", "HERDR_WORKSPACE_ID", "HERDR_TAB_ID"]) delete dry[k]
+      const d = await run([join(dir, "board-pane.mjs"), "--once", "--board", file, "--width", "40", "--height", "10"], dry)
+      if (slow) return VERIFY_AGAIN
+      if (d.error) return `board-pane.mjs doesn't start (${clean(d.stderr.split("\n").find((l) => /Error/.test(l)) || d.error.message).slice(0, 120)})`
+    }
     return null
   })()
 }
@@ -2745,9 +2794,15 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
     logRestart(env, { pane: p.pane, ok: false, version: VERSION, error })
     lines.push(`pane ${p.pane}: ${error}`)
   }
+  // Left alone on purpose: logged as a skip, which a board opened there later doesn't report.
+  const skip = (p, why) => {
+    logRestart(env, { pane: p.pane, ok: null, skipped: true, version: VERSION, error: why })
+    lines.push(`pane ${p.pane}: ${why}`)
+  }
+  const current = (s) => s.state === "board" && s.version === VERSION && sameFile(s.script, PANE_SCRIPT)
   for (const p of panes) {
     if (!p.board) {
-      fail(p, "not restarted: the board there has no --board file to start again; press q in it, then run `board.mjs open` from the pane left of it")
+      skip(p, "not restarted: the board there has no --board file to start again; press q in it, then run `board.mjs open` from the pane left of it")
       continue
     }
     let now = paneState(p.pane, env)
@@ -2756,12 +2811,12 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       sleep(100)
       now = paneState(p.pane, env)
     }
-    if (now.state === "board" && now.version === VERSION && sameFile(now.script, PANE_SCRIPT)) {
+    if (current(now)) {
       lines.push(`pane ${p.pane}: already runs board ${VERSION}`)
       continue
     }
     if (now.state === "busy") {
-      fail(p, "not restarted: something else runs there now")
+      skip(p, "not restarted: something else runs there now")
       continue
     }
     // `restart` found a board there that has been quit since: the user's choice, left alone.
@@ -2770,7 +2825,11 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       lines.push(`pane ${p.pane}: not restarted: its board was quit meanwhile`)
       continue
     }
-    const state = now.state === "board" ? quitBoard(p.pane, env) : now.state
+    const state = now.state === "board" ? quitBoard(p.pane, env, (s) => !current(s)) : now.state
+    if (state === "current") {
+      lines.push(`pane ${p.pane}: already runs board ${VERSION}`)
+      continue
+    }
     if (state !== "shell") {
       fail(p, "the board there did not quit; press q in it, then run `board.mjs open` from the pane left of it")
       continue
@@ -2789,7 +2848,9 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
     }
     if (started.state !== "board") {
       const why = `board ${VERSION} didn't stay running in this pane; run \`board.mjs open\` from the pane left of it, or herdr plugin install ${PLUGIN_SOURCE} again`
-      herdr(["pane", "run", p.pane, `printf '%s\\n' ${shellQuote(`job board: ${why}`)}`], env, { quiet: true })
+      // Said in the pane only when it is a shell at its prompt right now: never as keys into a
+      // board that started late, or into anything else.
+      if (paneState(p.pane, env).state === "shell") herdr(["pane", "run", p.pane, `printf '%s\\n' ${shellQuote(`job board: ${why}`)}`], env, { quiet: true })
       fail(p, why)
       continue
     }
@@ -2802,7 +2863,7 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
 // --- doctor -------------------------------------------------------------------------------------
 
 /** "0.9.3" ≥ "0.9.10"? Dotted numbers compared part by part. */
-const atLeast = (have, need) => {
+export const atLeast = (have, need) => {
   const a = String(have).split(".").map(Number)
   const b = String(need).split(".").map(Number)
   for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0)

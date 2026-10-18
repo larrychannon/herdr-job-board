@@ -113,3 +113,131 @@ test("end to end, both mouse modes: a double click on card 2's row sends nothing
     t.done()
   }
 })
+
+// --- a button drawn where it is for less than MOVED_MS is never pressed (0.4.0 re-check) ------------
+
+/** The re-check's boards: `nw` Waiting cards with `opts` buttons and `desc` description lines, then Doing, To do and Done. */
+function recheckBoard(nw, desc, nTodo = 0, nDone = 0, nDoing = 0, opts = 2, agents = null) {
+  const list = []
+  let id = 1
+  const at = (h) => new Date(Date.parse(NOW) - h * 3600_000).toISOString()
+  for (let i = 0; i < nw; i++) {
+    list.push({ id: id++, title: `Waiting card ${i} title`, desc: Array.from({ length: desc + (i % 2) }, (_, k) => `desc line ${k} of card ${i} `.repeat(3)).join("\n"), column: "waiting", ask: `Question ${i}?`, since: at(i * 0.1), options: Array.from({ length: opts }, (_, k) => ({ label: ["Yes", "No", "Later", "Skip"][k], suggested: k === 0 })) })
+  }
+  for (let i = 0; i < nDoing; i++) list.push({ id: id++, title: `doing ${i}`, column: "doing", job: `job-${i}`, since: at(0.2) })
+  for (let i = 0; i < nTodo; i++) list.push({ id: id++, title: `todo ${i}`, desc: "todo desc", column: "todo", since: at(30 + i) })
+  for (let i = 0; i < nDone; i++) list.push({ id: id++, title: `done ${i}`, column: "done", since: at(0.5) })
+  return buildView({ items: list }, agents, { now: new Date(NOW), workspace: "w9" })
+}
+const drawer = (v, width, height) => (scroll) => renderBoard(v, { width, height, interactive: true, now: new Date(NOW), scroll: { anchors: {}, ...scroll } })
+const settle = (d, s) => {
+  let x = d(s)
+  for (let i = 0; i < 4; i++) x = d(x.scroll)
+  return x
+}
+const pressed = (a) => a && (a.type === "send" || a.type === "other")
+const buttonAt = (d, x, y) => d.buttons.find((b) => b.y === y && x >= b.x0 && x <= b.x1)
+
+test("a slow double click that drifts one cell (+1 column, +450 ms) after a row click presses nothing", () => {
+  const first = draw({ selected: "waiting", anchors: {} })
+  const y = rowOf(first, "2 ! Deploy build two?")
+  const one = click(first.scroll, 10, y, 1000)
+  const moved = draw(one.scroll)
+  assert.ok(buttonAt(moved, 11, y), "a button of card 2 is one cell right of the first click now")
+  for (const t of [1450, 1600, 1999]) assert.equal(handleInput(moved.scroll, { type: "click", x: 11, y, at: t }, moved).action, null, `+${t - 1000} ms: nothing sent`)
+  assert.ok(pressed(handleInput(moved.scroll, { type: "click", x: 11, y, at: 2001 }, moved).action), "a second later it is a button like any other")
+})
+
+test("wide: a click that closes the details uncovers buttons; a click on them right after presses nothing", () => {
+  const d = drawer(recheckBoard(3, 3, 0, 0, 0, 4), 130, 30)
+  const open = settle(d, { selected: "waiting", detail: { key: "#1", offset: 0 } })
+  const top = open.regions.detail.top
+  const closed = handleInput(open.scroll, { type: "click", x: 11, y: top - 1, at: 0 }, open)
+  assert.equal(closed.scroll.detail, undefined, "the click above the panel closed it")
+  const after = d(closed.scroll)
+  const uncovered = buttonAt(after, 11, top) || buttonAt(after, 51, top) || after.buttons.find((b) => b.y >= top)
+  assert.ok(uncovered, "buttons the panel covered are on screen")
+  for (const t of [80, 450, 999]) assert.equal(handleInput(after.scroll, { type: "click", x: uncovered.x0, y: uncovered.y, at: t }, after).action, null, `+${t} ms`)
+  assert.ok(pressed(handleInput(after.scroll, { type: "click", x: uncovered.x0, y: uncovered.y, at: 1000 }, after).action))
+})
+
+test("the details: a double click on the question, or a triple click on a lower row, presses no button that moved under it", () => {
+  // (a) compact 60x16, card 1's details: the click on the question scrolls the panel, and "< Yes ✓ >" lands under the pointer.
+  const a = drawer(recheckBoard(2, 0), 60, 16)
+  let d = settle(a, { selected: "waiting", detail: { key: "#1", offset: 0 } })
+  const q = d.askHits.find((h) => h.panel)
+  let r = handleInput(d.scroll, { type: "click", x: q.x0 + 1, y: q.y, at: 0 }, d)
+  assert.equal(r.action, null)
+  d = a(r.scroll)
+  assert.ok(buttonAt(d, q.x0 + 1, q.y)?.panel, "a panel button is under the pointer now")
+  for (const t of [80, 450]) assert.equal(handleInput(d.scroll, { type: "click", x: q.x0 + 1, y: q.y, at: t }, d).action, null, `+${t} ms: nothing sent`)
+  // (b) wide 130x44, 12 cards: a double click on card 12's row opens its details, whose buttons land under the pointer.
+  const b = drawer(recheckBoard(12, 0), 130, 44)
+  d = settle(b, { selected: "waiting", card: "#11" })
+  const y = 29
+  const x = 10
+  r = handleInput(d.scroll, { type: "click", x, y, at: 0 }, d)
+  d = b(r.scroll)
+  r = handleInput(d.scroll, { type: "click", x, y, at: 250 }, d)
+  assert.ok(r.scroll.detail, "the double click opened the details")
+  d = b(r.scroll)
+  assert.ok(buttonAt(d, x, y), "a button is under the pointer now")
+  assert.equal(handleInput(d.scroll, { type: "click", x, y, at: 650 }, d).action, null, "the third click sends nothing")
+})
+
+test("a refresh that moves the rows (the pane's paint time): a button drawn there less than MOVED_MS ago isn't pressed", () => {
+  const v = recheckBoard(3, 1)
+  const at = (t, scroll) => renderBoard(v, { width: 99, height: 30, interactive: true, now: new Date(NOW), at: t, scroll: { anchors: {}, ...scroll } })
+  let d = at(0, { selected: "waiting", card: "#1" })
+  const yes = d.buttons.find((b) => b.key === "#1" && b.index === 0)
+  assert.ok(pressed(handleInput(d.scroll, { type: "click", x: yes.x0, y: yes.y, at: 5000 }, d).action), "on screen 5 s: pressed")
+  // A job blocks: its agent shows first under Waiting, and the paint at 10 s moves card 1's buttons a row down.
+  const v2 = recheckBoard(3, 1, 0, 0, 0, 2, [{ name: "stuck", agent_status: "blocked", workspace_id: "w9" }])
+  d = renderBoard(v2, { width: 99, height: 30, interactive: true, now: new Date(NOW), at: 10_000, scroll: d.scroll })
+  const still = d.buttons.find((b) => b.key === "#1" && b.index === 0)
+  assert.ok(still.y > yes.y, "card 1's buttons moved down")
+  assert.equal(handleInput(d.scroll, { type: "click", x: still.x0, y: still.y, at: 10_300 }, d).action, null, "card 1's Yes moved: not yet")
+  assert.ok(pressed(handleInput(d.scroll, { type: "click", x: still.x0, y: still.y, at: 11_100 }, d).action), "and pressed once it stood still")
+})
+
+test("sweep: after any first click, a second click on the same cell or one cell away (80-999 ms) never presses a button that wasn't there", () => {
+  let checks = 0
+  let violations = []
+  let legit = 0
+  for (const spec of [[1, 1, 0, 0, 0, 2], [2, 0, 0, 0, 0, 2], [3, 3, 0, 0, 0, 4], [5, 1, 9, 2, 2, 1], [12, 0, 0, 0, 0, 2]]) {
+    const v = recheckBoard(...spec)
+    for (const [w, h] of [[60, 16], [99, 30], [130, 30], [130, 44]]) {
+      const d = drawer(v, w, h)
+      for (const st of [{ selected: "waiting", card: `#${Math.max(1, spec[0] - 1)}` }, {}, { selected: "waiting", card: "#2" }, { selected: "waiting", detail: { key: "#1", offset: 0 } }, { selected: "waiting", open: false }]) {
+        const d0 = settle(d, { selected: "waiting", ...st })
+        // Every button on a stable screen still presses with a single click.
+        for (const b of d0.buttons) {
+          legit++
+          assert.equal(handleInput(d0.scroll, { type: "click", x: b.x0, y: b.y, at: 100_000 }, d0).action?.key, b.key, "a single click on a visible button presses it")
+        }
+        for (let y = 1; y <= h; y++) {
+          for (let x = 1; x <= w; x += Math.max(1, Math.floor(w / 10))) {
+            const c1 = handleInput(d0.scroll, { type: "click", x, y, at: 0 }, d0)
+            const d1 = d(c1.scroll)
+            for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const x2 = x + dx
+              const y2 = y + dy
+              const before = buttonAt(d0, x2, y2)
+              const now = buttonAt(d1, x2, y2)
+              const same = before && now && before.key === now.key && before.index === now.index && before.y === now.y && before.x0 === now.x0 && Boolean(before.panel) === Boolean(now.panel)
+              if (!now || same) continue
+              for (const t of [80, 250, 450, 700, 999]) {
+                checks++
+                const a = handleInput(d1.scroll, { type: "click", x: x2, y: y2, at: t }, d1).action
+                if (pressed(a)) violations.push({ spec, w, h, st, x, y, x2, y2, t, a })
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checks > 1000, `enough moved-button cases (${checks})`)
+  assert.ok(legit > 50)
+  assert.deepEqual(violations.slice(0, 3), [], `${violations.length} presses of a just-moved button`)
+})

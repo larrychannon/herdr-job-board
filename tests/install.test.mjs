@@ -9,6 +9,8 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
+import { verifyCopy } from "../board.mjs"
+
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const FAKE_HERDR = join(ROOT, "tests", "fixtures", "fake-herdr.mjs")
 chmodSync(FAKE_HERDR, 0o755)
@@ -255,7 +257,8 @@ test("a rollback to a board before 0.4.0 (no pane-restart) is not started either
     }
     await pause(5000)
     assert.equal(live.exited, false)
-    assert.match(words(live), /update to 0\.3\.5 failed to start: board\.mjs version failed \(a board before 0\.4\.0 can't restart a pane\)/)
+    assert.match(words(live), /board 0\.3\.5 can't take over this pane by itself: board\.mjs version failed \(a board before 0\.4\.0 can't restart a pane\); quit \(q\) and open the board again to run 0\.3\.5/)
+    assert.doesNotMatch(words(live), /install .* again/, "a rollback isn't undone by the advice")
     assert.deepEqual(runs(t), [])
   } finally {
     live?.kill()
@@ -268,7 +271,8 @@ test("a new version is checked only after it stood still for the settle time, no
   let live
   try {
     live = livePane(t, { JOB_BOARD_UPDATE_SETTLE_MS: "4000" })
-    await pause(1500)
+    for (let i = 0; i < 100 && !/Something/.test(live.out); i++) await pause(100)
+    await pause(300)
     t.setVersion("9.9.9")
     await pause(2500)
     assert.equal(live.exited, false, "2.5 s after the write: still the old pane")
@@ -278,7 +282,7 @@ test("a new version is checked only after it stood still for the settle time, no
     writeFileSync(join(t.plugin, "links.mjs"), readFileSync(join(ROOT, "links.mjs"), "utf8") + "\n")
     await pause(2500)
     assert.equal(live.exited, false, "the folder changed 2.5 s ago: still waiting")
-    for (let i = 0; i < 60 && !live.exited; i++) await pause(100)
+    for (let i = 0; i < 200 && !live.exited; i++) await pause(100)
     assert.ok(live.exited, "then it hands over")
   } finally {
     live?.kill()
@@ -286,27 +290,47 @@ test("a new version is checked only after it stood still for the settle time, no
   }
 })
 
-test("pane-restart failures are logged and shown by the next board started in that pane", { skip: !hasScript && "needs util-linux script" }, async () => {
+test("pane-restart failures are logged and shown by the next board started in that pane; skips and old entries are not", { skip: !hasScript && "needs util-linux script" }, async () => {
   const t = setup()
   let live
+  const log = () => readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+  const restart = () => t.run(["pane-restart", "w9:p5", "--board", join(t.repo, ".git", "job-board.json"), "--origin", "w9:p1"])
   try {
-    // Something else runs in the pane: nothing is typed into it, and the reason is logged.
+    // Something else runs in the pane: nothing is typed into it, and it is logged as a skip.
     t.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board", running: "vim notes.md" }))
-    const r = t.run(["pane-restart", "w9:p5", "--board", join(t.repo, ".git", "job-board.json"), "--origin", "w9:p1"])
+    let r = restart()
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /pane w9:p5: not restarted: something else runs there now/)
     assert.deepEqual(t.herdrState().log.filter((a) => a[1] === "send-text" || a[1] === "run"), [])
-    const log = readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-    assert.deepEqual([log.at(-1).pane, log.at(-1).ok], ["w9:p5", false])
-    // The board opened there next says so, once.
-    t.setHerdr((s) => delete s.panes.find((p) => p.pane_id === "w9:p5").running)
+    assert.deepEqual([log().at(-1).pane, log().at(-1).ok, log().at(-1).skipped], ["w9:p5", null, true])
     live = livePane(t)
     await pause(1500)
-    assert.match(live.out, /the last restart in this pane failed: not restarted: something else runs there now/)
+    assert.doesNotMatch(live.out, /the last restart in this pane failed/, "a skip is not a failure")
+    live.kill()
+    // A shell that Herdr won't run the board in: a failure, logged; the board opened there next says so, once.
+    t.setHerdr((s) => {
+      const p = s.panes.find((x) => x.pane_id === "w9:p5")
+      delete p.running
+      p.refuse_run = true
+    })
+    r = restart()
+    assert.match(r.stdout, /pane w9:p5: couldn't start board [\d.]+: herdr pane run failed/)
+    assert.deepEqual([log().at(-1).ok, log().at(-1).skipped], [false, undefined])
+    t.setHerdr((s) => delete s.panes.find((x) => x.pane_id === "w9:p5").refuse_run)
+    live = livePane(t)
+    await pause(1500)
+    assert.match(live.out, /the last restart in this pane failed: couldn't start board/)
     live.kill()
     live = livePane(t)
     await pause(1500)
     assert.doesNotMatch(live.out, /the last restart in this pane failed/, "shown once")
+    live.kill()
+    // A failure from more than a few minutes ago is about another board (Herdr reuses pane ids).
+    const file = join(t.home, ".local", "state", "herdr-job-board", "restart.log")
+    appendFileSync(file, `${JSON.stringify({ at: new Date(Date.now() - 10 * 60_000).toISOString(), pane: "w9:p5", ok: false, error: "an old failure" })}\n`)
+    live = livePane(t)
+    await pause(1500)
+    assert.doesNotMatch(live.out, /an old failure/)
   } finally {
     live?.kill()
     t.done()
@@ -337,5 +361,59 @@ test("restart looks again before typing: a pane with no board file, quit meanwhi
     assert.deepEqual(runs(t).map((a) => a[2]), ["w9:p8"])
   } finally {
     t.done()
+  }
+})
+
+test("verifyCopy: a copy that parses but can't link (a bad import) doesn't start; the pane stays with the notice", { skip: !hasScript && "needs util-linux script" }, async () => {
+  const t = setup()
+  let live
+  try {
+    assert.equal(t.run(["add", "todo", "Something"]).status, 0)
+    const board = join(t.repo, ".git", "job-board.json")
+    assert.equal(await verifyCopy(t.plugin, VERSION, t.env, board), null, "the copy as it is starts")
+    live = livePane(t)
+    await pause(1500)
+    // The re-check's badlink: version 0.4.1, and board-pane.mjs imports what board.mjs doesn't export.
+    t.setVersion("0.4.1")
+    const pane = join(t.plugin, "board-pane.mjs")
+    writeFileSync(pane, readFileSync(pane, "utf8").replace("  WORKING_FRAMES,\n", "  WORKING_FRAMES,\n  NO_SUCH_EXPORT,\n"))
+    assert.equal(spawnSync(process.execPath, ["--check", pane]).status, 0, "it parses")
+    assert.match(await verifyCopy(t.plugin, "0.4.1", t.env, board), /board-pane\.mjs doesn't start \(SyntaxError: .*NO_SUCH_EXPORT/)
+    await pause(5000)
+    assert.equal(live.exited, false, "the old pane is still running")
+    assert.match(words(live), /update to 0\.4\.1 failed to start: board-pane\.mjs doesn't start/)
+    assert.deepEqual(runs(t), [])
+  } finally {
+    live?.kill()
+    t.done()
+  }
+})
+
+test("restart sends q only to a pane still stale just before; pane-restart says why only into a shell", () => {
+  const t = setup()
+  try {
+    const old = `node '${t.plugin}/board-pane.mjs' --board /b/x.json --origin 'w9:p1' --version '0.3.9'`
+    const now = `node '${t.plugin}/board-pane.mjs' --board /b/x.json --origin 'w9:p1' --version '${VERSION}'`
+    // The re-check's race: old at the listing, old at restart's look, this version at quitBoard's look.
+    t.setHerdr((s) => s.panes.push({ pane_id: "w9:p9", tab_id: "w9:t1", workspace_id: "w9", label: "board", running: old, next: [old, now] }))
+    const r = t.run(["restart"])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /pane w9:p9: already runs board /)
+    assert.deepEqual(t.herdrState().log.filter((a) => a[1] === "send-text" || a[1] === "run"), [], "no q, no restart")
+  } finally {
+    t.done()
+  }
+  for (const [becomes, printed] of [["zsh-prompt-hook --slow", false], [null, true]]) {
+    const u = setup()
+    try {
+      // The new board doesn't show as running within 3 s: something slow (busy) or back to the shell.
+      u.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board", run_becomes: becomes }))
+      const r = u.run(["pane-restart", "w9:p5", "--board", join(u.repo, ".git", "job-board.json"), "--origin", "w9:p1"])
+      assert.match(r.stdout, /didn't stay running in this pane/)
+      const typed = runs(u).filter((a) => a[2] === "w9:p5" && /^printf /.test(a[3]))
+      assert.equal(typed.length, printed ? 1 : 0, printed ? "said in the shell" : "never typed into a pane that isn't a shell")
+    } finally {
+      u.done()
+    }
   }
 })

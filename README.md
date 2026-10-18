@@ -116,7 +116,7 @@ itself out again at once.
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button is a press only when that button was under the pointer for the click before it too: the second click of a double click that opened a card (its buttons move under the pointer in the inbox) opens its details instead, and a click on the same cell soon after, where something else is drawn now, only selects. With mouse capture off (`m`), click reports are ignored |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `q`, `r` | quit; redraw |
 
 The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
@@ -309,18 +309,23 @@ herdr plugin install larrychannon/herdr-job-board
 ```
 
 An open board pane (0.4.0 or newer) sees its folder's new version, waits until it has stood
-still for 5 seconds (an update writes several files), checks the new copy (its files parse and
-its `version` says that version) and only then restarts itself with it, in the same pane, with
-the same board and coordinator. It waits while a card's details are open or a button is chosen,
-and says so. A copy that fails the check (a broken update, or a rollback to a board before 0.4.0,
-which can't restart a pane) is never started: the pane keeps running and says "update to X failed
-to start: …; run herdr plugin install larrychannon/herdr-job-board again". Restarts are logged to
-`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started later in a pane
-whose last restart failed says why, once. A pane from before 0.4.0 can't:
+still for 5 seconds (an update writes several files), checks the new copy (its files parse, its
+`version` says that version, and its pane draws a frame of this board outside Herdr, which links
+every import) and only then restarts itself with it, in the same pane, with the same board and
+coordinator. It waits while a card's details are open or a button is chosen, and says so. A copy
+that fails the check is never started: the pane keeps running and says why, with "run herdr
+plugin install larrychannon/herdr-job-board again" for a broken update, or "quit (q) and open the
+board again to run X" for an older version put there on purpose (a board before 0.4.0 can't take
+over a pane by itself). Restarts are logged to
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started in a pane within a
+few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
+skips, not failures. A pane from before 0.4.0 can't:
 `node "$BOARD" restart` restarts every board pane, in every workspace, that runs an older version
 of the installed board (or a copy whose files are gone), and `doctor` lists them. It looks at
-each pane again right before typing `q` into it, and leaves alone a pane with no board file to
-start again, one whose board was quit meanwhile, and one that already restarted itself. `open` in a
+each pane again right before typing `q` into it, and types it only into a board still on the old
+version; it leaves alone a pane with no board file to start again, one whose board was quit
+meanwhile, and one that already restarted itself. If a new board doesn't stay running, the reason
+is printed in the pane only when the pane is a shell at that moment. `open` in a
 tab does the same for that tab's pane.
 
 The key binding, the sidebar token and the hooks don't change: the plugin's folder is the same

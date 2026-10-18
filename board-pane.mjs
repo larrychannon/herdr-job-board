@@ -90,12 +90,14 @@ import {
   textWidth,
   tokenText,
   nextCopy,
+  atLeast,
   COPY_FILES,
   lastRestart,
   logRestart,
   PLUGIN_SOURCE,
   UPDATE_SETTLE_MS,
   VERSION,
+  VERIFY_AGAIN,
   verifyCopy,
   versionOf,
   WORKING_FRAMES,
@@ -294,6 +296,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       height: out.rows || 24,
       color,
       emoji,
+      // The paint's time: buttons that appear or move get it as their first-seen time.
+      at: Date.now(),
       links: true,
       frame: animate ? frame : null,
       scroll,
@@ -361,12 +365,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     if (!canRestart) return `board ${now} is installed: press q, then open the board again`
     if (Date.now() - update.since >= settleMs && !busy && !checking && !restarting) {
       checking = true
-      verifyCopy(here, now, env).then((reason) => {
+      verifyCopy(here, now, env, file).then((reason) => {
         checking = false
-        // The folder changed while it was checked: check again once it is still.
-        if (`${versionOf(here)} ${filesOf()}` !== sig) return
+        // The folder changed while it was checked, or a step ran out of time: check again.
+        if (`${versionOf(here)} ${filesOf()}` !== sig || reason === VERIFY_AGAIN) return
         if (reason) {
-          failed = { sig, notice: `update to ${now} failed to start: ${reason}; run herdr plugin install ${PLUGIN_SOURCE} again` }
+          // An older version (a rollback) was put there on purpose: installing again would undo it.
+          const fix = atLeast(VERSION, now) ? `quit (q) and open the board again to run ${now}` : `run herdr plugin install ${PLUGIN_SOURCE} again`
+          failed = { sig, notice: `${atLeast(VERSION, now) ? "board" : "update to"} ${now} ${atLeast(VERSION, now) ? "can't take over this pane by itself" : "failed to start"}: ${reason}; ${fix}` }
           data.notice = failed.notice
           paint()
           return

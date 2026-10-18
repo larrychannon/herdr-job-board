@@ -69,7 +69,14 @@ if (key === "pane rename") {
   ok({ type: "ok" })
 }
 if (key === "pane run") {
-  pane(target).running = args[3]
+  // refuse_run: Herdr fails the command (a pane-restart that can't start the new board).
+  if (pane(target)?.refuse_run) fail(`pane ${target} refused the command`)
+  // run_becomes: what runs there after the command instead of it (null: the shell again, e.g. a
+  // board that exits at once; text: something slow that isn't a board yet).
+  if (pane(target) && "run_becomes" in pane(target)) {
+    if (pane(target).run_becomes == null) delete pane(target).running
+    else pane(target).running = pane(target).run_becomes
+  } else pane(target).running = args[3]
   ok({ type: "ok" })
 }
 if (key === "agent prompt" || key === "agent focus" || key === "agent get") {

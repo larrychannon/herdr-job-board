@@ -36,15 +36,19 @@ The board in a narrow pane, colour and emoji that read, and a shorter install an
 - `ls` uses the layout for its width, with every Waiting card open; `ls --width 120` (or `ls`
   piped, with no `--width`) shows every card whole. `board-pane.mjs --once` takes `--layout` and `--emoji`.
 
-- Review fixes before release: a click is never a button press when its button wasn't under the
-  pointer for the click before (a double click on a closed row opens its details; the inbox
-  moved card 2's buttons under the second click and sent its answer); with mouse capture off,
-  click reports are ignored. A pane hands over to an update only after the new version stood
+- Review fixes before release: a click presses a button only once that button has been drawn
+  where it is for a second (the board keeps when each button position first appeared): one that
+  a click, the details panel, a refresh or a resize just put under the pointer only selects. This
+  replaced a same-cell check that a double click drifting one cell got past. A double click on a
+  closed row opens its details; with mouse capture off, click reports are ignored. A pane hands over to an update only after the new version stood
   still for 5 s and the new copy checks out (its files parse, its `version` says so); a broken
-  update or a rollback to a board before 0.4.0 keeps the old pane running with "update to X
-  failed to start: …". Restarts are logged to the board's state folder, and a board started
+  update keeps the old pane running with "update to X failed to start: …" (the check includes
+  drawing a frame of the new pane, so a bad import counts), and an older version put there on
+  purpose says "quit (q) and open the board again to run X". Restarts are logged to the board's state folder, and a board started
   later in that pane shows a failed one. `restart` looks at each pane again just before typing
-  `q` and leaves alone one with no board file, one quit meanwhile, or one already restarted.
+  `q`, types it only into a board still on the old version, and leaves alone one with no board
+  file, one quit meanwhile, or one already restarted (logged as skips; the restart log's entries
+  count for a few minutes).
   `ls` piped with no `--width` shows the wide layout with every card whole, as before 0.4.0.
 
 Earlier versions: see the git history.
