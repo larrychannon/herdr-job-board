@@ -93,11 +93,13 @@ import {
   atLeast,
   COPY_FILES,
   lastRestart,
+  LATE_START_MS,
   logRestart,
   PLUGIN_SOURCE,
   UPDATE_SETTLE_MS,
   VERSION,
   VERIFY_AGAIN,
+  VERIFY_TIMEOUT_MS,
   verifyCopy,
   versionOf,
   WORKING_FRAMES,
@@ -188,6 +190,14 @@ async function perform(action, ctx) {
   return null
 }
 
+// Times the pane compares with each other (a paint, a click, an update standing still) come from
+// a monotonic clock: a step of the wall clock (NTP) can't make a button look just drawn, or an
+// update look older or newer than it is.
+const clock = () => performance.now()
+// Timed-out checks of a new copy: wait this much longer before each new try; give up after VERIFY_TRIES.
+const VERIFY_BACKOFF_MS = 60_000
+const VERIFY_TRIES = 3
+
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
 
 async function main(argv = process.argv.slice(2), env = process.env) {
@@ -225,7 +235,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
       if (event.type !== "key" && !ctx.mouse) continue
-      event.at = Date.now()
+      event.at = clock()
       const { scroll, action } = handleInput(drawn.scroll, event, drawn)
       if (action) {
         ctx.drawn = drawn
@@ -297,7 +307,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       color,
       emoji,
       // The paint's time: buttons that appear or move get it as their first-seen time.
-      at: Date.now(),
+      at: clock(),
       links: true,
       frame: animate ? frame : null,
       scroll,
@@ -332,6 +342,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   // --version: Herdr's own plugin pane, which closes when the board quits), it only says so.
   const here = dirname(fileURLToPath(import.meta.url))
   const settleMs = Number(env.JOB_BOARD_UPDATE_SETTLE_MS) || UPDATE_SETTLE_MS
+  const backoffMs = Number(env.JOB_BOARD_VERIFY_BACKOFF_MS) || VERIFY_BACKOFF_MS
   const filesOf = () =>
     ["herdr-plugin.toml", ...COPY_FILES]
       .map((f) => {
@@ -348,8 +359,10 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   let checking = false
   let restarting = false
   // The last restart in this pane failed (pane-restart logged why): say so until it is closed.
+  // Not a "didn't start" logged just before this board started: this board is the late one.
   const last = lastRestart(env, env.HERDR_PANE_ID)
-  const startNotice = last?.ok === false ? `the last restart in this pane failed: ${last.error}` : ""
+  const late = last?.kind === "start" && Date.now() - Date.parse(last.at) < LATE_START_MS
+  const startNotice = last?.ok === false && !late ? `the last restart in this pane failed: ${last.error}` : ""
   if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
   const checkUpdate = () => {
     const now = versionOf(here)
@@ -359,16 +372,26 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     }
     const sig = `${now} ${filesOf()}`
     if (failed?.sig === sig) return failed.notice
-    if (update?.sig !== sig) update = { sig, since: Date.now() }
+    if (update?.sig !== sig) update = { sig, since: clock(), timeouts: 0, retryAt: 0 }
     const busy = scroll.detail || (scroll.button ?? -1) >= 0
     const canRestart = env.HERDR_ENV === "1" && env.HERDR_PANE_ID && opts.version
     if (!canRestart) return `board ${now} is installed: press q, then open the board again`
-    if (Date.now() - update.since >= settleMs && !busy && !checking && !restarting) {
+    if (clock() - update.since >= settleMs && clock() >= update.retryAt && !busy && !checking && !restarting) {
       checking = true
+      const mine = update
       verifyCopy(here, now, env, file).then((reason) => {
         checking = false
-        // The folder changed while it was checked, or a step ran out of time: check again.
-        if (`${versionOf(here)} ${filesOf()}` !== sig || reason === VERIFY_AGAIN) return
+        // The folder changed while it was checked: check again once it is still.
+        if (`${versionOf(here)} ${filesOf()}` !== sig) return
+        // A step ran out of time: try again later, a little later each time (a copy that hangs
+        // would otherwise keep a CPU busy), and after VERIFY_TRIES timeouts in a row give up.
+        if (reason === VERIFY_AGAIN) {
+          mine.timeouts++
+          mine.retryAt = clock() + backoffMs * mine.timeouts
+          if (mine.timeouts < VERIFY_TRIES) return
+          const limit = Number(env.JOB_BOARD_VERIFY_TIMEOUT_MS) || VERIFY_TIMEOUT_MS
+          reason = `the new copy took too long to start (a check ran over ${limit >= 1000 ? `${Math.round(limit / 1000)} s` : `${limit} ms`}, ${mine.timeouts} times)`
+        }
         if (reason) {
           // An older version (a rollback) was put there on purpose: installing again would undo it.
           const fix = atLeast(VERSION, now) ? `quit (q) and open the board again to run ${now}` : `run herdr plugin install ${PLUGIN_SOURCE} again`
@@ -438,7 +461,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         // selects nothing and presses nothing.
         if (event.type !== "key" && !ctx.mouse) continue
         if (!drawn) continue
-        event.at = Date.now()
+        event.at = clock()
         const result = handleInput(scroll, event, drawn)
         scroll = result.scroll
         if (result.action) {

@@ -2563,7 +2563,8 @@ function paneState(pane, env) {
     if (script) return { state: "board", script: resolve(p.cwd || "/", script), board: arg("--board"), origin: arg("--origin"), version: arg("--version") }
   }
   const shell = (p) => /^-?(ba|z|da|fi|k)?sh$/.test(basename(String(p.name || p.argv?.[0] || "")))
-  return { state: procs.length && procs.every(shell) ? "shell" : "busy" }
+  const idle = procs.length && procs.every(shell)
+  return idle ? { state: "shell" } : { state: "busy", what: clean(procs.map((p) => basename(String(p.name || p.argv?.[0] || "?"))).join(", ")).slice(0, 60) }
 }
 
 const sameFile = (a, b) => {
@@ -2693,6 +2694,12 @@ export function logRestart(env, entry) {
 
 // A restart logged longer ago than this is about another board: Herdr reuses pane ids.
 export const RESTART_FRESH_MS = 5 * 60_000
+// How long pane-restart waits for the old board to quit and the shell to get back to its prompt,
+// and, after starting the new board, for a busy pane to show it.
+export const RESTART_WAIT_MS = 10_000
+// A board started within this of a "didn't start" entry for its pane is the late board that
+// entry was about, so it doesn't report it.
+export const LATE_START_MS = 60_000
 
 /** The last restart logged for `pane` in the last RESTART_FRESH_MS, or null. */
 export function lastRestart(env, pane, now = Date.now()) {
@@ -2723,12 +2730,14 @@ export const COPY_FILES = ["board.mjs", "board-pane.mjs", "links.mjs", join("hoo
  * in a few words, or to VERIFY_AGAIN when a step ran out of time.
  */
 export const VERIFY_AGAIN = Symbol("check again")
+// Each step of the check may take this long; one that takes longer counts as a timeout.
+export const VERIFY_TIMEOUT_MS = 20_000
 export function verifyCopy(dir, version, env = process.env, file = "") {
   // A check that ran out of time (a busy machine) says nothing about the copy: VERIFY_AGAIN.
   let slow = false
   const run = (args, runEnv = env) =>
     new Promise((done) =>
-      execFile(process.execPath, args, { env: runEnv, timeout: 20_000, cwd: dir }, (error, stdout, stderr) => {
+      execFile(process.execPath, args, { env: runEnv, timeout: Number(env.JOB_BOARD_VERIFY_TIMEOUT_MS) || VERIFY_TIMEOUT_MS, cwd: dir }, (error, stdout, stderr) => {
         if (error?.killed) slow = true
         done({ error, stdout: String(stdout), stderr: String(stderr) })
       }),
@@ -2800,14 +2809,18 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
     lines.push(`pane ${p.pane}: ${why}`)
   }
   const current = (s) => s.state === "board" && s.version === VERSION && sameFile(s.script, PANE_SCRIPT)
+  const waitMs = Number(env.JOB_BOARD_RESTART_WAIT_MS) || RESTART_WAIT_MS
   for (const p of panes) {
     if (!p.board) {
       skip(p, "not restarted: the board there has no --board file to start again; press q in it, then run `board.mjs open` from the pane left of it")
       continue
     }
     let now = paneState(p.pane, env)
-    // pane-restart: the board in that pane asked for it and is quitting by itself.
-    for (let i = 0; only && i < 50 && now.state === "board" && !(now.version === VERSION && sameFile(now.script, PANE_SCRIPT)); i++) {
+    // pane-restart: the board in that pane asked for it and is quitting by itself; then the shell
+    // draws its prompt, and a prompt hook (a zsh precmd, a git prompt, direnv) shows as something
+    // running for a moment. Both are waited out, up to RESTART_WAIT_MS.
+    const quitting = (s) => (s.state === "board" && !current(s)) || s.state === "busy"
+    for (let i = 0; only && i < waitMs / 100 && quitting(now); i++) {
       sleep(100)
       now = paneState(p.pane, env)
     }
@@ -2816,7 +2829,10 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       continue
     }
     if (now.state === "busy") {
-      skip(p, "not restarted: something else runs there now")
+      // The user's `restart`: that pane is busy with something else, on purpose. pane-restart:
+      // the board there asked to be restarted and the pane never got back to its prompt.
+      if (only) fail(p, `the pane didn't get back to its prompt within ${Math.round(waitMs / 1000)} s after the old board quit (${now.what || "something"} runs there); run \`board.mjs open\` from the pane left of it`)
+      else skip(p, "not restarted: something else runs there now")
       continue
     }
     // `restart` found a board there that has been quit since: the user's choice, left alone.
@@ -2840,9 +2856,11 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       fail(p, `couldn't start board ${VERSION}: ${e.message}`)
       continue
     }
-    // It should be running within a few seconds; a board that exits at once leaves a shell, so say why there.
+    // It should be running within a few seconds: 3 s, and as long as RESTART_WAIT_MS more while
+    // the pane is busy (a slow prompt hook before the command, or node starting on a loaded
+    // machine). A board that exits at once leaves a shell, so say why there.
     let started = paneState(p.pane, env)
-    for (let i = 0; i < 30 && started.state !== "board"; i++) {
+    for (let i = 0; started.state !== "board" && (i < 30 || (started.state === "busy" && i < 30 + waitMs / 100)); i++) {
       sleep(100)
       started = paneState(p.pane, env)
     }
@@ -2851,7 +2869,9 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       // Said in the pane only when it is a shell at its prompt right now: never as keys into a
       // board that started late, or into anything else.
       if (paneState(p.pane, env).state === "shell") herdr(["pane", "run", p.pane, `printf '%s\\n' ${shellQuote(`job board: ${why}`)}`], env, { quiet: true })
-      fail(p, why)
+      // kind "start": a board that does start there later, late, is the one this was about.
+      logRestart(env, { pane: p.pane, ok: false, kind: "start", version: VERSION, error: why })
+      lines.push(`pane ${p.pane}: ${why}`)
       continue
     }
     logRestart(env, { pane: p.pane, ok: true, version: VERSION })

@@ -3,7 +3,7 @@
 // it: in the inbox, the first click of a double click opens a card and moves the rows, so the
 // second can land on a button that wasn't there (0.4.0 review). Both mouse modes.
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -84,7 +84,7 @@ function pane() {
   delete env.JOB_BOARD_FILE
   const run = (keys) => spawnSync(process.execPath, [join(ROOT, "board-pane.mjs"), "--once", "--width", "99", "--height", "30", "--origin", "w9:p1", "--keys", keys], { cwd: repo, env, encoding: "utf8" })
   const sent = () => (JSON.parse(readFileSync(herdr, "utf8")).log ?? []).filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus"))
-  return { run, sent, done: () => rmSync(root, { recursive: true, force: true }) }
+  return { repo, run, sent, done: () => rmSync(root, { recursive: true, force: true }) }
 }
 
 test("end to end, both mouse modes: a double click on card 2's row sends nothing; with mouse capture off clicks do nothing at all", () => {
@@ -240,4 +240,32 @@ test("sweep: after any first click, a second click on the same cell or one cell 
   assert.ok(checks > 1000, `enough moved-button cases (${checks})`)
   assert.ok(legit > 50)
   assert.deepEqual(violations.slice(0, 3), [], `${violations.length} presses of a just-moved button`)
+})
+
+test("the live pane times clicks and paints with a monotonic clock: a wall-clock step back doesn't make buttons look just drawn", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
+  const t = pane()
+  const root = join(t.repo, "..")
+  // Date.now() jumps back 60 s a second after start (an NTP step), as in the re-check.
+  const preload = join(root, "clockstep.mjs")
+  writeFileSync(preload, "const real = Date.now.bind(Date); const t0 = real(); Date.now = () => real() - (real() - t0 > 1000 ? 60_000 : 0)\n")
+  let child
+  try {
+    const screen = t.run("").stdout.split("\n")
+    const y = screen.findIndex((l) => l.includes("[ Yes ]")) + 1
+    const x = [...screen[y - 1].slice(0, screen[y - 1].indexOf("[ Yes ]"))].length + 2
+    const board = join(t.repo, ".git", "job-board.json")
+    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(root, "herdr.json"), HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
+    const cmd = `stty cols 100 rows 30; exec node --import '${preload}' '${join(ROOT, "board-pane.mjs")}' --board '${board}' --origin 'w9:p1' --interval 1`
+    child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: t.repo, env, detached: true })
+    child.stdout.on("data", () => {})
+    await new Promise((r) => setTimeout(r, 3000))
+    child.stdin.write(`\x1b[<0;${x};${y}M\x1b[<0;${x};${y}m`)
+    for (let i = 0; i < 30 && !t.sent().length; i++) await new Promise((r) => setTimeout(r, 100))
+    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (Merge PR one?): Yes"]], "the click on a button on screen for 3 s pressed it")
+  } finally {
+    try {
+      if (child && child.exitCode === null) process.kill(-child.pid, "SIGKILL")
+    } catch {}
+    t.done()
+  }
 })

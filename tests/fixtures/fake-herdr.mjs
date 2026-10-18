@@ -77,6 +77,8 @@ if (key === "pane run") {
     if (pane(target).run_becomes == null) delete pane(target).running
     else pane(target).running = pane(target).run_becomes
   } else pane(target).running = args[3]
+  // run_then: what process-info shows from then on, one entry a call (see `next`).
+  if (pane(target)?.run_then) pane(target).next = [...pane(target).run_then]
   ok({ type: "ok" })
 }
 if (key === "agent prompt" || key === "agent focus" || key === "agent get") {

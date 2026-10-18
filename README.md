@@ -316,7 +316,11 @@ coordinator. It waits while a card's details are open or a button is chosen, and
 that fails the check is never started: the pane keeps running and says why, with "run herdr
 plugin install larrychannon/herdr-job-board again" for a broken update, or "quit (q) and open the
 board again to run X" for an older version put there on purpose (a board before 0.4.0 can't take
-over a pane by itself). Restarts are logged to
+over a pane by itself). A check that takes too long is tried again a minute later, then later
+still; after 3 timeouts in a row the pane says "the new copy took too long to start". Once the
+old board has quit, the restart waits up to 10 seconds for the shell to get back to its prompt (a
+prompt hook such as a zsh `precmd`, a git prompt or direnv shows as busy for a moment) and for the
+new board to show; a pane that stays busy is logged as a failed restart. Restarts are logged to
 `${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started in a pane within a
 few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
 skips, not failures. A pane from before 0.4.0 can't:

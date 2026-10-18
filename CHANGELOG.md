@@ -50,5 +50,9 @@ The board in a narrow pane, colour and emoji that read, and a shorter install an
   file, one quit meanwhile, or one already restarted (logged as skips; the restart log's entries
   count for a few minutes).
   `ls` piped with no `--width` shows the wide layout with every card whole, as before 0.4.0.
+  pane-restart waits up to 10 s for a shell busy with its prompt hook (before and after starting
+  the new board) instead of giving up on it; a check of a new copy that times out backs off and
+  fails after 3 tries; a board that started late doesn't report its own restart as failed; the
+  pane times clicks and paints with a monotonic clock, so a wall-clock step can't block buttons.
 
 Earlier versions: see the git history.
