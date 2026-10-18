@@ -116,7 +116,7 @@ itself out again at once.
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button is a press only when that button was under the pointer for the click before it too: the second click of a double click that opened a card (its buttons move under the pointer in the inbox) opens its details instead, and a click on the same cell soon after, where something else is drawn now, only selects. With mouse capture off (`m`), click reports are ignored |
 | `q`, `r` | quit; redraw |
 
 The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
@@ -308,11 +308,19 @@ replaces its files in the same folder.
 herdr plugin install larrychannon/herdr-job-board
 ```
 
-An open board pane (0.4.0 or newer) sees its folder's new version within a few seconds and
-restarts itself with it, in the same pane, with the same board and coordinator (it waits while
-a card's details are open or a button is chosen, and says so). A pane from before 0.4.0 can't:
+An open board pane (0.4.0 or newer) sees its folder's new version, waits until it has stood
+still for 5 seconds (an update writes several files), checks the new copy (its files parse and
+its `version` says that version) and only then restarts itself with it, in the same pane, with
+the same board and coordinator. It waits while a card's details are open or a button is chosen,
+and says so. A copy that fails the check (a broken update, or a rollback to a board before 0.4.0,
+which can't restart a pane) is never started: the pane keeps running and says "update to X failed
+to start: …; run herdr plugin install larrychannon/herdr-job-board again". Restarts are logged to
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started later in a pane
+whose last restart failed says why, once. A pane from before 0.4.0 can't:
 `node "$BOARD" restart` restarts every board pane, in every workspace, that runs an older version
-of the installed board (or a copy whose files are gone), and `doctor` lists them. `open` in a
+of the installed board (or a copy whose files are gone), and `doctor` lists them. It looks at
+each pane again right before typing `q` into it, and leaves alone a pane with no board file to
+start again, one whose board was quit meanwhile, and one that already restarted itself. `open` in a
 tab does the same for that tab's pane.
 
 The key binding, the sidebar token and the hooks don't change: the plugin's folder is the same
@@ -357,7 +365,7 @@ rows = [
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]` | Change a card. New `--option`s replace the old ones. |
 | `done <ref>` | Same as `move <ref> done`. |
 | `rm <ref>` | Remove a card. |
-| `ls [--width N]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, but with Done open: today's finished cards and the time they finished. `--width 120` shows every card whole. |
+| `ls [--width N]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, but with Done open: today's finished cards and the time they finished. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
 | `json` | Print the board file. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one). |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
