@@ -1,0 +1,242 @@
+===== inbox 95x40 · all =====
+Job board · all projects · 4 need you                                                     11:57
+Projects: ▸all  sfc 3  ai 1  herdr  home                                       p filter · P all
+
+▸ WAITING ON YOU (4) ──────────────────────────────────────────────────────────────────────────
+▸108 ! sfc   UI consistency plan: answer 10 questions                                    3 days
+             sfc-integration · Fable plan (docs PR #143): audit of every page with screenshots,
+             one wording guide, shared components (CitySummaryRow, CountChip, DefaultVersion…)
+             Question: Accept all 10 suggested answers (then mockup M1 first), or go through
+               them?
+             [ Accept all suggested ✓ ]  [ Go through them ]  [ Later ]  [ Other… ]
+             answers go to: sfc coordinator (w4:p6)
+ 170 ! sfc   magicwan v343 fleet rollout: approve the waves                          2 h 52 min
+ 192 ! sfc   One Analytics page PR #146: merge                                           2 days
+ 204 ! ai    Git access on the LXC: narrower tokens instead of Touch-ID: pick              16 h
+
+DOING (1) ─────────────────────────────────────────────────────────────────────────────────────
+ 211   herdr Job board 0.5.0, one board for all projects: plan            working [=   ]  3 min
+
+TO DO (10) ────────────────────────────────────────────────────────────────────────────────────
+ 140   sfc   Bring sfc-app-track into sfc-integration                                    3 days
+ 171   sfc   SFC-MKC-012: heartbeat flaps down/up every ~20 s                            3 days
+ 177   sfc   DNS: Edit Targets loop guard                                                3 days
+ 181   sfc   SNMP stats follow-ups (from #142 re-check)                                  3 days
+ 183   sfc   Redis / AC: parked until a real SFC node reports via AC                     2 days
+ 190   sfc   Analytics: include archived/removed nodes in range totals (after #142)      2 days
+ 200   home  3CX SSL certificate: renew before ~25 Oct 2026                                26 h
+ 206   ai    Job board 0.4.0 follow-ups in ai-config and the job skill                     13 h
+ 207   herdr Board key binding + sidebar count (in 0.5.0)                                 3 min
+ 209   ai    Coordinator auto-restart supervisor (parked)                                 9 min
+
+DONE · 2 today ▸
+
+
+
+
+
+
+
+
+Tab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit
+
+===== inbox 95x40 · p (sfc), ↓ to 170 =====
+Job board · sfc-integration · 3 need you  (+1 in other projects)                          11:57
+Projects: all  ▸sfc 3  ai 1  herdr  home                                         p next · P all
+
+▸ WAITING ON YOU (3 · +1 other) ───────────────────────────────────────────────────────────────
+ 108 ! sfc UI consistency plan: answer 10 questions                                      3 days
+▸170 ! sfc magicwan v343 fleet rollout: approve the waves                            2 h 52 min
+           sfc-integration · Pilot SFC-LON-021 healthy since 16 Oct: 270/270 heartbeats GRE up
+           + conntrack assured, audits all running. 3 new nodes already on v343. 181 nodes in
+           40 cities.
+           Question: Approve: wave 1 LON (5), wave 2 AMS FRA PAR MAD OSL (~26), then ~40 per
+             wave by region, 15 min checks between
+           [ Go ✓ ]  [ LON only first ]  [ Not today ]  [ Other… ]
+           answers go to: sfc coordinator (w4:p6)
+ 192 ! sfc One Analytics page PR #146: merge                                             2 days
+
+DOING (0 · +1 other) · nothing running here ───────────────────────────────────────────────────
+
+TO DO (6 · +4 other) ──────────────────────────────────────────────────────────────────────────
+ 140   sfc Bring sfc-app-track into sfc-integration                                      3 days
+ 171   sfc SFC-MKC-012: heartbeat flaps down/up every ~20 s                              3 days
+ 177   sfc DNS: Edit Targets loop guard                                                  3 days
+ 181   sfc SNMP stats follow-ups (from #142 re-check)                                    3 days
+ 183   sfc Redis / AC: parked until a real SFC node reports via AC                       2 days
+ 190   sfc Analytics: include archived/removed nodes in range totals (after #142)        2 days
+
+DONE · 1 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+Tab section · ↑↓ card · Enter details · c copy · p next project · P all · d done · q quit
+
+===== compact 60x30 · all =====
+all · 4 need you                                       11:57
+▸all sfc 3 ai 1 herd home                              p · P
+▸ WAITING ON YOU (4) ───────────────────────────────────────
+▸108 ! sfc  UI consistency plan: answer 10 questions  3 days
+ 170 ! sfc  magicwan v343 fleet rollout: approve… 2 h 52 min
+ 192 ! sfc  One Analytics page PR #146: merge         2 days
+ 204 ! ai   Git access on the LXC: narrower tokens ins… 16 h
+DOING (1) ──────────────────────────────────────────────────
+ 211   herd Job board 0.5.0, one boar… working [=   ]  3 min
+TO DO (10) ─────────────────────────────────────────────────
+ 140   sfc  Bring sfc-app-track into sfc-integration  3 days
+ 171   sfc  SFC-MKC-012: heartbeat flaps down/up eve… 3 days
+ 177   sfc  DNS: Edit Targets loop guard              3 days
+ 181   sfc  SNMP stats follow-ups (from #142 re-chec… 3 days
+ 183   sfc  Redis / AC: parked until a real SFC node… 2 days
+ 190   sfc  Analytics: include archived/removed node… 2 days
+ 200   home 3CX SSL certificate: renew before ~25 Oct … 26 h
+ 206   ai   Job board 0.4.0 follow-ups in ai-config an… 13 h
+ 207   herd Board key binding + sidebar count (in 0.5… 3 min
+ 209   ai   Coordinator auto-restart supervisor (park… 9 min
+DONE · 2 today ▸
+
+
+
+
+
+
+
+
+Tab · ↑↓ · Space peek · Enter · c copy · p proj · d done · q
+
+===== compact 60x30 · p p (ai), Space =====
+ai-config · 1 needs you (+3 other)                     11:57
+all sfc 3 ▸ai 1 herd home                              p · P
+▸ WAITING ON YOU (1 · +3 other) ────────────────────────────
+▸204 ! ai Git access on the LXC: narrower tokens inste… 16 h
+          ai-config · Pushes here already use tokens, not
+          Touch-ID, but the tokens are broad (gh can write
+          every repo).
+          Question: Go = I write the step-by-step (you
+            create the tokens yourself), or keep as is
+          [ Go ✓ ]  [ Only ai-config HTTPS ]  [ Keep as is ]
+          [ Other… ]
+          no ai coordinator is running: a press asks first,
+          then sends to the board's coordinator (sfc, pane
+          w4:p6)
+DOING (0 · +1 other) · nothing running here ────────────────
+TO DO (2 · +8 other) ───────────────────────────────────────
+ 206   ai Job board 0.4.0 follow-ups in ai-config and … 13 h
+ 209   ai Coordinator auto-restart supervisor (parked) 9 min
+DONE · 0 today ▸
+
+
+
+
+
+
+
+
+
+
+Tab · ↑↓ · Space · Enter · p proj · P all · q
+
+===== wide 160x45 · all =====
+Job board · all projects                                                                                                                                   11:57
+Projects: ▸all  sfc 3  ai 1  herdr  home                                                                                                        p filter · P all
+
+▸ WAITING ON YOU (4)
+108▸sfc   UI consistency plan: answer 10 questions                      3 days   170 sfc   magicwan v343 fleet rollout: approve the waves            2 h 52 min
+          Fable plan (docs PR #143): audit of every page with screenshots, one             Pilot SFC-LON-021 healthy since 16 Oct: 270/270 heartbeats GRE up +
+          wording guide, shared components (CitySummaryRow, CountChip,                     conntrack assured, audits all running. 3 new nodes already on v343.
+          DefaultVersion…)                                                                 181 nodes in 40 cities.
+          Question: Accept all 10 suggested answers (then mockup M1 first),                Question: Approve: wave 1 LON (5), wave 2 AMS FRA PAR MAD OSL
+            or go through them?                                                              (~26), then ~40 per wave by region, 15 min checks between
+          [ Accept all suggested ✓ ]  [ Go through them ]  [ Later ]                       [ Go ✓ ]  [ LON only first ]  [ Not today ]  [ Other… ]
+          [ Other… ]                                                                       answers go to: sfc coordinator (w4:p6)
+          answers go to: sfc coordinator (w4:p6)
+
+192 sfc   One Analytics page PR #146: merge                             2 days   204 ai    Git access on the LXC: narrower tokens instead of Touch-ID: pick
+                                                                                           Pushes here already use tokens, not Touch-ID, but the tokens are
+                                                                                           broad (gh can write every repo).
+                                                                                           Question: Go = I write the step-by-step (you create the tokens
+                                                                                             yourself), or keep as is
+                                                                                           [ Go ✓ ]  [ Only ai-config HTTPS ]  [ Keep as is ]  [ Other… ]
+                                                                                           no ai coordinator is running: a press asks first, then sends to the
+                                                                                           board's coordinator (sfc, pane w4:p6)                           16 h
+
+DOING (1)                                                                        TO DO (10)
+211 herdr Job board 0.5.0, one board for all projects: plan              3 min   140 sfc   Bring sfc-app-track into sfc-integration                      3 days
+          working [=   ]
+                                                                                 171 sfc   SFC-MKC-012: heartbeat flaps down/up every ~20 s              3 days
+
+                                                                                 177 sfc   DNS: Edit Targets loop guard                                  3 days
+
+                                                                                 181 sfc   SNMP stats follow-ups (from #142 re-check)                    3 days
+
+                                                                                 183 sfc   Redis / AC: parked until a real SFC node reports via AC       2 days
+
+                                                                                 190 sfc   Analytics: include archived/removed nodes in range totals (after
+                                                                                           #142)                                                         2 days
+
+                                                                                 200 home  3CX SSL certificate: renew before ~25 Oct 2026                  26 h
+
+                                                                                 206 ai    Job board 0.4.0 follow-ups in ai-config and the job skill       13 h
+
+                                                                                 207 herdr Board key binding + sidebar count (in 0.5.0)                   3 min
+                                                                                 ↓ 1 more
+DONE · 2 today ▸
+Tab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit
+
+===== wide 160x45 · p p p (herdr) =====
+Job board · herdr-job-board                                                                                                                                11:57
+Projects: all  sfc 3  ai 1  ▸herdr  home                                                                                                          p next · P all
+
+▸ WAITING ON YOU (0 · +4 other)  Nothing needs you here
+
+DOING (1)                                                                        TO DO (1 · +9 other)
+211 herdr Job board 0.5.0, one board for all projects: plan              3 min   207 herdr Board key binding + sidebar count (in 0.5.0)                   3 min
+          working [=   ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DONE · 1 today ▸
+Tab section · ↑↓ card · Enter details · c copy · p next project · P all · d done · m mouse: board · q quit
+

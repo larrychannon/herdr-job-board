@@ -42,6 +42,9 @@
 //                           Folded, Tab skips it. The choice holds while the pane runs
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)
+//   p, P, click on the strip with several projects on the board: p shows the next project's
+//                           cards only (the strip's order), P every project again; a click on a
+//                           project in the strip shows it, on "all" every one
 //   q quit, r redraw
 // Waiting cards can carry answer buttons (board.mjs add … --option), straight under the question
 // (plain text after a dim "Question:", never drawn like a button): ← → or a click on the
@@ -88,6 +91,7 @@ import {
   renderBoard,
   repoName,
   reportToken,
+  routeNote,
   screenDiff,
   textWidth,
   tokenFor,
@@ -161,12 +165,14 @@ async function load(file, env) {
 
 const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date())
 
-function compose(data, file, env, layout) {
+function compose(data, file, env, layout, origin = "") {
   layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
   const view = buildView(data.state, data.agents, { now, workspace })
-  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace })
+  // A Waiting card with buttons says where a press goes (the card's coordinator, or this pane's).
+  const route = (e) => routeNote(data.state, e, data.agents, origin)
+  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace, route })
   // The sidebar counts this workspace's own cards (the board shows every project).
   return { drawn, token: data.error ? null : tokenFor(data.state, data.agents, workspace) }
 }
@@ -250,7 +256,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       frame: Number.isInteger(frame) ? frame : null,
     }
     const draw = (scroll) =>
-      compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
+      compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }, opts.origin).drawn
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
@@ -336,7 +342,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       scroll,
       notes: answers.notes,
       footer: { mouse: ctx.mouse ? "board" : "select", message },
-    })
+    }, opts.origin)
     drawn = result.drawn
     scroll = drawn.scroll
     // Another card, or its details opened or closed: the next c starts at the first link.

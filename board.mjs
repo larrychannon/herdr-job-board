@@ -1155,12 +1155,10 @@ export function reportToken(text, env = process.env, { wait = true, workspace = 
  * too. `agents` null means Herdr couldn't be asked, so no live status at all.
  */
 export function buildView(state, agents, { now = new Date(), workspace = "" } = {}) {
-  const byName = new Map()
-  for (const a of agents || []) {
-    // In a workspace, only its own agents: another workspace may run an agent with the same name.
-    if (a.name && (!workspace || a.workspace_id === workspace)) byName.set(a.name, a)
-  }
-  const view = { waiting: [], doing: [], todo: [], doneToday: [], counts: {} }
+  // A job's agent by name, in the card's workspace (where its job runs), else this one: another
+  // workspace may run an agent with the same name. With neither known, any agent of that name.
+  const agentFor = (name, ws) => (agents || []).findLast((a) => a.name === name && (!ws || a.workspace_id === ws))
+  const view = { waiting: [], doing: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
   const startOfDay = new Date(now)
   startOfDay.setHours(0, 0, 0, 0)
   const onBoard = new Set()
@@ -1174,7 +1172,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
     }
     if (item.job) onBoard.add(item.job)
     if (item.job && agents && (item.column === "doing" || item.column === "waiting")) {
-      const agent = byName.get(item.job)
+      const agent = agentFor(item.job, item.workspace || workspace)
       entry.live = agent ? agent.agent_status || "unknown" : item.column === "doing" ? "no agent" : ""
     }
     if (item.column === "doing" && item.report) {
@@ -1196,6 +1194,40 @@ export function buildView(state, agents, { now = new Date(), workspace = "" } = 
   view.counts.doneToday = view.doneToday.length
   return view
 }
+
+/**
+ * The view of one project (the pane's p filter, ls --project): its cards only, with a count per
+ * section of what that hides (`hidden`). A blocked job's agent stays under Waiting whatever its
+ * project: a blocked job waits on the user until answered. "" is every project.
+ */
+export function filterView(view, project) {
+  if (!project) return view
+  const keep = (e) => e.project === project || e.live === "blocked"
+  const out = { ...view, filter: project, hidden: {}, counts: { ...view.counts } }
+  for (const s of ["waiting", "doing", "todo", "doneToday"]) {
+    out[s] = view[s].filter(keep)
+    out.hidden[s === "doneToday" ? "done" : s] = view[s].length - out[s].length
+    out.counts[s] = out[s].length
+  }
+  return out
+}
+
+/**
+ * The projects with open cards, for the pane's strip and `p`: each with its tag, colour and how
+ * many of its cards need the user, the ones that need the user most first.
+ */
+export function projectStrip(view) {
+  const open = [...view.waiting, ...view.doing, ...view.todo].filter((e) => e.project)
+  const names = [...new Set(open.map((e) => e.project))]
+  const need = (n) => view.waiting.filter((e) => e.project === n).length
+  const count = (n) => open.filter((e) => e.project === n).length
+  return names
+    .map((name) => ({ name, tag: view.projects?.[name]?.tag || name, color: view.projects?.[name]?.color || "", need: need(name), open: count(name) }))
+    .sort((a, b) => b.need - a.need || b.open - a.open || a.tag.localeCompare(b.tag))
+}
+
+/** Whether a view holds cards of more than one project: then rows carry their project's tag. */
+export const manyProjects = (view) => new Set([...view.waiting, ...view.doing, ...view.todo, ...view.doneToday].map((e) => e.project).filter(Boolean)).size > 1
 
 /**
  * The cards a workspace's sidebar counts: those whose job runs there (`workspace`), and those
@@ -1250,6 +1282,13 @@ const STYLES = {
   "rule-doing": "34",
   "rule-todo": "2",
   "rule-done": "2;32",
+  // Project tags, each in its project's colour (never yellow or red: they mean urgency).
+  "tag-magenta": "35",
+  "tag-cyan": "36",
+  "tag-blue": "34",
+  "tag-green": "32",
+  "tag-bright magenta": "95",
+  "tag-bright cyan": "96",
   // A job's agent.
   working: "32",
   idle: "36",
@@ -1510,6 +1549,16 @@ function buttonLines(entry, width, indent, selected) {
 }
 
 /**
+ * A card's project tag (`ui.tag`, drawn when the board holds several projects), cut to
+ * `ui.tagWidth` cells and padded to it, then a space: [] without one.
+ */
+function tagSegs(ui) {
+  if (!ui.tagWidth) return []
+  const text = [...printable(ui.tag?.t || "")].slice(0, ui.tagWidth).join("")
+  return [{ t: text + " ".repeat(Math.max(0, ui.tagWidth - textWidth(text))), s: ui.tag?.s || "dim" }, { t: " " }]
+}
+
+/**
  * What a card says under its title, as lines of segments indented by `indent` and fitting `width`
  * cells: the live status for Doing (unless `status` is false: a row shows it on its own line);
  * the description wrapped over up to `descMax` lines; for Waiting, what the user should do
@@ -1532,7 +1581,14 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     if (bar && textWidth(text + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
     lines.push(line)
   }
-  for (const t of wrap(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
+  // With several projects on the board, an open card names its project in full first:
+  // "sfc-integration · <description>".
+  const head = ui.projectName ? `${ui.projectName} · ` : ""
+  wrap(head ? (entry.desc ? `${head}${entry.desc}` : ui.projectName) : entry.desc, inner, descMax).forEach((t, i) => {
+    if (i || !head || !t.startsWith(ui.projectName)) return lines.push([indent, ...linkify(t, "", urls)])
+    const rest = t.slice(head.length)
+    lines.push([indent, { t: ui.projectName, s: ui.tag?.s || "dim" }, ...(rest ? [{ t: " · ", s: "dim" }, ...linkify(rest, "", urls)] : [])])
+  })
   // The buttons come straight under the question; anything else about it goes after them.
   const buttons = shownOptions(entry, column).length > 0
   const asks = column === "waiting" || blocked ? asksOf(entry.ask) : []
@@ -1543,6 +1599,8 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     const at = new Date(entry.sent.at)
     lines.push([indent, { t: `sent: ${entry.sent.label}${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`}${entry.sent.to ? ` · to ${entry.sent.to}` : ""}`, s: "dim" }])
   }
+  // Where a press would go (the pane's routeAnswer), until something is sent.
+  if (buttons && !entry.sent?.label && !ui.note && ui.route) for (const t of wrap(ui.route.t, inner, 3)) lines.push([indent, { t, s: ui.route.s }])
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
   return lines
 }
@@ -1559,14 +1617,16 @@ const barOf = (entry, ui) => (entry.live === "working" && Number.isInteger(ui.fr
  * (selected button), note }.
  */
 function card(entry, column, width, idWidth, descMax, ui = {}) {
-  const indent = { t: " ".repeat(idWidth + 1) }
-  const inner = Math.max(4, width - idWidth - 1)
+  // The project's tag after the id; the title and the body start after it.
+  const tag = tagSegs(ui)
+  const indent = { t: " ".repeat(idWidth + 1 + segWidth(tag)) }
+  const inner = Math.max(4, width - textWidth(indent.t))
   const blocked = entry.live === "blocked"
   const mark = entry.id == null ? "•" : String(entry.id)
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
   const titles = wrap(entry.title, inner, 2)
   const lines = titles.map((t, i) => [
-    i ? indent : { t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" },
+    ...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag]),
     ...linkify(t, blocked ? "blocked" : "title", urls),
   ])
   lines.push(...cardBody(entry, column, width, indent, descMax, ui))
@@ -1601,8 +1661,9 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const blocked = entry.live === "blocked"
   const mark = entry.id == null ? "•" : String(entry.id)
   const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : { t: " " }
-  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }]
-  const lead = 1 + idWidth + 3
+  const tag = tagSegs(ui)
+  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag]
+  const lead = 1 + idWidth + 3 + segWidth(tag)
   const indent = { t: " ".repeat(lead) }
   const end =
     column === "done"
@@ -1644,11 +1705,12 @@ const entriesOf = (view, section) => (section === "done" ? view.doneToday : view
 
 /** A finished card: the title, with the time it was finished on the right. */
 function doneCard(entry, width, idWidth, ui = {}) {
-  const indent = { t: " ".repeat(idWidth + 1) }
-  const inner = Math.max(4, width - idWidth - 1)
+  const tag = tagSegs(ui)
+  const indent = { t: " ".repeat(idWidth + 1 + segWidth(tag)) }
+  const inner = Math.max(4, width - textWidth(indent.t))
   const titles = wrap(entry.title, inner, 2)
   const urls = urlsIn(entry.title)
-  const lines = titles.map((t, i) => [i ? indent : { t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...linkify(t, "", urls)])
+  const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
   const at = clockOf(new Date(entry.since))
   const room = inner - textWidth(titles.at(-1) || "") - at.length
   if (room >= 2) lines.at(-1).push({ t: " ".repeat(room) }, { t: at, s: "dim" })
@@ -1794,12 +1856,14 @@ export function emojiOn(env = process.env) {
  */
 function headerLine(view, section, selected, interactive, { emoji = false, rule = false, width = 0, fold = false } = {}) {
   const count = entriesOf(view, section).length
+  // A view of one project counts what it hides: "TO DO (6 · +4 other)".
+  const hidden = view.hidden?.[section] || 0
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
   if (emoji) segs.push({ t: `${SECTION_EMOJI[section]} ` })
   // Done open in the pane: ▾, for "d or a click here folds it again".
-  segs.push({ t: `${HEADINGS[section]} (${count})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
-  if (!count && (section === "waiting" || fold)) segs.push({ t: EMPTY[section], s: "dim" })
+  segs.push({ t: `${HEADINGS[section]} (${count}${hidden ? ` · +${hidden} other` : ""})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
+  if (!count && (section === "waiting" || fold)) segs.push({ t: `${EMPTY[section]}${hidden ? " here" : ""}`, s: "dim" })
   if (rule && width - segWidth(segs) > 2) segs.push({ t: " " }, { t: "─".repeat(width - segWidth(segs) - 1), s: `rule-${section}` })
   return segs
 }
@@ -1812,6 +1876,11 @@ const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mo
 const HINT_COMPACT = (mouse) => `Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: ${mouse} · q`
 const HINT_COMPACT_SHORT = "Tab · ↑↓ · Space peek · Enter · c copy · d done · q"
 const HINT_TINY = "Tab · ↑↓ · Space · Enter · q"
+/** A key line with the project keys put in before "d done" (or at its end): "p project", and "P all" in a view of one project. */
+const projectHint = (line, keys, filtered) => {
+  const add = filtered ? `${keys} · P all` : keys
+  return / · d done/.test(line) ? line.replace(" · d done", ` · ${add} · d done`) : `${line.replace(/ · q$/, "")} · ${add} · q`
+}
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
 /** Done folded: one line, its count and ▸, for "d or a click here opens it". */
@@ -2308,6 +2377,13 @@ export function renderBoard(view, opts = {}) {
   const { height = Infinity, color = false, links = false, now = new Date(), repo = "", error = "", interactive = false } = opts
   const width = Math.max(20, Math.floor(opts.width ?? 100))
   const scroll = { ...(opts.scroll || {}), selected: opts.scroll?.selected || "waiting", anchors: { ...(opts.scroll?.anchors || {}) } }
+  // Several projects: rows carry their project's tag, and a strip under the title lists the
+  // projects (p steps through them, P shows all); `scroll.project` shows one (filterView).
+  const full = view
+  const strip = projectStrip(full)
+  const tagged = manyProjects(full)
+  if (scroll.project && !strip.some((p) => p.name === scroll.project) && !full.projects?.[scroll.project]) scroll.project = ""
+  view = filterView(full, scroll.project || "")
   const notes = opts.notes || {}
   const frame = Number.isInteger(opts.frame) ? opts.frame : null
   const doneOpen = scroll.doneOpen === true
@@ -2326,11 +2402,45 @@ export function renderBoard(view, opts = {}) {
   const open = typeof scroll.open === "boolean" ? scroll.open : layout === "inbox"
 
   const clock = clockOf(now)
-  // The inbox and compact layouts say first how many cards need you.
+  // The inbox and compact layouts say first how many cards need you; a view of one project says
+  // how many more need you elsewhere.
   const need = view.waiting.length
-  const name = [{ t: layout === "compact" ? repo || "Job board" : `Job board${repo ? ` · ${repo}` : ""}`, s: "title" }]
+  const label = view.filter || repo
+  const name = [{ t: layout === "compact" ? (label === "all projects" ? "all" : label) || "Job board" : `Job board${label ? ` · ${label}` : ""}`, s: "title" }]
   if (form === "row" && need) name.push({ t: " · ", s: "dim" }, { t: `${need} need${need === 1 ? "s" : ""} you`, s: "waiting" })
+  const elsewhere = view.filter ? view.hidden?.waiting || 0 : 0
+  if (form === "row" && elsewhere) name.push({ t: layout === "compact" ? ` (+${elsewhere} other)` : `  (+${elsewhere} in other projects)`, s: "dim" })
   const out = [pad(paint(name, width - clock.length - 1), width - clock.length) + paint([{ t: clock, s: "dim" }], clock.length).text]
+  // The project strip: "Projects: ▸all  sfc 3  ai 1  herdr  home", each a click target, with
+  // the keys on the right when they fit.
+  const stripHits = []
+  const showStrip = strip.length > 1 || Boolean(view.filter)
+  if (showStrip) {
+    const compact = layout === "compact"
+    const sep = compact ? " " : "  "
+    const hint = compact ? "p · P" : view.filter ? "p next · P all" : "p filter · P all"
+    const items = [{ name: "", text: "all", s: "head" }, ...strip.map((p) => ({ name: p.name, text: compact ? p.tag.slice(0, 4) : p.tag, need: p.need, s: p.color ? `tag-${p.color}` : "dim" }))]
+    if (view.filter && !strip.some((p) => p.name === view.filter)) items.push({ name: view.filter, text: full.projects?.[view.filter]?.tag || view.filter, s: "dim" })
+    const segs = compact ? [] : [{ t: "Projects: ", s: "dim" }]
+    let x = 1 + segWidth(segs)
+    const avail = width - (width >= 60 ? textWidth(hint) + 2 : 0)
+    let cut = false
+    for (const [i, it] of items.entries()) {
+      const on = (view.filter || "") === it.name
+      const piece = [...(i ? [{ t: sep }] : []), ...(on ? [{ t: "▸", s: "head" }] : []), { t: it.text, s: it.s }, ...(it.need ? [{ t: ` ${it.need}`, s: "waiting" }] : [])]
+      if (x - 1 + segWidth(piece) > avail - (i < items.length - 1 ? 1 : 0)) {
+        cut = true
+        break
+      }
+      const x0 = x + (i ? sep.length : 0)
+      segs.push(...piece)
+      x += segWidth(piece)
+      stripHits.push({ project: it.name, y: out.length + 1, x0, x1: x - 1 })
+    }
+    if (cut) segs.push({ t: "…", s: "dim" })
+    if (width >= 60) segs.push({ t: " ".repeat(Math.max(1, width - segWidth(segs) - textWidth(hint))) }, { t: hint, s: "dim" })
+    out.push(paint(segs).text)
+  }
   if (error) out.push(paint([{ t: error, s: "blocked" }]).text)
   // A notice (an update installed, or one that failed to start) wraps over up to 3 lines: its
   // end says what to do.
@@ -2367,9 +2477,23 @@ export function renderBoard(view, opts = {}) {
     return paint(segs, w)
   }
 
+  // The tag column: as wide as the widest tag on screen, at most 7 cells (4 in compact).
+  const tagCap = layout === "compact" ? 4 : MAX_TAG
+  const tagOf = (e) => (e.project ? full.projects?.[e.project]?.tag || e.project : "")
+  const tagWidth = tagged ? Math.min(tagCap, Math.max(0, ...SECTIONS.flatMap((s) => entriesOf(view, s)).map((e) => textWidth(tagOf(e))))) : 0
+  const tagUi = (e) =>
+    tagWidth
+      ? {
+          tagWidth,
+          tag: { t: tagOf(e), s: full.projects?.[e.project]?.color ? `tag-${full.projects[e.project].color}` : "dim" },
+          // An open row names its project in full; a Waiting card with buttons says where answers go.
+          projectName: form === "row" ? e.project || "" : "",
+          route: interactive && opts.route ? opts.route(e) : null,
+        }
+      : {}
   // Cards carry their notes everywhere, so heights are the same before and after selection. In
   // `ls` (not interactive, nothing selected) every Waiting row is open.
-  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive })
+  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive, ...tagUi(e) })
   // The selected section's selected card: the one chosen, else the first one in view. Its
   // button is chosen only with ← →, never in advance.
   const uiFor = (section, perRow, w, h) => {
@@ -2633,8 +2757,19 @@ export function renderBoard(view, opts = {}) {
         ? keyLine(CHOSEN_HINT(true), CHOSEN_HINT(false))
         : layout === "compact"
           ? // The mouse mode only when it isn't the usual one, where the line is short.
-            keyLine(HINT_COMPACT(mouse), mouse === "board" ? HINT_COMPACT_SHORT : HINT_NARROW(mouse), HINT_TINY)
-          : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
+            showStrip
+            ? keyLine(projectHint(HINT_COMPACT_SHORT, "p proj", view.filter), projectHint(HINT_TINY, "p proj", view.filter), HINT_TINY)
+            : keyLine(HINT_COMPACT(mouse), mouse === "board" ? HINT_COMPACT_SHORT : HINT_NARROW(mouse), HINT_TINY)
+          : showStrip
+            ? keyLine(
+                ...(several ? [projectHint(HINT(mouse, NEXT_COPY), view.filter ? "p next project" : "p project", view.filter)] : []),
+                projectHint(HINT(mouse), view.filter ? "p next project" : "p project", view.filter),
+                // The mouse's usual mode needn't be said where room is short.
+                ...(mouse === "board" ? [projectHint(HINT(mouse).replace(" · m mouse: board", ""), view.filter ? "p next project" : "p project", view.filter)] : []),
+                projectHint(HINT_NARROW(mouse), "p proj", view.filter),
+                HINT_NARROW(mouse),
+              )
+            : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
     const message = opts.footer?.message
     lines.push(paint([...(message ? [{ t: message, s: "note" }, { t: " · ", s: "dim" }] : []), ...(send ? [{ t: send, s: "head" }, { t: " · ", s: "dim" }] : []), { t: keys, s: "dim" }]).text)
   }
@@ -2653,6 +2788,9 @@ export function renderBoard(view, opts = {}) {
     scroll,
     layout,
     open,
+    // The strip's names in order (p steps through them) and where each is on screen.
+    strip: strip.map((p) => p.name),
+    stripHits: stripHits.filter((h) => !covered(h.y)),
   }
 }
 
@@ -2715,12 +2853,14 @@ const CHAR_KEYS = {
   t: "tab",
   m: "mouse",
   " ": "peek",
+  p: "project",
+  P: "allProjects",
 }
 
 /**
  * Terminal input as events: { type: "key", name } (next and prev for Tab and Shift-Tab, left,
  * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, done, more, tab,
- * mouse, quit, redraw), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
+ * mouse, quit, redraw, project for p, allProjects for P), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
  * (1006) mouse reports. Anything else is skipped.
  */
 export function parseInput(text) {
@@ -2855,6 +2995,16 @@ export function handleInput(scroll, event, drawn) {
     next.doneOpen = !next.doneOpen
     if (!next.doneOpen && next.selected === "done") selectSection("todo")
   }
+  // One project's cards ("" for all): the pane's own filter, not written to the board. The
+  // selection and scroll positions start again, and details close.
+  const showProject = (project) => {
+    if ((next.project || "") === project) return
+    next.project = project
+    next.anchors = {}
+    delete next.card
+    delete next.detail
+    next.button = -1
+  }
   const detail = next.detail ? { ...next.detail } : null
   // The card shown in the details, as a Waiting card with buttons (else null), and its chosen button.
   const shownCard = detail ? (drawn.sections.waiting?.cards || []).find((c) => c.key === detail.key && c.buttons) || null : null
@@ -2930,7 +3080,16 @@ export function handleInput(scroll, event, drawn) {
   }
 
   const fold = drawn.doneToggle
-  if (event.type === "click" && fold && fold.y === event.y && event.x >= fold.x0 && event.x <= fold.x1) {
+  const stripHit = event.type === "click" ? (drawn.stripHits || []).find((h) => h.y === event.y && event.x >= h.x0 && event.x <= h.x1) : null
+  if (stripHit) {
+    showProject(stripHit.project)
+    next.lastClick = null
+  } else if (name === "project" && event.type === "key") {
+    // p: the next project in the strip's order (after the last, the first again); P: all.
+    const list = drawn.strip || []
+    if (list.length) showProject(list[(list.indexOf(next.project || "") + 1) % list.length])
+  } else if (name === "allProjects" && event.type === "key") showProject("")
+  else if (event.type === "click" && fold && fold.y === event.y && event.x >= fold.x0 && event.x <= fold.x1) {
     toggleDone()
     next.lastClick = null
   } else if (event.type === "click") {
@@ -3128,6 +3287,21 @@ export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
   return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…` }
+}
+
+/**
+ * The line an open Waiting card with buttons ends with in the pane: where a press goes now, or
+ * that it asks first (another project's coordinator), or that no coordinator runs.
+ */
+export function routeNote(state, entry, agents, fallback = "") {
+  const item = entry?.id == null ? null : state.items.find((i) => i.id === entry.id)
+  if (!item) return null
+  const route = routeAnswer(state, item, agents, { fallback })
+  if (route.error) return { t: route.error, s: "blocked" }
+  if (route.second) {
+    return { t: `no ${tagOf(state, item.project)} coordinator is running: a press asks first, then sends to the board's coordinator (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`, s: "note" }
+  }
+  return { t: `answers go to: ${route.to}`, s: "dim" }
 }
 
 /** The card's note when the answer would go to another project's coordinator: press again to send. */
@@ -4736,14 +4910,18 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const state = readBoard(file)
         const notice = importNotice(state)
         if (notice) err(`board: ${notice}`)
-        const scope = scopeOf(state, opts.project, me, agents)
+        // --project P draws what the pane shows filtered to P (the other projects counted), all
+        // every card; by default this pane's cards (scopeOf).
+        const scope = opts.project === undefined ? scopeOf(state, opts.project, me, agents) : { items: state.items, label: "all projects", hidden: 0 }
+        const shownProject = opts.project !== undefined && opts.project !== "all" ? projectRef(state, opts.project) : ""
+        if (opts.project !== undefined && opts.project !== "all" && !shownProject) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them, or --project all)`)
         const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined
         const color = !env.NO_COLOR && Boolean(process.stdout.isTTY) && !io.out
         // Everything, Done open with today's finished cards: no height limit, so folding saves nothing.
-        raw(render(view, { width, color, now, repo: basename(file) === "board.json" ? scope.label : repoName(file), layout, scroll: { doneOpen: true } }))
+        raw(render(view, { width, color, now, repo: basename(file) === "board.json" ? scope.label : repoName(file), layout, scroll: { doneOpen: true, project: shownProject } }))
         if (scope.hidden) out(`+${plural(scope.hidden, "open card")} in other projects: board.mjs ls --project all`)
         return 0
       }

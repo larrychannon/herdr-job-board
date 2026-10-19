@@ -408,7 +408,7 @@ test("migration, per repo: a read says the repo's 0.4 board isn't in; the first 
     // A pane started (by 0.4) on the old file shows the store.
     const pane = spawnSync(process.execPath, [PANE, "--once", "--width", "80", "--height", "20", "--board", file], { cwd: app, env: h.envFor(), encoding: "utf8" })
     assert.equal(pane.status, 0, pane.stderr)
-    assert.match(pane.stdout, /^all projects · 1 needs you/)
+    assert.match(pane.stdout, /^all · 1 needs you/)
     assert.match(pane.stdout, /3 ! Carried over/)
   } finally {
     h.done()

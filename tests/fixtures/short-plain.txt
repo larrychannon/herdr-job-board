@@ -83,7 +83,7 @@ Job board · all projects                                                       
 ── end of card 1 ───────────────────────────────────────────────────────────────────────
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 ===== as drawn · 60x14 (Space) =====
-all projects · 1 needs you                             10:30
+all · 1 needs you                                      10:30
 ▸ WAITING ON YOU (1) ───────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?         7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs
@@ -98,7 +98,7 @@ TO DO (3) ───────────────────────�
 DONE · 0 today ▸
 Tab · ↑↓ · Space peek · Enter · c copy · d done · q
 ===== details, → chooses and scrolls to it · 60x14 (Space) =====
-all projects · 1 needs you                             10:30
+all · 1 needs you                                      10:30
 ▸ WAITING ON YOU (1) ───────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?         7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs
@@ -113,7 +113,7 @@ all projects · 1 needs you                             10:30
 ── ↓ 2 more lines ──────────────────────────────────────────
 Enter: send · Esc · ↑↓ · ←→ · c copy · t tab · q
 ===== as drawn · 95x14 (Space) =====
-all projects · 1 needs you                                                                10:30
+all · 1 needs you                                                                         10:30
 ▸ WAITING ON YOU (1) ──────────────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                            7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export
@@ -128,7 +128,7 @@ TO DO (3) ───────────────────────�
 DONE · 0 today ▸
 Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: board · q
 ===== details, → chooses and scrolls to it · 95x14 (Space) =====
-all projects · 1 needs you                                                                10:30
+all · 1 needs you                                                                         10:30
 ▸ WAITING ON YOU (1) ──────────────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                            7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export
