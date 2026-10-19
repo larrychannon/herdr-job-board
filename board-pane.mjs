@@ -42,14 +42,19 @@
 //                           Folded, Tab skips it. The choice holds while the pane runs
 //   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text)
+//   p, P, click on the strip with several projects on the board: p shows the next project's
+//                           cards only (the strip's order), P every project again; a click on a
+//                           project in the strip shows it, on "all" every one
 //   q quit, r redraw
 // Waiting cards can carry answer buttons (board.mjs add … --option), straight under the question
 // (plain text after a dim "Question:", never drawn like a button): ← → or a click on the
 // question choose one (the suggested first; only buttons on screen, so none on a card whose job
 // is blocked or one cut off above its buttons in a short pane) and the key line says "Enter to
 // send"; Enter on a chosen button still on screen (or a click on the button) sends
-// "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent prompt`; o (or
-// Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
+// "Board card <id> (<tag> · <title>): <label>" with `herdr agent prompt` to the card's
+// coordinator: its owner pane while it runs, else its project's newest live coordinator, else the
+// --origin pane (after a second press when that is another project's coordinator, or the card's
+// owner is gone); o (or Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
 // already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // the lines that changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
@@ -59,11 +64,11 @@
 // working bar still unless --frame N picks its frame): for tests and a quick look.
 // --keys feeds it input first, e.g. --keys $'\t\e[B' (next section, then one card down); a
 // button pressed there is really sent.
-// The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
+// The board file: --board, else JOB_BOARD_FILE, else the store (board.mjs path prints it).
 
 import { spawn } from "node:child_process"
-import { statSync, watch } from "node:fs"
-import { basename, dirname, join, resolve, sep } from "node:path"
+import { existsSync, statSync, watch } from "node:fs"
+import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
@@ -86,9 +91,10 @@ import {
   renderBoard,
   repoName,
   reportToken,
+  routeNote,
   screenDiff,
   textWidth,
-  tokenText,
+  tokenFor,
   nextCopy,
   atLeast,
   COPY_FILES,
@@ -102,6 +108,11 @@ import {
   VERIFY_TIMEOUT_MS,
   verifyCopy,
   versionOf,
+  followImport,
+  importNotice,
+  LEGACY_FILE,
+  migrates,
+  projectAt,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -126,11 +137,21 @@ function parse(argv) {
 }
 
 function locate(opts, env) {
-  if (opts.board) return resolve(opts.board)
-  // A plugin pane starts in the plugin's own folder, which is not the board's repo.
-  if (!env.JOB_BOARD_FILE && env.HERDR_PLUGIN_ROOT && (process.cwd() + sep).startsWith(resolve(env.HERDR_PLUGIN_ROOT) + sep)) return null
+  // A 0.4 board's file that was imported (a pane started for it before the update): the store.
+  if (opts.board) return followImport(resolve(opts.board), env)
   return boardPath(process.cwd(), env)
 }
+
+/**
+ * While this folder's repo still has a 0.4 board that isn't on the one board, a pane on the one
+ * board says so (its cards are missing). The path to watch, or "".
+ */
+function legacyOf(file, env) {
+  if (!migrates(env) || basename(file) === LEGACY_FILE) return ""
+  const { git } = projectAt(process.cwd(), env)
+  return git ? join(git, LEGACY_FILE) : ""
+}
+const legacyNotice = (legacy) => (legacy && existsSync(legacy) ? `this repo's 0.4 board isn't on the one board yet (${legacy}): run board.mjs import --dry-run, then board.mjs import` : "")
 
 /** The board's data, live agents and tab labels, read fresh; drawing then works from this cache. */
 async function load(file, env) {
@@ -144,13 +165,16 @@ async function load(file, env) {
 
 const clockNow = (env) => (env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date())
 
-function compose(data, file, env, layout) {
+function compose(data, file, env, layout, origin = "") {
   layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
   const view = buildView(data.state, data.agents, { now, workspace })
-  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace })
-  return { drawn, token: data.error ? null : tokenText(view) }
+  // A Waiting card with buttons says where a press goes (the card's coordinator, or this pane's).
+  const route = (e) => routeNote(data.state, e, data.agents, origin)
+  const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace, route })
+  // The sidebar counts this workspace's own cards (the board shows every project).
+  return { drawn, token: data.error ? null : tokenFor(data.state, data.agents, workspace) }
 }
 
 /**
@@ -208,15 +232,17 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     process.stderr.write(`board-pane: ${error.message}\n`)
     return 2
   }
-  const file = locate(opts, env)
+  let file = locate(opts, env)
   if (!file) {
     process.stderr.write("board-pane: no board here. Run `node board.mjs open` from the repo, or pass --board <file>.\n")
     return 2
   }
 
+  const legacy = legacyOf(file, env)
   if (opts.once) {
     let data = await load(file, env)
-    const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
+    data.notice = legacyNotice(legacy) || importNotice(data.state)
+    const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env), agents: () => data.agents })
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
@@ -230,7 +256,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       frame: Number.isInteger(frame) ? frame : null,
     }
     const draw = (scroll) =>
-      compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }).drawn
+      compose(data, file, env, { ...layout, scroll, notes: answers.notes, footer: { mouse: ctx.mouse ? "board" : "select", message } }, opts.origin).drawn
     let drawn = draw()
     for (const event of parseInput(opts.keys)) {
       if (event.type === "key" && ["quit", "redraw"].includes(event.name)) continue
@@ -240,7 +266,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       if (action) {
         ctx.drawn = drawn
         message = (await perform(action, ctx)) ?? message
-        data = await load(file, env)
+        data = { ...(await load(file, env)), notice: data.notice }
       }
       drawn = draw(scroll)
       if (ctx.copy && ctx.copy.place !== copyPlace(drawn.scroll)) ctx.copy = null
@@ -253,11 +279,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const color = opts.color ?? !env.NO_COLOR
   const emoji = opts.emoji ?? emojiOn(env)
   let data = await load(file, env)
+  data.notice = legacyNotice(legacy) || importNotice(data.state)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
+  // Answers go by each card's owner (routeAnswer), from the agent list the pane keeps fresh.
   const answers = createAnswerer({
-    file,
+    file: () => file,
     origin: opts.origin,
+    agents: () => data.agents,
     env,
     now: () => clockNow(env),
     onChange: () => {
@@ -313,7 +342,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       scroll,
       notes: answers.notes,
       footer: { mouse: ctx.mouse ? "board" : "select", message },
-    })
+    }, opts.origin)
     drawn = result.drawn
     scroll = drawn.scroll
     // Another card, or its details opened or closed: the next c starts at the first link.
@@ -413,8 +442,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     if (loading) return
     loading = true
     try {
+      // The 0.4 file this pane showed was imported: from now on, the one board.
+      const now = followImport(file, env)
+      if (now !== file) {
+        file = now
+        watchBoard()
+      }
       data = await load(file, env)
-      data.notice = checkUpdate()
+      data.notice = checkUpdate() || legacyNotice(legacy) || importNotice(data.state)
       paint()
     } finally {
       loading = false
@@ -477,13 +512,20 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
   // The file is replaced by a rename on every write, so watch its folder, not the file.
   let pending
-  try {
-    watch(dirname(file), (_, name) => {
-      if (name && name !== basename(file)) return
-      clearTimeout(pending)
-      pending = setTimeout(refresh, 100)
-    })
-  } catch {}
+  let watcher = null
+  function watchBoard() {
+    watcher?.close()
+    try {
+      watcher = watch(dirname(file), (_, name) => {
+        if (name && name !== basename(file)) return
+        clearTimeout(pending)
+        pending = setTimeout(refresh, 100)
+      })
+    } catch {
+      watcher = null
+    }
+  }
+  watchBoard()
   setInterval(refresh, Math.max(1, Number(opts.interval) || 3) * 1000)
   paint()
   return null

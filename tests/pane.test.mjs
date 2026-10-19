@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // The pane's layout, scrolling, keys, mouse and answer buttons. Herdr is faked by
 // fixtures/fake-herdr.mjs; the real one is never called.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -330,9 +331,9 @@ test("options: cleaned, at most 4 of at most 24 characters, Waiting only; job pa
   const base = realpathSync(mkdtempSync(join(tmpdir(), "board-options-")))
   try {
     spawnSync("git", ["-C", base, "init", "-q"])
-    const env = { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW.toISOString() }
+    const env = { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(base, ".git", "board-state"), HOME: join(base, ".git", "home"), JOB_BOARD_NOW: NOW.toISOString() }
     const run = (...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
-    const items = () => JSON.parse(readFileSync(join(base, ".git", "job-board.json"), "utf8")).items
+    const items = () => JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8")).items
     assert.equal(run("add", "waiting", "Ship it?", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
     assert.deepEqual(items()[0].options, [{ label: "Go", suggested: true }, { label: "Not now" }])
     assert.equal(run("add", "todo", "x", "--option", "Go").status, 2, "buttons are for Waiting cards")
@@ -363,7 +364,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     // A coordinator Herdr can prompt (ready for input).
     const agents = [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1", interactive_ready: true }]
     writeFileSync(herdr, JSON.stringify({ agents }))
-    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW.toISOString(), NO_COLOR: "1", TZ: "UTC" }
+    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(base, ".git", "board-state"), HOME: join(base, ".git", "home"), JOB_BOARD_NOW: NOW.toISOString(), NO_COLOR: "1", TZ: "UTC" }
     const board = (...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
     const pane = (keys, origin = "w9:p1") =>
       spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "30", "--origin", origin, "--keys", keys], { cwd: base, env, encoding: "utf8" })
@@ -372,16 +373,16 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const calls = () => JSON.parse(readFileSync(herdr, "utf8")).log.filter((a) => a[0] !== "agent" || a[1] !== "list")
     const log = () => calls().filter((a) => a[0] === "agent")
     const typed = () => calls().filter((a) => a[1] === "send-text" || a[1] === "send-keys")
-    const items = () => JSON.parse(readFileSync(join(base, ".git", "job-board.json"), "utf8")).items
+    const items = () => JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8")).items
     const title = `Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\``
     const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
     assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
 
     let r = pane("\x1b[C\r")
     assert.equal(r.status, 0, r.stderr)
-    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (${title}): Go`]], "one argv element; no shell ever sees it")
+    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (board · ${title}): Go`]], "one argv element; no shell ever sees it")
     assert.ok(!existsSync(join(base, "pwned")) && !existsSync(join(base, "pwned2")), "nothing in the title ran")
-    assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString() })
+    assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString(), pane: "w9:p1", to: "coordinator (w9:p1)" })
     assert.match(r.stdout, /sent: Go · 10:30/)
 
     // Pressing again only asks; pressing twice sends again.
@@ -394,19 +395,20 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     // Other…: only focuses the coordinator; nothing is typed for the user.
     r = pane("o")
     assert.deepEqual(log().at(-1), ["agent", "focus", "w9:p1"])
-    assert.match(r.stdout, /type your answer for card 1 in the coordinator's chat/)
+    assert.match(r.stdout, /type your answer for card 1 in the chat of coordinator \(w9:p1\)/)
 
     // The coordinator is gone, blocked on a question, or not started by Herdr: one red line,
     // nothing marked sent, and never anything typed into its pane.
+    // (A pane the agent list doesn't show: nothing is tried, the card says no coordinator runs.)
     rearm()
     r = pane("\x1b[C\r", "w9:p7")
-    assert.match(r.stdout, /couldn't send: coordinator pane not found/)
+    assert.match(flat(r), /couldn't send: no board coordinator is running; start one there, or use Other…/)
     assert.equal(items()[0].sent, undefined)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
     assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, interactive_ready: undefined }] }))
     assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator isn't taking input right now \(a prompt may be open in its pane\); press again in a moment/)
-    assert.match(pane("\x1b[C\r", "").stdout, /couldn't send: no coordinator pane known/)
+    assert.match(flat(pane("\x1b[C\r", "")), /couldn't send: no board coordinator is running/)
     assert.deepEqual(typed(), [], "no send-text, no send-keys, ever")
     assert.equal(items()[0].sent, undefined)
 
@@ -416,10 +418,10 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const y = screen.findIndex((l) => l.includes("[ Not now ]"))
     const x = [...screen[y].slice(0, screen[y].indexOf("[ Not now ]"))].length + 1
     pane(`\x1b[<0;${x + 3};${y + 1}M`)
-    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (${title}): Not now`])
+    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (board · ${title}): Not now`])
 
     // A hand-written board with a hostile id: refused when read, so nothing is ever sent.
-    const file = join(base, ".git", "job-board.json")
+    const file = join(base, ".git", "board-state", "board.json")
     const hostile = JSON.parse(readFileSync(file, "utf8"))
     hostile.items[0].id = "7\u001b]52;c;cHduZWQ=\u0007\u001b[2J"
     writeFileSync(file, JSON.stringify(hostile))

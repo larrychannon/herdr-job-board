@@ -1,5 +1,5 @@
 ===== nothing chosen · 120 columns =====
-Job board · my-app                                                                                                 10:30
+Job board · all projects                                                                                           10:30
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -40,7 +40,7 @@ nothing
 DONE · 0 today ▸
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== → chooses the suggested button · 120 columns =====
-Job board · my-app                                                                                                 10:30
+Job board · all projects                                                                                           10:30
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -81,7 +81,7 @@ nothing
 DONE · 0 today ▸
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== a click on the question · 120 columns =====
-Job board · my-app                                                                                                 10:30
+Job board · all projects                                                                                           10:30
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -122,7 +122,7 @@ nothing
 DONE · 0 today ▸
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== details, a click on the question · 120 columns =====
-Job board · my-app                                                                                                 10:30
+Job board · all projects                                                                                           10:30
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -163,7 +163,7 @@ Release v1.4: all reviewed, approve?
 ── end of card 1 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 ===== nothing chosen · 88 columns =====
-Job board · my-app · 3 need you                                                    10:30
+Job board · all projects · 3 need you                                              10:30
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
@@ -204,7 +204,7 @@ DONE · 0 today ▸
 
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== → chooses the suggested button · 88 columns =====
-Job board · my-app · 3 need you                                                    10:30
+Job board · all projects · 3 need you                                              10:30
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
@@ -245,7 +245,7 @@ DONE · 0 today ▸
 
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== a click on the question · 88 columns =====
-Job board · my-app · 3 need you                                                    10:30
+Job board · all projects · 3 need you                                              10:30
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
@@ -286,7 +286,7 @@ DONE · 0 today ▸
 
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 ===== details, a click on the question · 88 columns =====
-Job board · my-app · 3 need you                                                    10:30
+Job board · all projects · 3 need you                                              10:30
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min

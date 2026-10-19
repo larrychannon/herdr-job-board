@@ -2,6 +2,7 @@
 // A click is never a button press when the button wasn't under the pointer for the click before
 // it: in the inbox, the first click of a double click opens a card and moves the rows, so the
 // second can land on a button that wasn't there (0.4.0 review). Both mouse modes.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -77,14 +78,17 @@ function pane() {
   const repo = join(root, "repo")
   mkdirSync(join(repo, ".git"), { recursive: true })
   spawnSync("git", ["-C", repo, "init", "-q"])
-  writeFileSync(join(repo, ".git", "job-board.json"), JSON.stringify({ version: 1, next_id: 4, items, panes: {} }))
+  // The store (JOB_BOARD_HOME) in the temp folder, with a 0.4-shaped board in it: read as v2.
+  const store = join(root, "store")
+  mkdirSync(store)
+  writeFileSync(join(store, "board.json"), JSON.stringify({ version: 1, next_id: 4, items, panes: {} }))
   const herdr = join(root, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ agents: [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1", interactive_ready: true }], panes: [] }))
-  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
+  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1", JOB_BOARD_HOME: store, HOME: root }
   delete env.JOB_BOARD_FILE
   const run = (keys) => spawnSync(process.execPath, [join(ROOT, "board-pane.mjs"), "--once", "--width", "99", "--height", "30", "--origin", "w9:p1", "--keys", keys], { cwd: repo, env, encoding: "utf8" })
   const sent = () => (JSON.parse(readFileSync(herdr, "utf8")).log ?? []).filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus"))
-  return { repo, run, sent, done: () => rmSync(root, { recursive: true, force: true }) }
+  return { repo, store, run, sent, done: () => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) }
 }
 
 test("end to end, both mouse modes: a double click on card 2's row sends nothing; with mouse capture off clicks do nothing at all", () => {
@@ -108,7 +112,7 @@ test("end to end, both mouse modes: a double click on card 2's row sends nothing
     const yes = screen.findIndex((l) => l.includes("[ Yes ]")) + 1
     const x = [...screen[yes - 1].slice(0, screen[yes - 1].indexOf("[ Yes ]"))].length + 2
     t.run(`mm\x1b[<0;${x};${yes}M`)
-    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (Merge PR one?): Yes"]])
+    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (home · Merge PR one?): Yes"]])
   } finally {
     t.done()
   }
@@ -253,15 +257,16 @@ test("the live pane times clicks and paints with a monotonic clock: a wall-clock
     const screen = t.run("").stdout.split("\n")
     const y = screen.findIndex((l) => l.includes("[ Yes ]")) + 1
     const x = [...screen[y - 1].slice(0, screen[y - 1].indexOf("[ Yes ]"))].length + 2
-    const board = join(t.repo, ".git", "job-board.json")
-    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(root, "herdr.json"), HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
+    const board = join(t.store, "board.json")
+    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(root, "herdr.json"), HERDR_WORKSPACE_ID: "w9", JOB_BOARD_HOME: t.store, HOME: t.repo, JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
     const cmd = `stty cols 100 rows 30; exec node --import '${preload}' '${join(ROOT, "board-pane.mjs")}' --board '${board}' --origin 'w9:p1' --interval 1`
     child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: t.repo, env, detached: true })
     child.stdout.on("data", () => {})
     await new Promise((r) => setTimeout(r, 3000))
     child.stdin.write(`\x1b[<0;${x};${y}M\x1b[<0;${x};${y}m`)
     for (let i = 0; i < 30 && !t.sent().length; i++) await new Promise((r) => setTimeout(r, 100))
-    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (Merge PR one?): Yes"]], "the click on a button on screen for 3 s pressed it")
+    // HOME is the repo here: the store's cards get its folder's project, "store".
+    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (store · Merge PR one?): Yes"]], "the click on a button on screen for 3 s pressed it")
   } finally {
     try {
       if (child && child.exitCode === null) process.kill(-child.pid, "SIGKILL")

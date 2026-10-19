@@ -1,5 +1,6 @@
 // Run: node --test (from the repo root)
 // Colours, the card details panel, links (OSC 8), copying (OSC 52) and the mouse toggle.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -29,7 +30,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   spawnSync("git", ["-C", base, "init", "-q"])
   const herdr = join(root, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ agents, tabs }))
-  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW, TZ: "UTC" }
+  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(root, "store"), HOME: root, JOB_BOARD_NOW: NOW, TZ: "UTC" }
   delete env.NO_COLOR
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: { ...env, HERDR_ENV: "0", JOB_BOARD_NOW: now }, encoding: "utf8" })
@@ -39,7 +40,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   const pane = (args = [], keys = "") =>
     spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "40", "--origin", "w9:p1", ...args, "--keys", keys], { cwd: base, env, encoding: "utf8" })
   const log = () => JSON.parse(readFileSync(herdr, "utf8")).log ?? []
-  return { base, env, board, pane, log, file: join(base, ".git", "job-board.json"), done: () => rmSync(root, { recursive: true, force: true }) }
+  return { base, env, board, pane, log, file: join(root, "store", "board.json"), done: () => rmSync(root, { recursive: true, force: true }) }
 }
 
 /** The board used for colours and details: every column, a link, buttons, an old question, a job with a report. */
@@ -502,7 +503,7 @@ test("a press in the panel: argv only, to the origin pane, once; again asks firs
     const prompts = () => t.log().filter((a) => a[0] === "agent" && a[1] === "prompt")
     const first = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r")
     assert.equal(first.status, 0, first.stderr)
-    assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (Checkout redesign mockup: approve): OK all suggestions"]])
+    assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (my · Checkout redesign mockup: approve): OK all suggestions"]])
     assert.equal(JSON.parse(readFileSync(t.file, "utf8")).items[0].sent.label, "OK all suggestions")
     const again = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r").stdout
     assert.match(again.split(/── card 1/)[1], /send again\? "OK all suggestions" was sent already/, "the note shows in the panel")
@@ -1316,7 +1317,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [])
     // Card 2 wasn't: Enter sends exactly its first button's label.
     t.pane(size, `${clickOn(t.pane(size).stdout, "Question: Which name?")}\r`)
-    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [["agent", "prompt", "w9:p1", "Board card 2 (Pick a name): Alpha"]])
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [["agent", "prompt", "w9:p1", "Board card 2 (my · Pick a name): Alpha"]])
   } finally {
     t.done()
   }
