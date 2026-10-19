@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { boardPath, LEGACY_FILE, migrates, projectAt, readBoard, sideDir } from "../board.mjs"
+import { boardPath, importNotice, LEGACY_FILE, migrates, projectAt, readBoard, roleOf, sideDir } from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BOARD_CLI = resolve(HERE, "..", "board.mjs")
@@ -155,7 +155,9 @@ export function applies(input, env, roleEnv = "JOB_AGENT_ROLE") {
   if (env.HERDR_ENV !== "1") return false
   if (input?.agent_type) return false
   const role = String(env[roleEnv] ?? "").trim()
-  return role === "" || role === "coordinator"
+  if (role !== "" && role !== "coordinator") return false
+  // Also the role variable the repo's .claude/job.json names (role_env), as board.mjs reads it.
+  return !roleOf(env, [input.cwd || process.cwd()])
 }
 
 /**
@@ -191,7 +193,8 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
 
   if (prompt) {
     recordTurn(file, sessionId, state, now)
-    const text = [legacyLine(cwd, env), reminder(state)].filter(Boolean).join("\n")
+    const imported = importNotice(state, `node ${quote(BOARD_CLI)}`)
+    const text = [legacyLine(cwd, env), imported && `Job board: ${imported}.`, reminder(state)].filter(Boolean).join("\n")
     if (!text) return { stdout: "" }
     return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }) }
   }

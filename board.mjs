@@ -70,7 +70,12 @@
 // whose 0.4 board (.git/job-board.json) isn't in yet: a read there says so; a write there by a
 // coordinator or a person brings it in first (ids kept; one that would be renumbered stops the
 // write with the `import` to run); a worker's write stops. A write that creates the store brings
-// in every 0.4 board on the machine first. Not for a board of its own (JOB_BOARD_HOME, _FILE).
+// in every 0.4 board on the machine first, and `import` shows (and re-tags) it until looked at.
+// Not for a board of its own (JOB_BOARD_HOME, _FILE). A worker is a job's pane: JOB_AGENT_ROLE,
+// or the variable its repo's .claude/job.json names (role_env), set to anything but
+// "coordinator". Only the installed plugin at 0.5.0 or later writes a board under your home: a
+// checkout or an older copy refuses (a trial: JOB_BOARD_HOME on a scratch folder; one under your
+// home with JOB_BOARD_DEV=1).
 // Writes take a lock (mkdir <file>.lock, with the owner's pid), then write a temp file (mode
 // 0600) and rename it over the board, so readers never see half a file and racing writers don't
 // lose each other's items. The first write of a day keeps a copy in backups/ (7 kept). Text is
@@ -85,7 +90,7 @@
 import { execFile, spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
 import { appendFileSync, chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { homedir, hostname, tmpdir } from "node:os"
+import { homedir, hostname, tmpdir, userInfo } from "node:os"
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -493,6 +498,60 @@ function withLock(file, fn) {
   }
 }
 
+const insidePath = (path, root) => path === root || path.startsWith(root + sep)
+
+/** Whether a folder is in a git checkout (a .git above it). */
+function inCheckout(dir) {
+  for (let d = resolve(dir); ; d = dirname(d)) {
+    if (existsSync(join(d, ".git"))) return true
+    if (dirname(d) === d) return false
+  }
+}
+
+/**
+ * Whether `scripts` is the copy Herdr runs as the plugin: HERDR_PLUGIN_ROOT (a plugin action or
+ * the board pane), a folder that isn't a git checkout (what `herdr plugin install` unpacks), or
+ * the plugin_root `herdr plugin list` names.
+ */
+function installedCopy(env, scripts) {
+  if (env.HERDR_PLUGIN_ROOT && sameFile(env.HERDR_PLUGIN_ROOT, scripts)) return true
+  if (!inCheckout(scripts)) return true
+  if (!inHerdr(env)) return false
+  const plugins = herdr(["plugin", "list", "--json"], env, { quiet: true })?.result?.plugins
+  const root = Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID)?.plugin_root : ""
+  return Boolean(root) && sameFile(root, scripts)
+}
+
+/**
+ * Whether this copy may write `file`. Anywhere outside the account's real home (and /root, and
+ * JOB_BOARD_PROTECT's folders): yes. A board there (the machine's one board, a repo's 0.4 file)
+ * only from the installed plugin at 0.5.0 or later, so a development checkout, or this version
+ * before its release, never migrates or writes the live boards. JOB_BOARD_DEV=1 lets a checkout
+ * write a board of its own (JOB_BOARD_HOME, JOB_BOARD_FILE) there, but never the machine's one
+ * board or a file in a repo's .git. Returns "" or why not.
+ */
+export function writeRefusal(file, env = process.env, { version = VERSION, scripts = SCRIPTS } = {}) {
+  const target = join(realOr(dirname(resolve(file))), basename(file))
+  const account = realOr(userInfo().homedir)
+  const roots = [account, "/root", ...String(env.JOB_BOARD_PROTECT || "").split(":").filter(Boolean).map(realOr)]
+  const root = roots.find((r) => insidePath(target, r))
+  if (!root) return ""
+  const oneBoards = [join(account, ".local", "state", PLUGIN_ID), storeDir({ ...env, JOB_BOARD_HOME: "" })].map(realOr)
+  const own = env.JOB_BOARD_HOME || env.JOB_BOARD_FILE
+  if (env.JOB_BOARD_DEV === "1" && own && !target.includes(`${sep}.git${sep}`) && !oneBoards.some((d) => insidePath(target, d))) return ""
+  const trial = "for a trial, set JOB_BOARD_HOME to a scratch folder (outside your home, or with JOB_BOARD_DEV=1)"
+  if (!atLeast(version, "0.5.0")) return `this copy of the board is ${version || "unknown"} (${scripts}), older than 0.5.0: it writes no board under ${root} (${target}); ${trial}`
+  if (!installedCopy(env, scripts)) return `this copy (${scripts}) isn't the installed plugin: it writes no board under ${root} (${target}); run the installed board.mjs, or ${trial}`
+  return ""
+}
+
+/** Throw writeRefusal's reason, if any. */
+export function checkWrite(file, env = process.env) {
+  const why = writeRefusal(file, env)
+  if (why) throw new Error(why)
+  return file
+}
+
 /**
  * Under the test harness (JOB_BOARD_TEST_SANDBOX, set by tests/guard.mjs): a path the board
  * writes, moves or imports must be inside one of its folders, so no test can touch a real
@@ -612,6 +671,7 @@ function prune(state, now) {
  */
 export function updateBoard(file, change, now = new Date()) {
   sandboxed(file)
+  checkWrite(file)
   privateDir(dirname(file))
   // A 0.4 board file (a pane on it before the import) gets no archive or backups beside it:
   // they would stay behind in .git when it is imported.
@@ -697,14 +757,51 @@ export function findItem(state, ref, me = null) {
 
 // --- who writes, and who owns a card ------------------------------------------------------------
 
+// The role variables a repo's jobs carry: `role_env` in its .claude/job.json (the job skill
+// starts workers with <role_env>=worker), by folder.
+const roleEnvs = new Map()
+const ROLE_ENV = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+
+/** The role variable names to read for a folder: JOB_AGENT_ROLE, and role_env of its worktree's and its repo's .claude/job.json. */
+export function roleEnvNames(dir) {
+  const key = resolve(dir)
+  if (!roleEnvs.has(key)) {
+    const names = new Set(["JOB_AGENT_ROLE"])
+    const r = spawnSync("git", ["-C", key, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"], { encoding: "utf8" })
+    const [top, common] = r.status === 0 ? r.stdout.trim().split("\n") : []
+    for (const root of [top, common && basename(common) === ".git" ? dirname(common) : ""].filter(Boolean)) {
+      try {
+        const name = JSON.parse(readFileSync(join(root, ".claude", "job.json"), "utf8"))?.role_env
+        if (typeof name === "string" && ROLE_ENV.test(name)) names.add(name)
+      } catch {}
+    }
+    roleEnvs.set(key, [...names])
+  }
+  return roleEnvs.get(key)
+}
+
 /**
- * The writer: its Herdr pane and workspace (inside Herdr), and whether it is a coordinator (the
- * role variable, JOB_AGENT_ROLE, unset or "coordinator"). Only a coordinator owns cards.
+ * The writer's role: "" for a coordinator or a person, else the role a job's variable gives it
+ * (any of the role variables for `dirs` set to anything but "coordinator").
  */
-export function writerOf(env = process.env) {
+export function roleOf(env, dirs = [process.cwd()]) {
+  for (const name of new Set(dirs.flatMap(roleEnvNames))) {
+    const role = clean(env[name])
+    if (role && role !== "coordinator") return role
+  }
+  return ""
+}
+
+/**
+ * The writer: its Herdr pane and workspace (inside Herdr), its role (roleOf) and whether it is a
+ * coordinator: a pane with no worker role. A plugin action (the key binding) runs with Herdr's
+ * env, not the focused pane's, so its role is unknown: never a coordinator. Only a coordinator
+ * owns cards.
+ */
+export function writerOf(env = process.env, dirs = [process.cwd()]) {
   const pane = inHerdr(env) ? clean(env.HERDR_PANE_ID) : ""
-  const role = clean(env.JOB_AGENT_ROLE)
-  return { pane, workspace: inHerdr(env) ? clean(env.HERDR_WORKSPACE_ID) : "", coordinator: Boolean(pane) && (role === "" || role === "coordinator") }
+  const role = roleOf(env, dirs)
+  return { pane, workspace: inHerdr(env) ? clean(env.HERDR_WORKSPACE_ID) : "", role, coordinator: Boolean(pane) && !role && !env.HERDR_PLUGIN_ID }
 }
 
 /** A coordinator's write is noted: its pane, workspace, cwd project and when. */
@@ -3044,7 +3141,9 @@ function openPane(fileArg, opts, env, out) {
   // 0.4 board, if any, the first use imports.
   const cwd = env.HERDR_PLUGIN_ID ? me.foreground_cwd || me.cwd || process.cwd() : process.cwd()
   const file = fileArg || boardPath(cwd, env)
-  if (!fileArg) migrate(file, cwd, env, new Date(), { write: true, say: out })
+  // open writes the board (its tab's pane): not from a copy that may not write it.
+  checkWrite(file, env)
+  if (!fileArg) migrate(file, cwd, env, env.JOB_BOARD_NOW ? new Date(env.JOB_BOARD_NOW) : new Date(), { write: true, say: out })
   const tab = me.tab_id
   const share = Number(opts.share ?? 0.3)
   if (!(share > 0.05 && share < 0.95)) throw usage("--share is the board's part of the width, e.g. 0.3")
@@ -3583,7 +3682,7 @@ export function importInto(state, sources, ctx) {
   // its id, or the id it was renumbered from. Whatever project it was re-tagged to since.
   const fromRepo = (name) => new Set(state.imports.filter((e) => e?.project === name).flatMap((e) => (Array.isArray(e.ids) ? e.ids : [])))
   const isSame = (name, card, earlier = fromRepo(name)) => (i) =>
-    i.created === card.created && (i.was ? i.was === `${name}#${card.id}` : i.id === card.id) && (i.project === name || earlier.has(i.id))
+    i.created === card.created && (i.id === card.id || i.was === `${name}#${card.id}`) && (i.project === name || earlier.has(i.id))
   const ordered = [...sources].sort((a, b) => b.board.items.length - a.board.items.length)
   for (const src of ordered) {
     const name = ensureProject(state, src.id)
@@ -3634,7 +3733,8 @@ export function importInto(state, sources, ctx) {
     for (const item of state.items) if (item.reported && item.project === name && !state.reports[item.reported]) state.reports[item.reported] = { id: item.id, at }
     for (const [tab, pane] of Object.entries(src.board.panes || {})) if (!state.panes[tab]) state.panes[tab] = pane
     result.boards.push(entry)
-    state.imports.push({ from: entry.from, project: name, at, cards: entry.cards, ids: entry.ids, renumbered: entry.renumbered, left_out: entry.left_out })
+    // An import a write did by itself (auto) is "unseen" until the coordinator runs `import`.
+    state.imports.push({ from: entry.from, project: name, at, cards: entry.cards, ids: entry.ids, renumbered: entry.renumbered, left_out: entry.left_out, auto: Boolean(ctx.auto), seen: !ctx.auto })
   }
   state.items.sort((a, b) => a.id - b.id)
   // What a left-out card would become with --keep-stale.
@@ -3642,37 +3742,46 @@ export function importInto(state, sources, ctx) {
   for (const l of result.leftOut) l.as = used.has(l.card.id) ? next++ : l.card.id
 
   const imported = new Set(result.boards.map((b) => b.project))
+  retagImported(state, (i) => imported.has(i.project), ctx, result)
+  return result
+}
+
+/**
+ * --retag on the imported cards (`isImported`), and suggestions for the others still open: their
+ * title names another project, or their job's agent runs in another project's folder. Adds to
+ * result.retagged and result.proposals.
+ */
+function retagImported(state, isImported, ctx, result) {
+  const { retag = [], known = new Map(), agents = null } = ctx
   const target = (ref) => {
     const name = projectRef(state, ref)
     if (name) return name
     if (known.has(ref)) return ensureProject(state, known.get(ref))
     throw usage(`--retag: no project "${ref}" (known: ${[...new Set([...Object.keys(state.projects), ...known.keys()])].sort().join(", ")})`)
   }
-  const retagged = new Set()
+  const chosen = new Set()
+  const cards = state.items.filter(isImported)
   for (const [id, ref] of retag) {
-    const item = state.items.find((i) => i.id === id && imported.has(i.project))
+    const item = cards.find((i) => i.id === id)
     if (!item) throw usage(`--retag: card ${id} is not among the imported cards`)
     item.project = target(ref)
-    retagged.add(id)
+    chosen.add(id)
     result.retagged.push({ id, project: item.project })
   }
-  // Suggestions: open imported cards whose title names another project, or whose job's agent
-  // runs in another project's folder.
   const names = [...new Set([...Object.keys(state.projects), ...known.keys()])]
   const agentProject = new Map()
   for (const a of agents || []) {
     const cwd = a.foreground_cwd || a.cwd
     if (a.name && cwd) agentProject.set(a.name, projectName(state.projects, projectAt(cwd, ctx.env)))
   }
-  for (const item of state.items) {
-    if (!imported.has(item.project) || item.column === "done" || retagged.has(item.id)) continue
+  for (const item of cards) {
+    if (item.column === "done" || chosen.has(item.id)) continue
     const byAgent = item.job && agentProject.get(item.job)
     // A title that names its own project too ("Bring sfc-app-track into sfc-integration") stays.
     const byTitle = !namesProject(item.title, item.project) && names.find((n) => n !== item.project && namesProject(item.title, n))
     const to = byAgent && byAgent !== item.project ? byAgent : byTitle
     if (to) result.proposals.push({ id: item.id, title: item.title, project: to })
   }
-  return result
 }
 
 /** The lines `import` prints, for a dry run ("then:") or after it ran ("done:"). `totals`: the board after it. */
@@ -3737,6 +3846,7 @@ function workspacesByLabel(env) {
 /** Move an imported 0.4 board aside, beside itself: job-board.migrated.json (or with a time when one is there). "" when it is gone already. */
 function retire(file, now) {
   sandboxed(file)
+  checkWrite(file)
   let to = join(dirname(file), MIGRATED_FILE)
   if (existsSync(to)) to = join(dirname(file), `job-board.migrated-${stampOf(now)}.json`)
   try {
@@ -3765,7 +3875,6 @@ export function runImport(file, paths, opts, ctx) {
   // The migration's sources may be imported (renamed) by another command meanwhile: skipped.
   const sources = paths.filter((p) => !auto || existsSync(p)).map((p) => importSource(p, env, current))
   if (!sources.length && auto) return []
-  if (!sources.length) return [`import: no 0.4 board found (looked in this repo's .git and the repos under ${env.HOME || homedir()}); nothing to do`]
   if (sources.some((s) => sameFile(s.file, file))) throw usage("import: that is the store itself")
   const known = new Map(homeRepos(env).map((dir) => projectAt(dir, env)).map((id) => [id.name, id]))
   known.set("home", projectAt(env.HOME || homedir(), env))
@@ -3780,12 +3889,20 @@ export function runImport(file, paths, opts, ctx) {
     agents: inHerdr(env) ? listAgents(env) : null,
     archived: readArchive(file),
   }
+  if (!sources.length) {
+    if (!current.imports.some((e) => Array.isArray(e?.ids))) return [`import: no 0.4 board found (looked in this repo's .git and the repos under ${env.HOME || homedir()}); nothing to do`]
+    return reviewImport(file, opts, plan)
+  }
   const totals = (s) => {
     const due = dueForArchive(s, now).length
     return { cards: s.items.length - due, open: s.items.filter((i) => i.column !== "done").length, next: s.next_id, due }
   }
   const read = (list) => list.filter((src) => existsSync(src.file)).map((src) => ({ ...src, board: readBoard(src.file) }))
-  const show = (result, state, sums) => importPreview(result, state, { file, backup, dryRun: Boolean(opts["dry-run"]), keepStale: plan.keepStale, totals: sums })
+  const show = (result, state, sums) => {
+    const lines = importPreview(result, state, { file, backup, dryRun: Boolean(opts["dry-run"]), keepStale: plan.keepStale, totals: sums })
+    // Automatic: the command that triggered it takes the next id, so the hint would be wrong.
+    return auto ? lines.filter((l) => !/\(--keep-stale imports it as \d+\)/.test(l)) : lines
+  }
   if (opts["dry-run"]) {
     me.project = projectName(current.projects, me.id)
     const result = importInto(current, read(sources), plan)
@@ -3798,11 +3915,13 @@ export function runImport(file, paths, opts, ctx) {
       // Read under the lock: a source another command imported meanwhile is gone (renamed).
       const fresh = read(sources)
       if (!fresh.length) return null
-      const result = importInto(s, fresh, plan)
+      const result = importInto(s, fresh, { ...plan, auto })
+      // An import run on purpose: earlier automatic ones count as seen too.
+      if (!auto) for (const e of s.imports) e.seen = true
       if (auto && result.renumbered.length) {
         const files = fresh.map((f) => shellQuote(f.file)).join(" ")
         throw new Error(
-          `${auto} isn't on the one board yet, and bringing it in would renumber ${plural(result.renumbered.length, "card")} (${result.renumbered.map((r) => `${r.from} → ${r.to}`).join(", ")}). Nothing was changed. Look first, then import: ${CLI()} import --dry-run ${files}; ${CLI()} import ${files}`,
+          `${auto} ${ctx.isnt || "isn't"} on the one board yet, and bringing it in would renumber ${plural(result.renumbered.length, "card")} (${result.renumbered.map((r) => `${r.from} → ${r.to}`).join(", ")}). Nothing was changed. Look first, then import: ${CLI()} import --dry-run ${files}; ${CLI()} import ${files}`,
         )
       }
       privateDir(backup)
@@ -3828,6 +3947,63 @@ export function runImport(file, paths, opts, ctx) {
     if (to) lines.push(`  ${src.file} → ${to}`)
   }
   return lines
+}
+
+/** The imports `import` reviews when nothing is left to bring in: the unseen ones, else the last one. */
+function lastImports(state) {
+  const all = state.imports.filter((e) => Array.isArray(e?.ids))
+  const unseen = all.filter((e) => !e.seen)
+  return unseen.length ? unseen : all.filter((e) => e.at === all.at(-1)?.at)
+}
+
+/**
+ * `import` after the boards are in (a write brought them in by itself, or an earlier import):
+ * what that import did, its re-tag suggestions for the cards it brought, and --retag on them.
+ * Without --dry-run it marks the import seen, which ends the notice (importNotice).
+ */
+function reviewImport(file, opts, plan) {
+  const dryRun = Boolean(opts["dry-run"])
+  const review = (s) => {
+    const batch = lastImports(s)
+    const ids = new Set(batch.flatMap((e) => e.ids))
+    const result = { retagged: [], proposals: [] }
+    retagImported(s, (i) => ids.has(i.id), plan, result)
+    if (!dryRun) for (const e of batch) e.seen = true
+    return { batch, result }
+  }
+  const { batch, result } = dryRun ? review(readBoard(file)) : updateBoard(
+        file,
+        (s) => {
+          plan.me.project = projectName(s.projects, plan.me.id)
+          noteCoordinator(s, plan.me, plan.now)
+          return review(s)
+        },
+        plan.now,
+      )
+  const lines = [`import: nothing left to bring in; ${batch.some((e) => e.auto) ? "brought in automatically" : "imported"} on ${shortTime(batch[0]?.at, plan.now)}:`]
+  for (const e of batch) {
+    const renumbered = Object.entries(e.renumbered || {}).map(([from, to]) => `${e.project}#${from} → ${to}`)
+    lines.push(`  ${e.from}  →  ${e.project}: ${plural(e.cards, "card")}${renumbered.length ? `, renumbered ${renumbered.join(", ")}` : ""}${e.left_out?.length ? `, left out ${e.left_out.map((id) => `#${id}`).join(" ")} (in ${e.backup || "the backup"})` : ""}`)
+  }
+  if (result.retagged.length) lines.push(`re-tagged: ${result.retagged.map((r) => `${r.id}→${r.project}`).join(" ")}`)
+  if (result.proposals.length) {
+    lines.push(`re-tag (suggested from titles and running jobs; apply with --retag ${result.proposals.map((p) => `${p.id}=${p.project}`).join(",")}):`)
+    for (const p of result.proposals) lines.push(`  ${p.id} → ${p.project}   ${clean(p.title).slice(0, 70)}`)
+  }
+  lines.push(dryRun ? `then: ${CLI()} import [--retag ID=PROJECT,…] marks it seen` : "done: marked seen")
+  return lines
+}
+
+/**
+ * The note while an import a write did by itself hasn't been looked at (`import` marks it seen):
+ * shown by `ls`, the coordinator's prompt hook and the pane. "" when there is none.
+ */
+export function importNotice(state, cli = CLI()) {
+  const unseen = state.imports.filter((e) => e?.auto && !e.seen && Array.isArray(e.ids))
+  if (!unseen.length) return ""
+  const cards = unseen.reduce((n, e) => n + e.cards, 0)
+  const out = unseen.reduce((n, e) => n + (e.left_out?.length || 0), 0)
+  return `0.4 boards were brought in by themselves (${unseen.map((e) => e.project).join(", ")}: ${plural(cards, "card")}${out ? `, ${out} stale left out` : ""}). Look and re-tag: ${cli} import --dry-run, then ${cli} import [--retag ID=PROJECT,…]`
 }
 
 /**
@@ -3868,20 +4044,23 @@ export function migrate(file, cwd, env, now, { write, say }) {
   const paths = (fresh ? legacyBoards(cwd, env) : [pending]).filter((p) => existsSync(p) && readable(p))
   if (!paths.length) return
   let lines
-  const what = fresh ? `the 0.4 board${paths.length === 1 ? "" : "s"} on this machine (${paths.join(", ")})` : `this repo's 0.4 board (${pending})`
-  const role = clean(env.JOB_AGENT_ROLE)
-  if (role && role !== "coordinator") {
-    throw new Error(`${what} isn't on the one board yet, and a ${role} doesn't bring it in; nothing was changed. The coordinator runs: ${CLI()} import --dry-run, then ${CLI()} import`)
+  const many = fresh && paths.length > 1
+  const what = fresh ? `the 0.4 board${many ? "s" : ""} on this machine (${paths.join(", ")})` : `this repo's 0.4 board (${pending})`
+  const isnt = many ? "aren't" : "isn't"
+  const me = { ...writerOf(env, [cwd]), id: here }
+  if (me.role) {
+    throw new Error(`${what} ${isnt} on the one board yet, and a ${me.role} doesn't bring ${many ? "them" : "it"} in; nothing was changed. The coordinator runs: ${CLI()} import --dry-run, then ${CLI()} import`)
   }
+  checkWrite(file, env)
   try {
-    lines = runImport(file, paths, {}, { env, now, me: { ...writerOf(env), id: here }, auto: what })
+    lines = runImport(file, paths, {}, { env, now, me, auto: what, isnt })
   } catch (e) {
     // Gone between the look and the read: another command brought it in.
     if (e.code === "ENOENT" || /^no board file /.test(e.message)) return
     throw e
   }
   if (!lines.length) return
-  say(`board: ${what} wasn't on the one board yet: brought in first (${file})`)
+  say(`board: ${what} ${many ? "weren't" : "wasn't"} on the one board yet: brought in first (${file})`)
   for (const line of lines.slice(1)) say(`board: ${line}`)
 }
 
@@ -3909,6 +4088,7 @@ export function backupsOf(file) {
  */
 export function restoreBackup(file, ref, now) {
   sandboxed(file)
+  checkWrite(file)
   const dir = join(sideDir(file), "backups")
   const path = [resolve(ref), join(dir, ref), join(sideDir(file), ref)].find((p) => existsSync(p))
   if (!path) throw new Error(`no backup ${ref} (board.mjs restore lists them)`)
@@ -4039,13 +4219,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     // The writer: its pane (inside Herdr), whether it is a coordinator, and its cwd's project.
     let here = null
     const me = {
-      ...writerOf(env),
+      ...writerOf(env, [process.cwd(), ...(opts.worktree !== undefined ? [resolve(opts.worktree)] : [])]),
       get id() {
         return (here ??= projectAt(process.cwd(), env))
       },
     }
     // A repo whose 0.4 board isn't on the one board yet: writes bring it in first, reads say so.
-    if (WRITES.has(command) || READS.has(command)) migrate(file, process.cwd(), env, now, { write: WRITES.has(command), say: err })
+    const writes = WRITES.has(command) && !(command === "front" && rest[0] === "show")
+    if (writes || READS.has(command)) migrate(file, process.cwd(), env, now, { write: writes, say: err })
     // Every write notes a coordinator, and knows this writer's project by its name on the board.
     const change = (fn) => {
       const result = updateBoard(
@@ -4247,9 +4428,20 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // a report rewritten with a different outcome applies again, to the same card. When the
         // card is gone (archived), the board's `reports` remembers it was applied.
         const reported = createHash("sha256").update(JSON.stringify([path, column, ask])).digest("hex").slice(0, 16)
+        // The card this report is about, in this pane's and this project's cards of the job: the
+        // job's Doing card, else one this report settled already (a repeat after Done doesn't move
+        // a queued To do card), else an open one with this report, else the usual open card
+        // (jobItem), else the one this report file moved before.
         const cardFor = (list) => {
+          const jobs = list.filter((i) => i.job === slug && ((me.pane && i.origin === me.pane) || i.project === me.project))
           const mine = scope(list)
-          return jobItem(mine, slug) || mine.findLast((i) => i.job === slug && i.report === path)
+          return (
+            jobs.findLast((i) => i.column === "doing") ||
+            jobs.findLast((i) => i.reported === reported) ||
+            jobs.findLast((i) => i.column !== "done" && i.report === path) ||
+            jobItem(mine, slug) ||
+            mine.findLast((i) => i.job === slug && i.report === path)
+          )
         }
         const settled = (it) => it && it.reported === reported
         const before = cardFor(board.items)
@@ -4278,7 +4470,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       }
       case "ls": {
         only(opts, ["width"], command)
-        const view = buildView(readBoard(file), listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
+        const state = readBoard(file)
+        const notice = importNotice(state)
+        if (notice) err(`board: ${notice}`)
+        const view = buildView(state, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined

@@ -21,13 +21,14 @@ const refuse = (why) => {
   process.exit(2)
 }
 const account = real(userInfo().homedir)
+const inside = (p, root) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep)
 const home = process.env.HOME ? real(process.env.HOME) : ""
 if (!home) refuse("HOME is not set")
-if (home === account || home === "/root" || home === "/") refuse(`HOME is ${home}, the real home`)
-mkdirSync(tmpdir(), { recursive: true })
+// HOME must not be the real home, inside it, or above it (/Users would hold every real repo).
+for (const r of [account, "/root"]) if (inside(home, r) || inside(r, home)) refuse(`HOME ${home} is the real home or holds it`)
 const temp = real(tmpdir())
-const inside = (p, root) => p === root || p.startsWith(root + sep)
-if (inside(temp, account) || inside(temp, "/root") || inside(account, temp)) refuse(`TMPDIR ${temp} is in the real home`)
+if (inside(temp, account) || inside(temp, "/root") || inside(account, temp)) refuse(`TMPDIR ${temp} is in the real home or holds it`)
+mkdirSync(temp, { recursive: true })
 const state = process.env.XDG_STATE_HOME ? real(process.env.XDG_STATE_HOME) : ""
 if (state && (inside(state, account) || inside(state, "/root"))) refuse(`XDG_STATE_HOME ${state} is in the real home`)
 process.env.JOB_BOARD_TEST_SANDBOX = [...new Set([temp, home, ...(state ? [state] : [])])].join(":")

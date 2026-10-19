@@ -39,7 +39,8 @@ function home() {
   }
   const envFor = (extra = {}) => {
     const env = { ...process.env, HOME: base, XDG_STATE_HOME: "", JOB_BOARD_HOME: "", JOB_BOARD_FILE: "", TZ: "UTC", NO_COLOR: "1", JOB_BOARD_NOW: "2026-10-19T10:00:00Z", HERDR_ENV: "0", HERDR_PANE_ID: "", HERDR_WORKSPACE_ID: "", JOB_AGENT_ROLE: "" }
-    for (const key of ["HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT", "HERDR_PLUGIN_STATE_DIR", "HERDR_BIN_PATH"]) delete env[key]
+    // No role or plugin variable of the session running the tests (it may be a job's worker).
+    for (const key of ["HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT", "HERDR_PLUGIN_STATE_DIR", "HERDR_BIN_PATH", "SFC_AGENT_ROLE", "JOB_BOARD_PROTECT", "JOB_BOARD_DEV"]) delete env[key]
     return { ...env, ...extra }
   }
   const run = (cwd, args, extra) => spawnSync(process.execPath, [BOARD, ...args], { cwd, env: envFor(extra), encoding: "utf8" })
@@ -341,8 +342,8 @@ test("import: dry run first (nothing written), then ids kept, a clash renumbered
     assert.match(backup, /^import-\d{8}-\d{6}$/)
     assert.deepEqual(readdirSync(join(h.store, "backups", backup)).sort(), ["ai-config.json", "sfc-integration.json"])
     assert.equal(readFileSync(join(h.store, "backups", backup, "sfc-integration.json"), "utf8"), before[0])
-    // Nothing more to import.
-    assert.match(h.ok(sfc, ["import"]), /no 0\.4 board found/)
+    // Nothing more to bring in: import reviews the last import instead.
+    assert.match(h.ok(sfc, ["import"]), /^import: nothing left to bring in; imported on /)
 
     // A 0.4 copy wrote the old file again: import merges by id and created time (newer wins),
     // and a card it added meanwhile is renumbered.
@@ -400,7 +401,10 @@ test("migration, per repo: a read says the repo's 0.4 board isn't in; the first 
     assert.match(w.stdout, /^added 5 /, "ids go on from the old board's")
     assert.ok(!existsSync(file) && existsSync(join(app, ".git", "job-board.migrated.json")))
     assert.deepEqual(h.state().items.map((i) => [i.id, i.title]), [[3, "Carried over"], [5, "next"]])
-    assert.doesNotMatch(h.run(app, ["ls"]).stderr, /0\.4/, "said once")
+    // The note stays (ls, the hook, the pane) until the coordinator runs import.
+    assert.match(h.run(app, ["ls"]).stderr, /^board: 0\.4 boards were brought in by themselves \(app: 1 card\)\. Look and re-tag: node .* import --dry-run, then node .* import \[--retag ID=PROJECT,…\]$/m)
+    assert.match(h.ok(app, ["import"]), /^done: marked seen$/m)
+    assert.doesNotMatch(h.run(app, ["ls"]).stderr, /0\.4/, "seen: no more note")
     // A pane started (by 0.4) on the old file shows the store.
     const pane = spawnSync(process.execPath, [PANE, "--once", "--width", "80", "--height", "20", "--board", file], { cwd: app, env: h.envFor(), encoding: "utf8" })
     assert.equal(pane.status, 0, pane.stderr)
@@ -848,6 +852,183 @@ test("a corrupt board is never backed up over the good ones; an archive line cut
     writeFileSync(join(h.store, "archive", "2026-10.jsonl"), JSON.stringify({ id: 1, title: "earlier", column: "done" }))
     h.ok(app, ["add", "todo", "c"], { JOB_BOARD_NOW: "2026-10-12T10:00:00Z" })
     assert.deepEqual(JSON.parse(h.ok(app, ["json", "--archive", "2026-10"])).items.map((i) => i.id), [1, 2])
+  } finally {
+    h.done()
+  }
+})
+
+/** A repo whose jobs carry SFC_AGENT_ROLE (its .claude/job.json role_env), as sfc-integration's do. */
+function roleRepo(h, name = "sfc-integration") {
+  const dir = h.repo(name)
+  mkdirSync(join(dir, ".claude"))
+  writeFileSync(join(dir, ".claude", "job.json"), JSON.stringify({ role_env: "SFC_AGENT_ROLE" }))
+  return dir
+}
+
+test("roles: a worker known by its repo's role_env (SFC_AGENT_ROLE) never brings boards in, owns, takes over or becomes front; the hook leaves it alone", async () => {
+  const { handle } = await import("../hooks/board-hook.mjs")
+  const h = home()
+  try {
+    const sfc = roleRepo(h)
+    const wt = join(h.base, "sfc-integration-wt-a")
+    git(sfc, "worktree", "add", "-q", wt, "-b", "feat/a")
+    legacy(sfc, [{ id: 1, title: "one", column: "waiting" }, { id: 2, title: "two" }])
+    const fake = h.herdr([{ name: "sfc-a", pane_id: "w4:p51", workspace_id: "w4" }])
+    const worker = h.inHerdr(fake, "w4:p51", "w4", { SFC_AGENT_ROLE: "worker" })
+    // From the worktree (no job.json there: the repo's is read too), and from the repo.
+    for (const dir of [wt, sfc]) {
+      const r = h.run(dir, ["add", "todo", "x"], worker)
+      assert.equal(r.status, 1, r.stderr)
+      assert.match(r.stderr, /isn't on the one board yet, and a worker doesn't bring it in; nothing was changed/)
+    }
+    assert.ok(!existsSync(h.file))
+    // The coordinator (w4:p6, gone later) brings it in and owns the cards.
+    h.ok(sfc, ["ls"], h.inHerdr(h.herdr([{ pane_id: "w4:p6" }])))
+    h.ok(sfc, ["add", "todo", "coordinator's"], h.inHerdr(h.herdr([{ pane_id: "w4:p6" }])))
+    assert.deepEqual(h.state().items.map((i) => i.origin), ["w4:p6", "w4:p6", "w4:p6"])
+    // The worker edits a card whose owner is gone: no takeover; its own card has no owner; never in coordinators.
+    h.ok(wt, ["edit", "2", "--desc", "by the worker"], worker)
+    assert.equal(h.card(2).origin, "w4:p6")
+    h.ok(wt, ["add", "todo", "worker's"], worker)
+    assert.equal(h.card(4).origin, "")
+    assert.deepEqual(Object.keys(h.state().coordinators), ["w4:p6"])
+    assert.equal(h.run(wt, ["front"], worker).status, 2)
+    assert.equal(h.run(wt, ["adopt", "1"], worker).status, 2)
+    // The hook: nothing for that worker, even without --role-env.
+    const input = { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: wt, prompt: "hi" }
+    assert.equal(handle(input, { HERDR_ENV: "1", HOME: h.base, SFC_AGENT_ROLE: "worker" }).stdout, "")
+    assert.notEqual(handle(input, { HERDR_ENV: "1", HOME: h.base }).stdout, "")
+  } finally {
+    h.done()
+  }
+})
+
+test("open from the key binding (a plugin action: the focused pane's role is unknown) brings boards in with no owner", () => {
+  const h = home()
+  try {
+    const app = h.repo("app")
+    legacy(app, [{ id: 1, title: "one" }])
+    const fake = join(h.base, "herdr-plugin.json")
+    writeFileSync(fake, JSON.stringify({ agents: [{ name: "job-x", pane_id: "w4:p51", workspace_id: "w4" }], panes: [{ pane_id: "w4:p51", tab_id: "w4:t2", workspace_id: "w4", cwd: app }] }))
+    const r = h.run(h.base, ["open"], h.inHerdr(fake, "w4:p51", "w4", { HERDR_PLUGIN_ID: "herdr-job-board" }))
+    assert.equal(r.status, 0, r.stderr)
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.origin]), [[1, ""]])
+    assert.deepEqual(h.state().coordinators, {})
+  } finally {
+    h.done()
+  }
+})
+
+test("write gate: a board under the real home is written only by the installed plugin at 0.5.0 or later; a checkout (this one, 0.4.0) refuses, reads still work", async () => {
+  const { writeRefusal } = await import("../board.mjs")
+  const h = home()
+  try {
+    // JOB_BOARD_PROTECT stands for the real home here (the tests never touch the real one).
+    const env = { HOME: h.base, JOB_BOARD_PROTECT: h.base }
+    const store = join(h.store, "board.json")
+    const checkout = SCRIPTS
+    const unpacked = join(h.base, "plugins", "herdr-job-board")
+    mkdirSync(unpacked, { recursive: true })
+    assert.match(writeRefusal(store, env, { version: "0.4.0", scripts: unpacked }), /is 0\.4\.0 .*older than 0\.5\.0: it writes no board under .*; for a trial, set JOB_BOARD_HOME to a scratch folder/)
+    assert.match(writeRefusal(store, env, { version: "0.5.0", scripts: checkout }), /isn't the installed plugin/)
+    assert.equal(writeRefusal(store, { ...env, HERDR_PLUGIN_ROOT: checkout }, { version: "0.5.0", scripts: checkout }), "", "the copy Herdr runs")
+    assert.equal(writeRefusal(store, env, { version: "0.5.0", scripts: unpacked }), "", "an unpacked install")
+    assert.equal(writeRefusal(join(h.base, "..", "elsewhere", "board.json"), env, { version: "0.4.0", scripts: checkout }), "", "outside the real home: free")
+    // JOB_BOARD_DEV=1: a board of its own under the home, never the one board or a repo's .git.
+    const dev = { ...env, JOB_BOARD_DEV: "1", JOB_BOARD_HOME: join(h.base, "trial") }
+    assert.equal(writeRefusal(join(h.base, "trial", "board.json"), dev, { version: "0.4.0", scripts: checkout }), "")
+    assert.notEqual(writeRefusal(store, dev, { version: "0.4.0", scripts: checkout }), "")
+    assert.notEqual(writeRefusal(join(h.base, "app", ".git", "job-board.json"), { ...dev, JOB_BOARD_FILE: "x" }, { version: "0.4.0", scripts: checkout }), "")
+
+    // The CLI from this checkout: a write (and open) refuses before anything moves; ls reads.
+    const app = h.repo("app")
+    const file = legacy(app, [{ id: 1, title: "live one" }])
+    for (const args of [["add", "todo", "x"], ["job-start", "build"]]) {
+      const r = h.run(app, args, { JOB_BOARD_PROTECT: h.base })
+      assert.equal(r.status, 1, args.join(" "))
+      assert.match(r.stderr, /older than 0\.5\.0: it writes no board under/)
+    }
+    const fake = h.herdr([])
+    const o = h.run(app, ["open"], { ...h.inHerdr(fake), JOB_BOARD_PROTECT: h.base })
+    assert.equal(o.status, 1)
+    assert.ok(existsSync(file) && !existsSync(h.store), "nothing imported, nothing renamed")
+    assert.equal(JSON.parse(readFileSync(fake, "utf8")).log.filter((a) => a[1] === "split").length, 0, "no pane opened")
+    assert.equal(h.run(app, ["ls"], { JOB_BOARD_PROTECT: h.base }).status, 0)
+  } finally {
+    h.done()
+  }
+})
+
+test("after a write brought the boards in, the coordinator's steps still work: import --dry-run shows it, import --retag applies the re-tags, and the note stays until then", async () => {
+  const { handle } = await import("../hooks/board-hook.mjs")
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    h.repo("herdr-job-board")
+    legacy(sfc, [{ id: 7, title: "3CX certificate: renew" }, { id: 9, title: "Job board 0.5.0: plan", column: "doing" }])
+    // A wait script's job-report (output dropped) brings it in.
+    spawnSync(process.execPath, [BOARD, "job-report", "x", join(sfc, "none.json"), "--if-final"], { cwd: sfc, env: h.envFor(), encoding: "utf8" })
+    assert.equal(h.state().imports[0].seen, false)
+    const prompt = { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: sfc, prompt: "hi" }
+    assert.match(JSON.parse(handle(prompt, { HERDR_ENV: "1", HOME: h.base }).stdout).hookSpecificOutput.additionalContext, /^Job board: 0\.4 boards were brought in by themselves \(sfc-integration: 2 cards\)\. Look and re-tag: /)
+    const pane = spawnSync(process.execPath, [PANE, "--once", "--width", "120", "--height", "20"], { cwd: sfc, env: h.envFor(), encoding: "utf8" })
+    assert.match(words(pane.stdout), /0\.4 boards were brought in by themselves/)
+    const dry = h.ok(sfc, ["import", "--dry-run"])
+    assert.match(dry, /^import: nothing left to bring in; brought in automatically on /)
+    assert.match(dry, /sfc-integration\/\.git\/job-board\.json {2}→ {2}sfc-integration: 2 cards$/m)
+    assert.match(dry, /^re-tag \(suggested from titles and running jobs; apply with --retag 9=herdr-job-board\):$/m)
+    assert.equal(h.state().imports[0].seen, false, "a dry run marks nothing")
+    assert.match(h.ok(sfc, ["import", "--retag", "9=herdr-job-board,7=home"]), /^re-tagged: 9→herdr-job-board 7→home$/m)
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.project]), [[7, "home"], [9, "herdr-job-board"]])
+    assert.equal(h.state().imports[0].seen, true)
+    assert.doesNotMatch(handle(prompt, { HERDR_ENV: "1", HOME: h.base }).stdout, /brought in by themselves/)
+    assert.equal(h.run(sfc, ["import", "--retag", "1=home"]).status, 2, "only the imported cards")
+  } finally {
+    h.done()
+  }
+})
+
+test("a renumbered card that comes back through export --legacy isn't added twice; a repeat job-report after Done doesn't move a queued To do card", () => {
+  const h = home()
+  try {
+    const one = h.repo("one")
+    const ai = h.repo("ai-config")
+    h.ok(one, ["add", "todo", "one's card"])
+    legacy(ai, [{ id: 1, title: "ai card" }])
+    h.ok(ai, ["import"])
+    assert.equal(h.card(2).was, "ai-config#1")
+    // Rollback with export --legacy, then forward again.
+    rmSync(join(ai, ".git", "job-board.migrated.json"))
+    writeFileSync(join(ai, ".git", "job-board.json"), h.ok(ai, ["export", "--legacy"]))
+    assert.match(h.ok(ai, ["import"]), /ai-config \(ai\): 0 cards, 1 already there/)
+    assert.equal(h.state().items.length, 2)
+
+    // R6: build reported Done; a new To do card for build is queued; the report fires again.
+    const R = join(one, "r.json")
+    h.ok(one, ["job-start", "build", "--report", R])
+    writeFileSync(R, JSON.stringify({ status: "done", summary: "ok" }))
+    assert.match(h.ok(one, ["job-report", "build", R]), /^3 → done/)
+    h.ok(one, ["add", "todo", "Build again later", "--job", "build"])
+    assert.match(h.ok(one, ["job-report", "build", R]), /^3 unchanged/)
+    assert.equal(h.card(4).column, "todo")
+  } finally {
+    h.done()
+  }
+})
+
+test("small points: front show is a read; the migration says 'weren't' for several boards; the test guard refuses a HOME that holds the real home", () => {
+  const h = home()
+  try {
+    const sfc = roleRepo(h)
+    const ai = h.repo("ai-config")
+    legacy(sfc, [{ id: 1, title: "one" }])
+    legacy(ai, [{ id: 2, title: "two" }])
+    const r = h.run(sfc, ["front", "show"], { SFC_AGENT_ROLE: "worker" })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(h.run(h.repo("third"), ["add", "todo", "x"]).stderr, /^board: the 0\.4 boards on this machine \(.*\) weren't on the one board yet: brought in first/m)
+    const g = spawnSync(process.execPath, ["--input-type=module", "-e", `import ${JSON.stringify(new URL("./guard.mjs", import.meta.url).href)}`], { env: { ...process.env, HOME: "/" }, encoding: "utf8" })
+    assert.equal(g.status, 2)
+    assert.match(g.stderr, /refusing to run: HOME \/ is the real home or holds it/)
   } finally {
     h.done()
   }

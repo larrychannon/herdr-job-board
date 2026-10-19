@@ -103,6 +103,7 @@ import {
   verifyCopy,
   versionOf,
   followImport,
+  importNotice,
   LEGACY_FILE,
   migrates,
   projectAt,
@@ -231,7 +232,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const legacy = legacyOf(file, env)
   if (opts.once) {
     let data = await load(file, env)
-    data.notice = legacyNotice(legacy)
+    data.notice = legacyNotice(legacy) || importNotice(data.state)
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
@@ -269,7 +270,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const color = opts.color ?? !env.NO_COLOR
   const emoji = opts.emoji ?? emojiOn(env)
   let data = await load(file, env)
-  data.notice = legacyNotice(legacy)
+  data.notice = legacyNotice(legacy) || importNotice(data.state)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
   const answers = createAnswerer({
@@ -437,7 +438,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         watchBoard()
       }
       data = await load(file, env)
-      data.notice = checkUpdate() || legacyNotice(legacy)
+      data.notice = checkUpdate() || legacyNotice(legacy) || importNotice(data.state)
       paint()
     } finally {
       loading = false
