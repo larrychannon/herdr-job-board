@@ -48,8 +48,10 @@
 // question choose one (the suggested first; only buttons on screen, so none on a card whose job
 // is blocked or one cut off above its buttons in a short pane) and the key line says "Enter to
 // send"; Enter on a chosen button still on screen (or a click on the button) sends
-// "Board card <id> (<title>): <label>" to the --origin pane with `herdr agent prompt`; o (or
-// Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
+// "Board card <id> (<tag> · <title>): <label>" with `herdr agent prompt` to the card's
+// coordinator: its owner pane while it runs, else its project's newest live coordinator, else the
+// --origin pane (after a second press when that is another project's coordinator, or the card's
+// owner is gone); o (or Other…) focuses that pane for the user to type. Presses run one at a time; a card answered
 // already asks before sending again.
 // No flicker: it draws on the alternate screen, overwrites lines in place, and only writes
 // the lines that changed. Mouse reporting (SGR 1006) is switched off again on exit, on a
@@ -88,7 +90,7 @@ import {
   reportToken,
   screenDiff,
   textWidth,
-  tokenText,
+  tokenFor,
   nextCopy,
   atLeast,
   COPY_FILES,
@@ -165,7 +167,8 @@ function compose(data, file, env, layout) {
   const workspace = env.HERDR_WORKSPACE_ID || ""
   const view = buildView(data.state, data.agents, { now, workspace })
   const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace })
-  return { drawn, token: data.error ? null : tokenText(view) }
+  // The sidebar counts this workspace's own cards (the board shows every project).
+  return { drawn, token: data.error ? null : tokenFor(data.state, data.agents, workspace) }
 }
 
 /**
@@ -233,7 +236,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (opts.once) {
     let data = await load(file, env)
     data.notice = legacyNotice(legacy) || importNotice(data.state)
-    const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
+    const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env), agents: () => data.agents })
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
@@ -273,9 +276,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   data.notice = legacyNotice(legacy) || importNotice(data.state)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
+  // Answers go by each card's owner (routeAnswer), from the agent list the pane keeps fresh.
   const answers = createAnswerer({
     file: () => file,
     origin: opts.origin,
+    agents: () => data.agents,
     env,
     now: () => clockNow(env),
     onChange: () => {

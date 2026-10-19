@@ -380,9 +380,9 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
 
     let r = pane("\x1b[C\r")
     assert.equal(r.status, 0, r.stderr)
-    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (${title}): Go`]], "one argv element; no shell ever sees it")
+    assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (board · ${title}): Go`]], "one argv element; no shell ever sees it")
     assert.ok(!existsSync(join(base, "pwned")) && !existsSync(join(base, "pwned2")), "nothing in the title ran")
-    assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString() })
+    assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString(), pane: "w9:p1", to: "coordinator (w9:p1)" })
     assert.match(r.stdout, /sent: Go · 10:30/)
 
     // Pressing again only asks; pressing twice sends again.
@@ -395,19 +395,20 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     // Other…: only focuses the coordinator; nothing is typed for the user.
     r = pane("o")
     assert.deepEqual(log().at(-1), ["agent", "focus", "w9:p1"])
-    assert.match(r.stdout, /type your answer for card 1 in the coordinator's chat/)
+    assert.match(r.stdout, /type your answer for card 1 in the chat of coordinator \(w9:p1\)/)
 
     // The coordinator is gone, blocked on a question, or not started by Herdr: one red line,
     // nothing marked sent, and never anything typed into its pane.
+    // (A pane the agent list doesn't show: nothing is tried, the card says no coordinator runs.)
     rearm()
     r = pane("\x1b[C\r", "w9:p7")
-    assert.match(r.stdout, /couldn't send: coordinator pane not found/)
+    assert.match(flat(r), /couldn't send: no board coordinator is running; start one there, or use Other…/)
     assert.equal(items()[0].sent, undefined)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, agent_status: "blocked" }] }))
     assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator is waiting on a question in its pane; answer it there, then press again/)
     writeFileSync(herdr, JSON.stringify({ agents: [{ ...agents[0], name: undefined, interactive_ready: undefined }] }))
     assert.match(flat(pane("\x1b[C\r")), /couldn't send: the coordinator isn't taking input right now \(a prompt may be open in its pane\); press again in a moment/)
-    assert.match(pane("\x1b[C\r", "").stdout, /couldn't send: no coordinator pane known/)
+    assert.match(flat(pane("\x1b[C\r", "")), /couldn't send: no board coordinator is running/)
     assert.deepEqual(typed(), [], "no send-text, no send-keys, ever")
     assert.equal(items()[0].sent, undefined)
 
@@ -417,7 +418,7 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const y = screen.findIndex((l) => l.includes("[ Not now ]"))
     const x = [...screen[y].slice(0, screen[y].indexOf("[ Not now ]"))].length + 1
     pane(`\x1b[<0;${x + 3};${y + 1}M`)
-    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (${title}): Not now`])
+    assert.deepEqual(log().at(-1), ["agent", "prompt", "w9:p1", `Board card 1 (board · ${title}): Not now`])
 
     // A hand-written board with a hostile id: refused when read, so nothing is ever sent.
     const file = join(base, ".git", "board-state", "board.json")

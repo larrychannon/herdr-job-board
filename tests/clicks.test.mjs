@@ -112,7 +112,7 @@ test("end to end, both mouse modes: a double click on card 2's row sends nothing
     const yes = screen.findIndex((l) => l.includes("[ Yes ]")) + 1
     const x = [...screen[yes - 1].slice(0, screen[yes - 1].indexOf("[ Yes ]"))].length + 2
     t.run(`mm\x1b[<0;${x};${yes}M`)
-    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (Merge PR one?): Yes"]])
+    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (home · Merge PR one?): Yes"]])
   } finally {
     t.done()
   }
@@ -265,7 +265,8 @@ test("the live pane times clicks and paints with a monotonic clock: a wall-clock
     await new Promise((r) => setTimeout(r, 3000))
     child.stdin.write(`\x1b[<0;${x};${y}M\x1b[<0;${x};${y}m`)
     for (let i = 0; i < 30 && !t.sent().length; i++) await new Promise((r) => setTimeout(r, 100))
-    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (Merge PR one?): Yes"]], "the click on a button on screen for 3 s pressed it")
+    // HOME is the repo here: the store's cards get its folder's project, "store".
+    assert.deepEqual(t.sent(), [["agent", "prompt", "w9:p1", "Board card 1 (store · Merge PR one?): Yes"]], "the click on a button on screen for 3 s pressed it")
   } finally {
     try {
       if (child && child.exitCode === null) process.kill(-child.pid, "SIGKILL")

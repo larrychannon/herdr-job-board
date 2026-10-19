@@ -503,7 +503,7 @@ test("a press in the panel: argv only, to the origin pane, once; again asks firs
     const prompts = () => t.log().filter((a) => a[0] === "agent" && a[1] === "prompt")
     const first = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r")
     assert.equal(first.status, 0, first.stderr)
-    assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (Checkout redesign mockup: approve): OK all suggestions"]])
+    assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (my · Checkout redesign mockup: approve): OK all suggestions"]])
     assert.equal(JSON.parse(readFileSync(t.file, "utf8")).items[0].sent.label, "OK all suggestions")
     const again = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r").stdout
     assert.match(again.split(/── card 1/)[1], /send again\? "OK all suggestions" was sent already/, "the note shows in the panel")
@@ -1317,7 +1317,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [])
     // Card 2 wasn't: Enter sends exactly its first button's label.
     t.pane(size, `${clickOn(t.pane(size).stdout, "Question: Which name?")}\r`)
-    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [["agent", "prompt", "w9:p1", "Board card 2 (Pick a name): Alpha"]])
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "prompt"), [["agent", "prompt", "w9:p1", "Board card 2 (my · Pick a name): Alpha"]])
   } finally {
     t.done()
   }

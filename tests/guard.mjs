@@ -31,6 +31,7 @@ if (inside(temp, account) || inside(temp, "/root") || inside(account, temp)) ref
 mkdirSync(temp, { recursive: true })
 const state = process.env.XDG_STATE_HOME ? real(process.env.XDG_STATE_HOME) : ""
 if (state && (inside(state, account) || inside(state, "/root"))) refuse(`XDG_STATE_HOME ${state} is in the real home`)
-// Role-neutral: the session running the tests may be a job's worker (SFC_AGENT_ROLE=worker).
-for (const key of Object.keys(process.env)) if (/_AGENT_ROLE$/.test(key)) delete process.env[key]
+// Role-neutral, and blind to the live Herdr: the session running the tests may be a job's worker
+// (SFC_AGENT_ROLE=worker) in a Herdr pane (HERDR_PANE_ID, HERDR_ENV=1). A test sets what it needs.
+for (const key of Object.keys(process.env)) if (/_AGENT_ROLE$/.test(key) || key.startsWith("HERDR_")) delete process.env[key]
 process.env.JOB_BOARD_TEST_SANDBOX = [...new Set([temp, home, ...(state ? [state] : [])])].join(":")

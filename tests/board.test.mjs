@@ -443,7 +443,7 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.deepEqual(log.find((a) => a[1] === "rename"), ["pane", "rename", "w9:p101", "board"])
     const run = log.find((a) => a[1] === "run")
     assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\/state\/board\.json' --origin 'w9:p1' --version '\d+\.\d+\.\d+'$/)
-    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1" } })
+    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1", at: "2026-10-13T10:30:00.000Z" } })
 
     assert.match(ok(dir, ["open"], { herdr }), /already open in pane w9:p101/)
     const after = herdrLog(herdr)
@@ -500,7 +500,7 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.equal(self.status, 0, self.stderr)
     assert.match(self.stdout, /pane w9:p101 is the board itself: nothing to open/)
     assert.deepEqual(herdrLog(herdr).slice(before).filter((a) => ["split", "run", "send-text", "rename"].includes(a[1])), [])
-    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1" } }, "the remembered pane stays")
+    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1", at: "2026-10-13T10:30:00.000Z" } }, "the remembered pane stays")
 
     assert.match(board(dir, ["open"]).stderr, /needs Herdr/)
   } finally {
@@ -542,7 +542,7 @@ test("board: no control characters reach a terminal, from the pane or the CLI", 
 
     // A board written by hand, with a C1 control: `json` escapes it.
     writeFileSync(fileOf(dir), JSON.stringify({ version: 1, next_id: 2, items: [{ id: 1, title: "csi \u009b here", column: "todo", since: "2026-10-13T10:00:00Z" }] }))
-    const json = board(dir, ["json"]).stdout
+    const json = board(dir, ["json", "--project", "all"]).stdout
     assert.ok(!json.includes("\u009b") && json.includes("\\u009b"), "C1 written as an escape")
     assert.equal(JSON.parse(json).items[0].title, "csi \u009b here", "and the JSON still reads back the same")
 

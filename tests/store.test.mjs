@@ -275,7 +275,7 @@ test("projects, project set, retag, adopt and front", () => {
     assert.equal(h.ok(h.base, ["adopt", "--project", "sfc", "--gone"], h.inHerdr(other, "w8:p2", "w8")).trim(), "nothing to adopt")
 
     // front: the calling coordinator pane.
-    assert.match(h.ok(h.base, ["front", "show"]), /no front coordinator set/)
+    assert.match(h.ok(h.base, ["front", "show"]), /no front coordinator: none set, and no pane has opened the board/)
     h.ok(sfc, ["front"], h.inHerdr(fake))
     assert.equal(h.state().front, "w4:p6")
     assert.equal(h.run(sfc, ["front"]).status, 2, "outside Herdr")
@@ -482,7 +482,8 @@ test("migration: the coordinator's hook says the repo's 0.4 board isn't in, with
     h.ok(h.repo("other"), ["add", "waiting", "Elsewhere"])
     legacy(app, [{ id: 1, title: "Old", column: "waiting" }])
     text = JSON.parse(handle(prompt, env).stdout).hookSpecificOutput.additionalContext
-    assert.match(text, /^Job board: this repo's 0\.4 board .* isn't on the one board yet.*\nJob board, cards waiting on the user .*#1 "Elsewhere"/s)
+    // "Elsewhere" is another project's card: only counted (the hooks show this coordinator's own).
+    assert.match(text, /^Job board: this repo's 0\.4 board .* isn't on the one board yet.*\nJob board: \+1 waiting in other projects \(not yours; the board shows them\)\.$/s)
     // A board of its own (JOB_BOARD_HOME) never takes the repos' boards, and says nothing about them.
     const own = join(h.base, "own-store")
     assert.match(h.ok(app, ["add", "todo", "trial"], { JOB_BOARD_HOME: own }), /^added 1 /)
@@ -851,7 +852,7 @@ test("a corrupt board is never backed up over the good ones; an archive line cut
     mkdirSync(join(h.store, "archive"), { recursive: true })
     writeFileSync(join(h.store, "archive", "2026-10.jsonl"), JSON.stringify({ id: 1, title: "earlier", column: "done" }))
     h.ok(app, ["add", "todo", "c"], { JOB_BOARD_NOW: "2026-10-12T10:00:00Z" })
-    assert.deepEqual(JSON.parse(h.ok(app, ["json", "--archive", "2026-10"])).items.map((i) => i.id), [1, 2])
+    assert.deepEqual(JSON.parse(h.ok(app, ["json", "--archive", "2026-10", "--project", "all"])).items.map((i) => i.id), [1, 2])
   } finally {
     h.done()
   }
