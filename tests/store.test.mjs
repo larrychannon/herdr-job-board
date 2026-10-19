@@ -927,12 +927,19 @@ test("write gate: a board under the real home is written only by the installed p
     const env = { HOME: h.base, JOB_BOARD_PROTECT: h.base }
     const store = join(h.store, "board.json")
     const checkout = SCRIPTS
-    const unpacked = join(h.base, "plugins", "herdr-job-board")
-    mkdirSync(unpacked, { recursive: true })
-    assert.match(writeRefusal(store, env, { version: "0.4.0", scripts: unpacked }), /is 0\.4\.0 .*older than 0\.5\.0: it writes no board under .*; for a trial, set JOB_BOARD_HOME to a scratch folder/)
+    // `herdr plugin install` clones the repo into <config>/herdr/plugins/github/<id>-<hash>/.
+    const installed = join(h.base, ".config", "herdr", "plugins", "github", "herdr-job-board-2d3b6201c876")
+    mkdirSync(installed, { recursive: true })
+    git(installed, "init", "-q")
+    assert.match(writeRefusal(store, env, { version: "0.4.0", scripts: installed }), /is 0\.4\.0 .*older than 0\.5\.0: it writes no board under .*; for a trial, set JOB_BOARD_HOME to a scratch folder/)
     assert.match(writeRefusal(store, env, { version: "0.5.0", scripts: checkout }), /isn't the installed plugin/)
     assert.equal(writeRefusal(store, { ...env, HERDR_PLUGIN_ROOT: checkout }, { version: "0.5.0", scripts: checkout }), "", "the copy Herdr runs")
-    assert.equal(writeRefusal(store, env, { version: "0.5.0", scripts: unpacked }), "", "an unpacked install")
+    assert.equal(writeRefusal(store, env, { version: "0.5.0", scripts: installed }), "", "the installed clone, outside Herdr")
+    assert.equal(writeRefusal(store, { ...env, XDG_CONFIG_HOME: join(h.base, "elsewhere") }, { version: "0.5.0", scripts: installed }), "", "HOME's config folder counts too")
+    const plain = join(h.base, "copies", "herdr-job-board")
+    mkdirSync(plain, { recursive: true })
+    assert.match(writeRefusal(store, env, { version: "0.5.0", scripts: plain }), /isn't the installed plugin/, "a folder outside Herdr's plugins is a development copy")
+    assert.match(writeRefusal(store, env, { version: "0.5.0", scripts: join(h.base, ".config", "herdr", "plugins") }), /isn't the installed plugin/, "the plugins folder itself isn't a copy")
     assert.equal(writeRefusal(join(h.base, "..", "elsewhere", "board.json"), env, { version: "0.4.0", scripts: checkout }), "", "outside the real home: free")
     // JOB_BOARD_DEV=1: a board of its own under the home, never the one board or a repo's .git.
     const dev = { ...env, JOB_BOARD_DEV: "1", JOB_BOARD_HOME: join(h.base, "trial") }
@@ -1029,6 +1036,79 @@ test("small points: front show is a read; the migration says 'weren't' for sever
     const g = spawnSync(process.execPath, ["--input-type=module", "-e", `import ${JSON.stringify(new URL("./guard.mjs", import.meta.url).href)}`], { env: { ...process.env, HOME: "/" }, encoding: "utf8" })
     assert.equal(g.status, 2)
     assert.match(g.stderr, /refusing to run: HOME \/ is the real home or holds it/)
+  } finally {
+    h.done()
+  }
+})
+
+test("write gate, end to end: the installed clone at 0.5.0 writes outside Herdr and inside it with no Herdr call; this checkout refuses with one line and exit 1", () => {
+  const h = home()
+  try {
+    // The release as Herdr installs it: a git clone in the plugins folder, its herdr-plugin.toml at 0.5.0.
+    const installed = join(h.base, ".config", "herdr", "plugins", "github", "herdr-job-board-2d3b6201c876")
+    mkdirSync(join(installed, "hooks"), { recursive: true })
+    git(installed, "init", "-q")
+    for (const f of ["board.mjs", "board-pane.mjs", "links.mjs", join("hooks", "board-hook.mjs")]) writeFileSync(join(installed, f), readFileSync(join(SCRIPTS, f)))
+    writeFileSync(join(installed, "herdr-plugin.toml"), readFileSync(join(SCRIPTS, "herdr-plugin.toml"), "utf8").replace(/^version = "[^"]*"/m, 'version = "0.5.0"'))
+    const app = h.repo("app")
+    const protect = { JOB_BOARD_PROTECT: h.base }
+    const run = (cli, args, extra) => spawnSync(process.execPath, [cli, ...args], { cwd: app, env: h.envFor({ ...protect, ...extra }), encoding: "utf8" })
+    // Outside Herdr.
+    let r = run(join(installed, "board.mjs"), ["add", "todo", "from the installed copy"])
+    assert.equal(r.status, 0, r.stderr)
+    // Inside Herdr: no `herdr` call decides it (the fake logs every call).
+    const fake = h.herdr([])
+    r = run(join(installed, "board.mjs"), ["add", "todo", "inside Herdr"], h.inHerdr(fake))
+    assert.equal(r.status, 0, r.stderr)
+    assert.deepEqual(JSON.parse(readFileSync(fake, "utf8")).log.filter((a) => a[0] === "plugin"), [], "no herdr plugin call")
+    assert.equal(h.state().items.length, 2)
+    // This checkout: refused, one line, exit 1, nothing written.
+    r = run(BOARD, ["add", "todo", "from the checkout"])
+    assert.equal(r.status, 1)
+    assert.equal(r.stderr.trim().split("\n").length, 1)
+    assert.match(r.stderr, /^board: this copy of the board is 0\.4\.0 \(.*\), older than 0\.5\.0: it writes no board under /)
+    assert.equal(h.state().items.length, 2)
+  } finally {
+    h.done()
+  }
+})
+
+test("cross-repo workers: SFC_AGENT_ROLE=worker in a repo whose job.json names another variable (or none) is still a worker; migrate honours --worktree", () => {
+  const h = home()
+  try {
+    const tool = h.repo("herdr-job-board")
+    const fake = h.herdr([{ name: "coord", pane_id: "w4:p6", workspace_id: "w4" }, { name: "board-v5", pane_id: "w4:p51", workspace_id: "w4" }])
+    const coordinator = h.inHerdr(fake)
+    const worker = h.inHerdr(fake, "w4:p51", "w4", { SFC_AGENT_ROLE: "worker" })
+    h.ok(tool, ["add", "todo", "coordinator's card"], coordinator)
+    h.ok(tool, ["add", "todo", "worker's card"], worker)
+    assert.deepEqual(h.state().items.map((i) => i.origin), ["w4:p6", ""])
+    assert.deepEqual(Object.keys(h.state().coordinators), ["w4:p6"])
+    assert.equal(h.run(tool, ["front"], worker).status, 2)
+    assert.equal(h.run(tool, ["adopt", "1"], worker).status, 2)
+    // An owner that is gone: the worker's edit doesn't take the card.
+    h.ok(tool, ["edit", "1", "--desc", "x"], h.inHerdr(h.herdr([{ pane_id: "w4:p51" }]), "w4:p51", "w4", { SFC_AGENT_ROLE: "worker" }))
+    assert.equal(h.card(1).origin, "w4:p6")
+    // Any *_AGENT_ROLE; "coordinator" is not a worker.
+    h.ok(tool, ["add", "todo", "a coordinator by role"], h.inHerdr(fake, "w4:p52", "w4", { OTHER_AGENT_ROLE: "coordinator" }))
+    assert.equal(h.card(3).origin, "w4:p52")
+
+    // migrate with --worktree: the worktree's repo names JOB_ROLE (not *_AGENT_ROLE); the worker runs from a plain folder.
+    const h2 = home()
+    try {
+      const sfc = h2.repo("sfc")
+      mkdirSync(join(sfc, ".claude"))
+      writeFileSync(join(sfc, ".claude", "job.json"), JSON.stringify({ role_env: "JOB_ROLE" }))
+      legacy(sfc, [{ id: 1, title: "one" }])
+      const plain = join(h2.base, "plain")
+      mkdirSync(plain)
+      const r = h2.run(plain, ["job-start", "x", "--worktree", sfc], h2.inHerdr(h2.herdr([]), "w4:p51", "w4", { JOB_ROLE: "worker" }))
+      assert.equal(r.status, 1, r.stderr)
+      assert.match(r.stderr, /on the one board yet, and a worker doesn't bring it in; nothing was changed/)
+      assert.ok(!existsSync(h2.file) && existsSync(join(sfc, ".git", "job-board.json")))
+    } finally {
+      h2.done()
+    }
   } finally {
     h.done()
   }

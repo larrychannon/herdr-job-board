@@ -71,11 +71,12 @@
 // coordinator or a person brings it in first (ids kept; one that would be renumbered stops the
 // write with the `import` to run); a worker's write stops. A write that creates the store brings
 // in every 0.4 board on the machine first, and `import` shows (and re-tags) it until looked at.
-// Not for a board of its own (JOB_BOARD_HOME, _FILE). A worker is a job's pane: JOB_AGENT_ROLE,
-// or the variable its repo's .claude/job.json names (role_env), set to anything but
-// "coordinator". Only the installed plugin at 0.5.0 or later writes a board under your home: a
-// checkout or an older copy refuses (a trial: JOB_BOARD_HOME on a scratch folder; one under your
-// home with JOB_BOARD_DEV=1).
+// Not for a board of its own (JOB_BOARD_HOME, _FILE). A worker is a job's pane: any variable
+// named *_AGENT_ROLE (JOB_AGENT_ROLE, SFC_AGENT_ROLE, …) or the one its repo's .claude/job.json
+// names (role_env), set to anything but "coordinator". Only the installed plugin (the copy in
+// Herdr's plugins folder, or HERDR_PLUGIN_ROOT) at 0.5.0 or later writes a board under your home:
+// a checkout or an older copy refuses (a trial: JOB_BOARD_HOME on a scratch folder; one under
+// your home with JOB_BOARD_DEV=1).
 // Writes take a lock (mkdir <file>.lock, with the owner's pid), then write a temp file (mode
 // 0600) and rename it over the board, so readers never see half a file and racing writers don't
 // lose each other's items. The first write of a day keeps a copy in backups/ (7 kept). Text is
@@ -500,26 +501,23 @@ function withLock(file, fn) {
 
 const insidePath = (path, root) => path === root || path.startsWith(root + sep)
 
-/** Whether a folder is in a git checkout (a .git above it). */
-function inCheckout(dir) {
-  for (let d = resolve(dir); ; d = dirname(d)) {
-    if (existsSync(join(d, ".git"))) return true
-    if (dirname(d) === d) return false
-  }
+/** Herdr's plugin folders: <config dir>/plugins, from HERDR_CONFIG_DIR, XDG_CONFIG_HOME, HOME and the account's home. */
+function pluginDirs(env) {
+  const configs = [env.HERDR_CONFIG_DIR, env.XDG_CONFIG_HOME && join(env.XDG_CONFIG_HOME, "herdr"), env.HOME && join(env.HOME, ".config", "herdr"), join(userInfo().homedir, ".config", "herdr")]
+  return [...new Set(configs.filter(Boolean).map((c) => realOr(join(c, "plugins"))))]
 }
 
 /**
- * Whether `scripts` is the copy Herdr runs as the plugin: HERDR_PLUGIN_ROOT (a plugin action or
- * the board pane), a folder that isn't a git checkout (what `herdr plugin install` unpacks), or
- * the plugin_root `herdr plugin list` names.
+ * Whether `scripts` is the copy Herdr runs as the plugin: HERDR_PLUGIN_ROOT (a plugin action, the
+ * board pane), or a folder inside Herdr's plugin folder (`herdr plugin install` clones the repo
+ * to <config>/herdr/plugins/github/herdr-job-board-<hash>/). Decided from paths alone: no Herdr
+ * call, so it holds outside Herdr and while Herdr is slow or down. Anything else (a checkout, a
+ * worktree, `herdr plugin link` of one) is a development copy.
  */
 function installedCopy(env, scripts) {
   if (env.HERDR_PLUGIN_ROOT && sameFile(env.HERDR_PLUGIN_ROOT, scripts)) return true
-  if (!inCheckout(scripts)) return true
-  if (!inHerdr(env)) return false
-  const plugins = herdr(["plugin", "list", "--json"], env, { quiet: true })?.result?.plugins
-  const root = Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID)?.plugin_root : ""
-  return Boolean(root) && sameFile(root, scripts)
+  const here = realOr(scripts)
+  return pluginDirs(env).some((dir) => insidePath(here, dir) && here !== dir)
 }
 
 /**
@@ -781,11 +779,14 @@ export function roleEnvNames(dir) {
 }
 
 /**
- * The writer's role: "" for a coordinator or a person, else the role a job's variable gives it
- * (any of the role variables for `dirs` set to anything but "coordinator").
+ * The writer's role: "" for a coordinator or a person, else the role a job's variable gives it:
+ * any variable named *_AGENT_ROLE (a job started from another repo carries that repo's, e.g.
+ * SFC_AGENT_ROLE in a herdr-job-board worktree), or a role_env of `dirs`' repos, set to anything
+ * but "coordinator".
  */
 export function roleOf(env, dirs = [process.cwd()]) {
-  for (const name of new Set(dirs.flatMap(roleEnvNames))) {
+  const names = [...Object.keys(env).filter((k) => /_AGENT_ROLE$/.test(k)), ...dirs.flatMap(roleEnvNames)]
+  for (const name of new Set(names)) {
     const role = clean(env[name])
     if (role && role !== "coordinator") return role
   }
@@ -4021,7 +4022,7 @@ export function importNotice(state, cli = CLI()) {
  */
 export const migrates = (env) => !env.JOB_BOARD_FILE && !env.JOB_BOARD_HOME
 
-export function migrate(file, cwd, env, now, { write, say }) {
+export function migrate(file, cwd, env, now, { write, say, dirs = [cwd] }) {
   if (!migrates(env)) return
   const here = projectAt(cwd, env)
   const legacy = here.git ? join(here.git, LEGACY_FILE) : ""
@@ -4047,7 +4048,7 @@ export function migrate(file, cwd, env, now, { write, say }) {
   const many = fresh && paths.length > 1
   const what = fresh ? `the 0.4 board${many ? "s" : ""} on this machine (${paths.join(", ")})` : `this repo's 0.4 board (${pending})`
   const isnt = many ? "aren't" : "isn't"
-  const me = { ...writerOf(env, [cwd]), id: here }
+  const me = { ...writerOf(env, dirs), id: here }
   if (me.role) {
     throw new Error(`${what} ${isnt} on the one board yet, and a ${me.role} doesn't bring ${many ? "them" : "it"} in; nothing was changed. The coordinator runs: ${CLI()} import --dry-run, then ${CLI()} import`)
   }
@@ -4226,7 +4227,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     }
     // A repo whose 0.4 board isn't on the one board yet: writes bring it in first, reads say so.
     const writes = WRITES.has(command) && !(command === "front" && rest[0] === "show")
-    if (writes || READS.has(command)) migrate(file, process.cwd(), env, now, { write: writes, say: err })
+    const dirs = [process.cwd(), ...(opts.worktree !== undefined ? [resolve(opts.worktree)] : [])]
+    if (writes || READS.has(command)) migrate(file, process.cwd(), env, now, { write: writes, say: err, dirs })
     // Every write notes a coordinator, and knows this writer's project by its name on the board.
     const change = (fn) => {
       const result = updateBoard(
