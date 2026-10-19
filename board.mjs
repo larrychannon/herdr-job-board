@@ -568,6 +568,23 @@ export function managedCopy(dir, env = process.env) {
   return pluginDirs(env).some((d) => insidePath(here, d) && here !== d)
 }
 
+/** A copy's plugin id, from its herdr-plugin.toml; "" when unreadable. */
+export function pluginIdOf(dir) {
+  try {
+    return /^id\s*=\s*"([^"]+)"/m.exec(readFileSync(join(dir, "herdr-plugin.toml"), "utf8"))?.[1] ?? ""
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Whether `dir` is an install of this board that Herdr made: a managedCopy whose manifest says it
+ * is this plugin (a sibling plugin's folder, herdr-job-board-qa-<hash> say, is not).
+ */
+export function boardCopy(dir, env = process.env) {
+  return managedCopy(dir, env) && pluginIdOf(dir) === PLUGIN_ID
+}
+
 /**
  * Whether `scripts` is the copy Herdr runs as the plugin: HERDR_PLUGIN_ROOT (a plugin action, the
  * board pane), or a copy Herdr installed (managedCopy). Decided from paths alone: no Herdr call,
@@ -1161,6 +1178,8 @@ function pluginEntry(json) {
   const plugins = json?.result?.plugins
   return Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID) || null : null
 }
+/** Every folder `herdr plugin list` names for any plugin (plugin_root, source.managed_path). */
+const listedPaths = (json) => (Array.isArray(json?.result?.plugins) ? json.result.plugins.flatMap((p) => [p.plugin_root, p.source?.managed_path]).filter((d) => typeof d === "string" && d) : [])
 // `herdr plugin list` may take this long; slower counts as "Herdr didn't say".
 export const ROOT_TIMEOUT_MS = 5000
 let installedCache
@@ -1168,8 +1187,9 @@ let installedCache
 /**
  * The plugin as Herdr has it installed, from `herdr plugin list --json`: { root (plugin_root, the
  * folder Herdr runs it from), version (the copy's own, read from that folder), listed (what Herdr
- * lists), entry }, or null outside Herdr, when it isn't installed or Herdr didn't answer. Asked
- * once a process.
+ * lists), kind (source.kind: "github" for an install, "local" for `herdr plugin link`), paths
+ * (every folder Herdr lists, for any plugin), entry }, or null outside Herdr, when it isn't
+ * installed or Herdr didn't answer. Asked once a process.
  */
 export function installedPlugin(env = process.env) {
   if (installedCache !== undefined) return installedCache
@@ -1179,9 +1199,14 @@ export function installedPlugin(env = process.env) {
   try {
     json = r.status === 0 ? JSON.parse(r.stdout) : null
   } catch {}
-  return (installedCache = rootOf(pluginEntry(json)))
+  return (installedCache = rootOf(json))
 }
-const rootOf = (entry) => (entry?.plugin_root ? { root: entry.plugin_root, version: versionOf(entry.plugin_root), listed: entry.version ?? "", entry } : entry ? { root: "", version: "", listed: entry.version ?? "", entry } : null)
+function rootOf(json) {
+  const entry = pluginEntry(json)
+  if (!entry) return null
+  const root = entry.plugin_root || ""
+  return { root, version: root ? versionOf(root) : "", listed: entry.version ?? "", kind: entry.source?.kind ?? "", paths: listedPaths(json), entry }
+}
 
 /** installedPlugin, without blocking (for the pane, which caches it itself). */
 export function installedPluginAsync(env = process.env) {
@@ -1189,7 +1214,7 @@ export function installedPluginAsync(env = process.env) {
   return new Promise((done) => {
     execFile(herdrBin(env), ["plugin", "list", "--json"], { env, timeout: Number(env.JOB_BOARD_ROOT_TIMEOUT_MS) || ROOT_TIMEOUT_MS }, (error, stdout) => {
       try {
-        done(error ? null : rootOf(pluginEntry(JSON.parse(stdout))))
+        done(error ? null : rootOf(JSON.parse(stdout)))
       } catch {
         done(null)
       }
@@ -1198,12 +1223,23 @@ export function installedPluginAsync(env = process.env) {
 }
 
 /**
- * The installed copy a copy in `dir` (at `version`) should hand over to, or null: Herdr's
- * installed root when it is another folder, `dir` is a copy Herdr installed too (an older
- * install folder; a development copy is left alone) and the root's version is newer.
+ * Whether Herdr's root is an install of this board that Herdr made (from GitHub, in its plugins
+ * folder), not a checkout linked with `herdr plugin link` (source.kind "local").
  */
-export function newerRoot(installed, dir, version, env = process.env) {
-  if (!installed?.root || !installed.version || sameFile(installed.root, dir) || !managedCopy(dir, env)) return null
+export function installedRoot(installed, env = process.env) {
+  return Boolean(installed?.root) && (!installed.kind || installed.kind === "github") && boardCopy(installed.root, env)
+}
+
+/**
+ * The installed copy a copy in `dir` (at `version`) should hand over to, or null: Herdr's root
+ * when it is an install Herdr made (installedRoot: never a linked checkout), another folder, its
+ * version is newer, and `dir` is this board installed by Herdr too (an older install folder) or,
+ * with `asPlugin`, a copy of this board that was started as the plugin (a pane `open` started
+ * from a linked checkout). A development copy started by hand is left alone.
+ */
+export function newerRoot(installed, dir, version, env = process.env, { asPlugin = false } = {}) {
+  if (!installedRoot(installed, env) || !installed.version || sameFile(installed.root, dir)) return null
+  if (!boardCopy(dir, env) && !(asPlugin && pluginIdOf(dir) === PLUGIN_ID)) return null
   return atLeast(installed.version, version) && installed.version !== version ? installed : null
 }
 
@@ -1849,12 +1885,15 @@ const cardsIn = (blocks, from, to) => blocks.slice(from, to).reduce((n, b) => n 
  * The blocks that show in `height` lines starting at block `offset`, with "↑ N above" and
  * "↓ N more" lines at the edges, so no card is ever hidden without being counted. The offset is
  * clamped: the last page is full, not one card and empty space. When no card fits whole, the
- * first one is shown cut, with a line under it that says so (`cut`), so nothing of a card (its
+ * first one is shown cut, with a line under it that says so (`cut`, `cutNote`), so nothing of a card (its
  * buttons, say) is hidden without a word; when not even one line of it fits, it is counted in
  * "↓ N more". Every card is either above, shown or below: above + shown cards + below is always
  * the total.
  */
-export function viewport(blocks, height, offset = 0) {
+export const CUT_NOTE = "card cut off: open it for the rest"
+// Selecting text (mouse capture off), the open card is already open: the rest is in its details.
+export const CUT_NOTE_SELECT = "card cut off: Enter shows the rest in its details"
+export function viewport(blocks, height, offset = 0, cutNote = CUT_NOTE) {
   const n = blocks.length
   if (!Number.isFinite(height)) return { lines: linesOf(blocks, 0, n), offset: 0, maxOffset: 0, page: Math.max(1, n), shown: n, above: 0, below: 0 }
   let maxOffset = 0
@@ -1886,7 +1925,7 @@ export function viewport(blocks, height, offset = 0) {
   const lines = []
   if (top) lines.push([{ t: `↑ ${above} above`, s: "dim" }])
   lines.push(...linesOf(blocks, o, o + shown).slice(0, height - top - bottom))
-  if (bottom) lines.push([{ t: `↓ ${[below ? `${below} more` : "", cut ? "card cut off: open it for the rest" : ""].filter(Boolean).join(" · ")}`, s: "dim" }])
+  if (bottom) lines.push([{ t: `↓ ${[below ? `${below} more` : "", cut ? cutNote : ""].filter(Boolean).join(" · ")}`, s: "dim" }])
   return { ...result, lines }
 }
 
@@ -2628,13 +2667,14 @@ export function renderBoard(view, opts = {}) {
   }
   // Lines a section really uses in `h` lines (whole cards only, so often fewer).
   const used = (section, blocks, h) => (blocks.length ? 1 + viewport(blocks, h - 1, offsetOf(section, blocks)).lines.length : Math.min(h, section === "waiting" || form === "row" ? 1 : 2))
+  const cutNote = selecting ? CUT_NOTE_SELECT : CUT_NOTE
   const place = (section, blocks, h) => {
-    let v = viewport(blocks, h, offsetOf(section, blocks))
+    let v = viewport(blocks, h, offsetOf(section, blocks), cutNote)
     // The selected card stays in view: scroll the least that shows it.
     if (interactive && section === scroll.selected && scroll.card && Number.isFinite(h)) {
       const b = blocks.findIndex((x) => x.keys.includes(scroll.card))
-      if (b >= 0 && b < v.offset) v = viewport(blocks, h, b)
-      while (b >= 0 && b >= v.offset + v.page && v.offset < v.maxOffset) v = viewport(blocks, h, v.offset + 1)
+      if (b >= 0 && b < v.offset) v = viewport(blocks, h, b, cutNote)
+      while (b >= 0 && b >= v.offset + v.page && v.offset < v.maxOffset) v = viewport(blocks, h, v.offset + 1, cutNote)
     }
     const blockCards = blocks.map((b) => b.keys)
     sections[section] = {
@@ -3626,9 +3666,17 @@ const shellQuote = (text) => `'${String(text).replace(/'/g, `'\\''`)}'`
  * `--version` says which version runs, so `open`, `restart` and `doctor` can tell an older one
  * apart from this one, even when an update rewrote the same folder.
  */
-function paneCommand(file, origin) {
-  return `node ${shellQuote(PANE_SCRIPT)} --board ${shellQuote(file)} --origin ${shellQuote(origin)} --version ${shellQuote(VERSION)}`
+function paneCommand(file, origin, asPlugin = false) {
+  return `node ${shellQuote(PANE_SCRIPT)} --board ${shellQuote(file)} --origin ${shellQuote(origin)} --version ${shellQuote(VERSION)}${asPlugin ? " --as-plugin" : ""}`
 }
+
+/**
+ * Whether this copy runs as Herdr's plugin: a plugin action (HERDR_PLUGIN_ROOT, a linked checkout
+ * too) or an install Herdr made. The board it starts says so (--as-plugin), so that a board
+ * started from a linked checkout is brought back to the installed copy later (restart, or the
+ * pane's own check), while one started by hand from a checkout is left alone.
+ */
+const asPluginHere = (env) => Boolean(env.HERDR_PLUGIN_ROOT && sameFile(env.HERDR_PLUGIN_ROOT, SCRIPTS)) || boardCopy(SCRIPTS, env)
 
 /**
  * What runs in the board's pane: "board" (with the path of its script, its --board, --origin and
@@ -3641,7 +3689,7 @@ function paneState(pane, env) {
     const argv = (p.argv || []).map(String)
     const script = argv.find((a) => a.endsWith("board-pane.mjs"))
     const arg = (name) => (argv.indexOf(name) >= 0 ? (argv[argv.indexOf(name) + 1] ?? "") : "")
-    if (script) return { state: "board", script: resolve(p.cwd || "/", script), board: arg("--board"), origin: arg("--origin"), version: arg("--version") }
+    if (script) return { state: "board", script: resolve(p.cwd || "/", script), board: arg("--board"), origin: arg("--origin"), version: arg("--version"), asPlugin: argv.includes("--as-plugin") }
   }
   const shell = (p) => /^-?(ba|z|da|fi|k)?sh$/.test(basename(String(p.name || p.argv?.[0] || "")))
   const idle = procs.length && procs.every(shell)
@@ -3711,7 +3759,7 @@ function openPane(fileArg, opts, env, out) {
       // Restarted meanwhile, as this copy for this pane: it is what open would start.
       if (state === "current") [state, meanwhile] = ["board", true]
     }
-    if (state === "shell") herdr(["pane", "run", pane, paneCommand(file, target)], env)
+    if (state === "shell") herdr(["pane", "run", pane, paneCommand(file, target, asPluginHere(env))], env)
     out(
       state === "busy"
         ? `pane ${pane} is the board's, but something else runs in it now; left alone`
@@ -3735,7 +3783,7 @@ function openPane(fileArg, opts, env, out) {
     pane = split?.result?.pane?.pane_id
     if (!pane) throw new Error("herdr pane split returned no pane id")
     herdr(["pane", "rename", pane, PANE_LABEL], env, { quiet: true })
-    herdr(["pane", "run", pane, paneCommand(file, target)], env)
+    herdr(["pane", "run", pane, paneCommand(file, target, asPluginHere(env))], env)
     out(`board opened in pane ${pane}, right of ${target}`)
   }
   // Always written: the pane that opened the board last is the default front coordinator (frontOf).
@@ -3902,14 +3950,27 @@ function boardPanes(env) {
 const stale = (p, dir = SCRIPTS, version = VERSION) =>
   p.state === "board" && ((sameFile(p.script, join(dir, "board-pane.mjs")) && (p.version ? p.version !== version : atLeast(version, "0.4.0"))) || !existsSync(p.script) || wasImported(p.board))
 
-/** A board pane running a copy Herdr installed that isn't the one in `dir` (an older install folder). */
-const oldInstall = (p, dir, env) => p.state === "board" && existsSync(p.script) && !sameFile(p.script, join(dir, "board-pane.mjs")) && managedCopy(dirname(p.script), env)
+/**
+ * A board pane running another copy of this board than the one in `dir` that belongs to the
+ * installed copy: an older install folder Herdr made, or a checkout the board was started from
+ * as the plugin (--as-plugin: a plugin action while it was linked). A board started by hand from
+ * a checkout is not one.
+ */
+const oldInstall = (p, dir, env) => {
+  if (p.state !== "board" || !existsSync(p.script) || sameFile(p.script, join(dir, "board-pane.mjs"))) return false
+  const copy = dirname(p.script)
+  return boardCopy(copy, env) || (Boolean(p.asPlugin) && pluginIdOf(copy) === PLUGIN_ID)
+}
 
-/** Whether this copy is the one Herdr runs: HERDR_PLUGIN_ROOT, else `herdr plugin list`'s root. */
+/**
+ * Whether this copy is the installed one Herdr runs: an install Herdr made (never a linked
+ * checkout) that is HERDR_PLUGIN_ROOT, else `herdr plugin list`'s root.
+ */
 function isRoot(env) {
+  if (!boardCopy(SCRIPTS, env)) return false
   if (env.HERDR_PLUGIN_ROOT) return sameFile(env.HERDR_PLUGIN_ROOT, SCRIPTS)
-  const root = installedPlugin(env)?.root
-  return Boolean(root) && sameFile(root, SCRIPTS)
+  const installed = installedPlugin(env)
+  return installedRoot(installed, env) && sameFile(installed.root, SCRIPTS)
 }
 
 /**
@@ -3980,7 +4041,9 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
     }
     try {
       // A 0.4 board's pane whose board file was imported into the store: it starts on the store.
-      herdr(["pane", "run", p.pane, paneCommand(wasImported(p.board) ? boardPath(process.cwd(), { ...env, JOB_BOARD_FILE: "" }) : p.board, p.origin)], env)
+      // The plugin's board stays the plugin's: started by a plugin action or from an install.
+      const asPlugin = asPluginHere(env) || Boolean(p.asPlugin) || (p.script ? boardCopy(dirname(p.script), env) : false)
+      herdr(["pane", "run", p.pane, paneCommand(wasImported(p.board) ? boardPath(process.cwd(), { ...env, JOB_BOARD_FILE: "" }) : p.board, p.origin, asPlugin)], env)
     } catch (e) {
       fail(p, `couldn't start board ${VERSION}: ${e.message}`)
       continue
@@ -4425,10 +4488,14 @@ function doctor(env, out) {
   say(hooked ? "ok" : "opt", hooked ? `Claude Code hooks (in ${hooked})` : "Claude Code hooks not set up (only for a Claude Code coordinator): print them with", ...(hooked ? [] : [`${cli} hooks`]))
   // Hooks that name an install folder other than the installed one: Herdr 0.9.5 installs each
   // update to a new folder and removes the old one once nothing uses it.
+  const oldHooks = []
   for (const f of settings) {
     const dirs = [...(readText(f) ?? "").matchAll(/([^\s'"\\]+)\/hooks\/board-hook\.mjs/g)].map((m) => m[1])
     const old = [...new Set(dirs)].filter((d) => root && managedCopy(d, env) && !sameFile(d, root))
-    for (const d of old) say("fix", `the hooks in ${f} run ${d}, an older install folder: put in the ones \`hooks\` prints now (or the job skill's job-board.mjs, which finds the installed copy)`, `${cli} hooks`)
+    for (const d of old) {
+      oldHooks.push({ dir: d, file: f })
+      say("fix", `the hooks in ${f} run ${d}, an older install folder: put in the ones \`hooks\` prints now (or the job skill's job-board.mjs, which finds the installed copy)`, `${cli} hooks`)
+    }
   }
 
   // Open panes, against the installed copy (this one when it isn't installed).
@@ -4437,7 +4504,7 @@ function doctor(env, out) {
   const panes = boardPanes(env)
   // A board on an older install folder (Herdr 0.9.5 puts each install in a new one) counts as
   // old even at the same version: `restart` from the installed copy moves it over.
-  const moved = (p) => Boolean(root) && oldInstall(p, refDir, env)
+  const moved = (p) => installedRoot(installed, env) && oldInstall(p, refDir, env)
   const old = panes.filter((p) => stale(p, refDir, refVersion) || moved(p))
   for (const p of panes.filter((p) => p.state === "board" && !old.includes(p) && !sameFile(p.script, join(refDir, "board-pane.mjs")))) {
     say("note", `pane ${p.pane} (tab ${p.tab}) runs another copy: ${p.script}`)
@@ -4456,24 +4523,32 @@ function doctor(env, out) {
 
   // Install folders Herdr no longer uses: printed with the command to remove them, never removed.
   // Not required: the exit code stays as it is.
-  for (const o of oldFolders(env, root, panes)) {
-    if (o.managed) say("note", `${o.dir}: an older install of the board (${o.version || "version unknown"}); Herdr removes it itself once nothing uses it`)
-    else if (o.used.length) say("fix", `${o.dir}: an old install of the board (${o.version || "version unknown"}) that pane ${o.used.join(", ")} still runs`, `${cli} restart   (then: rm -rf ${shellQuote(o.dir)})`)
-    else say("fix", `${o.dir}: an old install of the board (${o.version || "version unknown"}) that Herdr no longer uses`, `rm -rf ${shellQuote(o.dir)}`)
+  // A folder that panes or hooks still run is removed only after they move: the fix says so first.
+  for (const o of oldFolders(env, installed, panes)) {
+    const hooks = [...new Set(oldHooks.filter((h) => insidePath(realOr(h.dir), realOr(o.dir))).map((h) => h.file))]
+    const users = [o.used.length ? `pane ${o.used.join(", ")}` : "", hooks.length ? `the hooks in ${hooks.join(", ")}` : ""].filter(Boolean)
+    const first = [o.used.length ? `${cli} restart` : "", hooks.length ? `${cli} hooks (put them in ${hooks.join(", ")})` : ""].filter(Boolean)
+    const what = `${o.dir}: an ${o.managed ? "older" : "old"} install of the board (${o.version || "version unknown"})`
+    if (o.managed) say("note", `${what}; Herdr removes it itself once nothing uses it`)
+    else if (users.length) say("fix", `${what} that ${users.join(" and ")} still run${users.length === 1 && !hooks.length ? "s" : ""}`, `${first.join(", and ")} first, then: rm -rf ${shellQuote(o.dir)}`)
+    else say("fix", `${what} that Herdr no longer uses`, `rm -rf ${shellQuote(o.dir)}`)
   }
   out(lines.join("\n"))
   return missing ? 1 : 0
 }
 
 /**
- * Copies of the board in Herdr's plugin folders other than the installed `root`: [{ dir,
+ * Copies of the board in Herdr's plugin folders other than the installed root: [{ dir,
  * version, managed, used }]. Herdr 0.9.3's plugins/github/herdr-job-board-<hash> folders, which
  * 0.9.5 leaves behind; an older plugins/github-installations/…/<n>/checkout, which Herdr keeps
  * while it is in use and removes itself (managed: true); used: the board panes that run it.
- * Looked for only in the plugins folder that holds `root`; nothing when Herdr didn't say.
+ * Only folders whose manifest says they are this board (id herdr-job-board: not a sibling
+ * plugin's herdr-job-board-qa-<hash>), and none that Herdr lists for any plugin. Looked for only
+ * in the plugins folder that holds an installed root (installedRoot); nothing when Herdr didn't say.
  */
-function oldFolders(env, root, panes) {
-  if (!root) return []
+function oldFolders(env, installed, panes) {
+  if (!installedRoot(installed, env)) return []
+  const root = installed.root
   const list = (dir) => {
     try {
       return readdirSync(dir).filter((n) => !n.startsWith("."))
@@ -4494,8 +4569,11 @@ function oldFolders(env, root, panes) {
     }
   }
   const rootReal = realOr(root)
+  // Herdr's own folders, for this plugin or any other: never "old".
+  const listed = (installed.paths || []).map(realOr)
+  const overlaps = (a, b) => insidePath(a, b) || insidePath(b, a)
   return found
-    .filter((o) => existsSync(join(o.dir, "herdr-plugin.toml")) && !insidePath(rootReal, realOr(o.dir)) && !insidePath(realOr(o.dir), rootReal))
+    .filter((o) => pluginIdOf(o.dir) === PLUGIN_ID && !overlaps(rootReal, realOr(o.dir)) && !listed.some((l) => overlaps(l, realOr(o.dir))))
     .map((o) => ({ ...o, version: versionOf(o.dir), used: panes.filter((p) => p.state === "board" && insidePath(realOr(p.script), realOr(o.dir))).map((p) => p.pane) }))
 }
 

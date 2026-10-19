@@ -982,11 +982,15 @@ test("managedCopy and newerRoot: an older install folder follows a newer install
     const plugins = join(h.base, ".config", "herdr", "plugins")
     const old = join(plugins, "github", "herdr-job-board-2d3b6201c876")
     const at = (n) => join(plugins, "github-installations", "herdr-job-board-2d3b6201c876", n, "checkout")
-    for (const d of [old, at("1-0"), at("2-0")]) mkdirSync(d, { recursive: true })
+    const toml = (d, id = "herdr-job-board") => {
+      mkdirSync(d, { recursive: true })
+      writeFileSync(join(d, "herdr-plugin.toml"), `id = "${id}"\nversion = "0.5.2"\n`)
+    }
+    for (const d of [old, at("1-0"), at("2-0")]) toml(d)
     assert.ok(managedCopy(old, env) && managedCopy(at("1-0"), env), "both layouts are copies Herdr installed")
     assert.ok(!managedCopy(plugins, env), "the plugins folder itself isn't")
     assert.ok(!managedCopy(SCRIPTS, env), "a checkout isn't")
-    const root = { root: at("2-0"), version: "0.5.2" }
+    const root = { root: at("2-0"), version: "0.5.2", kind: "github" }
     assert.equal(newerRoot(root, old, "0.5.1", env), root)
     assert.equal(newerRoot(root, at("1-0"), "0.5.1", env), root, "a new <n>")
     assert.equal(newerRoot(root, at("2-0"), "0.5.1", env), null, "the root itself")
@@ -994,6 +998,13 @@ test("managedCopy and newerRoot: an older install folder follows a newer install
     assert.equal(newerRoot(root, old, "0.6.0", env), null, "older root")
     assert.equal(newerRoot(root, SCRIPTS, "0.5.1", env), null, "a development copy")
     assert.equal(newerRoot(null, old, "0.5.1", env), null, "Herdr didn't say")
+    // Review of b461f74: a linked checkout as the root is never followed; a sibling plugin's copy never follows.
+    assert.equal(newerRoot({ ...root, kind: "local" }, old, "0.5.1", env), null, "a root linked with herdr plugin link")
+    assert.equal(newerRoot({ root: SCRIPTS, version: "9.9.9", kind: "" }, old, "0.5.1", env), null, "a root outside Herdr's plugins folder")
+    const sibling = join(plugins, "github-installations", "herdr-job-board-qa-0123456789ab", "1-0", "checkout")
+    toml(sibling, "herdr-job-board-qa")
+    assert.equal(newerRoot(root, sibling, "0.5.1", env), null, "another plugin's install folder")
+    assert.equal(newerRoot(root, SCRIPTS, "0.5.1", env, { asPlugin: true }), root, "a checkout started as the plugin (--as-plugin) follows")
   } finally {
     h.done()
   }

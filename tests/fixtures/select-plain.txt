@@ -43,7 +43,7 @@ DONE · 1 today ▸
 
 
 
-mouse: select · drag to select text, one card at a time · selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy …
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
 ===== m (mouse capture off) · 200x60 =====
 Job board · all projects · 3 need you                                                                                                                                                              10:30
 
@@ -104,4 +104,4 @@ DONE · 1 today ▸
 
 
 
-mouse: select · drag to select text, one card at a time · selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit

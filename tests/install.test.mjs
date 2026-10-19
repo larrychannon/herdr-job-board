@@ -576,7 +576,7 @@ test("Herdr 0.9.5's layout: a pane on the old 0.9.3 folder hands over to the ins
       run = runs(t).find((a) => a[2] === "w9:p5")
     }
     assert.ok(run, "the installed copy's pane-restart started its board in the same pane")
-    assert.equal(run[3], `node '${first}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '9.9.9'`)
+    assert.equal(run[3], `node '${first}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '9.9.9' --as-plugin`)
     const log = readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
     assert.deepEqual([log.at(-1).pane, log.at(-1).ok, log.at(-1).version], ["w9:p5", true, "9.9.9"], "logged")
     assert.ok(existsSync(L.old), "nothing deleted")
@@ -592,7 +592,7 @@ test("Herdr 0.9.5's layout: a pane on the old 0.9.3 folder hands over to the ins
     for (let i = 0; i < 100 && !live.exited; i++) await pause(100)
     assert.ok(live.exited, "the pane on the previous <n> handed over too")
     for (run = null; !run; await pause(100)) run = runs(t).find((a) => a[2] === "w9:p5")
-    assert.match(run[3], new RegExp(`^node '${second.replace(/[.]/g, "\\.")}/board-pane\\.mjs' .*--version '9\\.9\\.10'$`))
+    assert.match(run[3], new RegExp(`^node '${second.replace(/[.]/g, "\\.")}/board-pane\\.mjs' .*--version '9\\.9\\.10' --as-plugin$`))
   } finally {
     live?.kill()
     t.done()
@@ -654,7 +654,7 @@ test("Herdr 0.9.5's layout: restart and doctor from the installed copy move pane
     assert.match(r.stdout, new RegExp(`^fix {3}pane w9:p6 \\(tab w9:t6\\) runs ${at(VERSION)} from ${at(older)}, not the installed copy \\(${at(VERSION)} at ${at(root)}\\)$`, "m"))
     assert.doesNotMatch(r.stdout, /pane w9:p7/)
     assert.match(r.stdout, new RegExp(`^ {6}node '${at(root)}/board\\.mjs' restart {3}\\(or node '${at(root)}/board\\.mjs' open, from the pane left of it\\)$`, "m"))
-    assert.match(r.stdout, new RegExp(`^fix {3}${at(L.old)}: an old install of the board \\(0\\.4\\.0\\) that pane w9:p5 still runs\\n {6}node '.*' restart {3}\\(then: rm -rf '${at(L.old)}'\\)$`, "m"))
+    assert.match(r.stdout, new RegExp(`^fix {3}${at(L.old)}: an old install of the board \\(0\\.4\\.0\\) that pane w9:p5 still runs\\n {6}node '.*' restart first, then: rm -rf '${at(L.old)}'$`, "m"))
     assert.match(r.stdout, new RegExp(`^note {2}${at(older)}: an older install of the board \\(${at(VERSION)}\\); Herdr removes it itself once nothing uses it$`, "m"))
     assert.doesNotMatch(r.stdout, new RegExp(`rm -rf '${at(older)}'`), "Herdr's own <n> folders are Herdr's to remove")
     assert.ok(existsSync(L.old) && existsSync(older), "doctor deletes nothing")
@@ -696,12 +696,135 @@ test("Herdr 0.9.5's layout: restart and open typed from an old install folder ru
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stderr, new RegExp(`is an old install folder: running it in the installed copy, 9\\.9\\.9 at ${root.replace(/[.]/g, "\\.")}`))
     assert.match(r.stdout, /pane w9:p5: board 9\.9\.9 started/)
-    assert.match(runs(t)[0][3], new RegExp(`^node '${root.replace(/[.]/g, "\\.")}/board-pane\\.mjs' .*--version '9\\.9\\.9'$`))
+    assert.match(runs(t)[0][3], new RegExp(`^node '${root.replace(/[.]/g, "\\.")}/board-pane\\.mjs' .*--version '9\\.9\\.9' --as-plugin$`))
     // From the installed copy itself, or with an installed copy that isn't newer: runs here.
     assert.doesNotMatch(spawnSync(process.execPath, [join(root, "board.mjs"), "restart"], { cwd: t.repo, env: t.env, encoding: "utf8" }).stderr, /old install folder/)
     L.installAt(root, "0.0.1")
     writeFileSync(join(root, "herdr-plugin.toml"), readFileSync(join(root, "herdr-plugin.toml"), "utf8").replace(/^version = "[^"]*"/m, 'version = "0.0.1"'))
     assert.doesNotMatch(spawnSync(process.execPath, [join(L.old, "board.mjs"), "restart"], { cwd: t.repo, env: t.env, encoding: "utf8" }).stderr, /old install folder/)
+  } finally {
+    t.done()
+  }
+})
+
+// --- review of b461f74 ---------------------------------------------------------------------------
+
+/** A development checkout of the board at `version`, outside Herdr's plugins folder (`herdr plugin link` of it). */
+function devCheckout(t, name, version) {
+  const dir = join(t.base, name)
+  mkdirSync(dir, { recursive: true })
+  cpSync(t.plugin, dir, { recursive: true })
+  const toml = join(dir, "herdr-plugin.toml")
+  writeFileSync(toml, readFileSync(toml, "utf8").replace(/^version = "[^"]*"/m, `version = "${version}"`))
+  return dir
+}
+const linkAt = (t, dir, version) => t.setHerdr((s) => (s.plugins = [{ ...t.installed, version, plugin_root: dir, manifest_path: join(dir, "herdr-plugin.toml"), source: { kind: "local", path: dir } }]))
+
+test("a linked dev checkout as Herdr's plugin_root is never followed: not by a pane, not by restart or open from an old install folder, not by restart run from it", { skip: !hasScript && "needs util-linux script" }, async () => {
+  const t = setup()
+  const L = layout095(t)
+  let live
+  try {
+    const inst = L.copy(L.inst("3898869-0"))
+    const dev = devCheckout(t, "dev-board", "9.9.9")
+    linkAt(t, dev, "9.9.9")
+    // A pane on the install folder: no hand-over to the newer linked checkout.
+    live = livePaneAt(t, inst)
+    await pause(3500)
+    assert.equal(live.exited, false, `still the installed copy's pane: ${words(live).slice(-200)}`)
+    assert.doesNotMatch(words(live), /is installed/)
+    assert.deepEqual(runs(t), [])
+    live.kill()
+    // restart typed from the install folder runs here, not in the checkout.
+    t.setHerdr((s) => (s.panes.find((p) => p.pane_id === "w9:p5").running = `node '${inst}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '${VERSION}'`))
+    let r = spawnSync(process.execPath, [join(inst, "board.mjs"), "restart"], { cwd: t.repo, env: t.env, encoding: "utf8" })
+    assert.equal(r.status, 0, r.stderr)
+    assert.doesNotMatch(r.stderr, /old install folder/)
+    assert.deepEqual(runs(t), [])
+    // restart run from the linked checkout (as its plugin action would): the install folder's pane stays.
+    r = spawnSync(process.execPath, [join(dev, "board.mjs"), "restart"], { cwd: t.repo, env: { ...t.env, HERDR_PLUGIN_ROOT: dev }, encoding: "utf8" })
+    assert.equal(r.status, 0, r.stderr)
+    assert.deepEqual(runs(t), [], "no managed pane moved onto the checkout")
+  } finally {
+    live?.kill()
+    t.done()
+  }
+})
+
+test("restart from the installed root brings back a board started as the plugin from a once-linked checkout; one started by hand from a checkout stays", () => {
+  const t = setup()
+  const L = layout095(t)
+  try {
+    const root = L.copy(L.inst("3898869-0"))
+    L.installAt(root)
+    const dev = devCheckout(t, "dev-board", VERSION)
+    const board = (id, dir, extra = "") => ({ pane_id: id, tab_id: `w9:t${id.slice(4)}`, workspace_id: "w9", label: "board", running: `node '${dir}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '${VERSION}'${extra}` })
+    t.setHerdr((s) => s.panes.push(board("w9:p5", dev, " --as-plugin"), board("w9:p6", dev)))
+    const doctor = spawnSync(process.execPath, [join(root, "board.mjs"), "doctor"], { cwd: t.repo, env: t.env, encoding: "utf8" })
+    assert.match(doctor.stdout, /^fix {3}pane w9:p5 \(tab w9:t5\) runs .* from .*\/dev-board, not the installed copy/m)
+    assert.match(doctor.stdout, /^note {2}pane w9:p6 \(tab w9:t6\) runs another copy: .*\/dev-board\/board-pane\.mjs$/m)
+    const r = spawnSync(process.execPath, [join(root, "board.mjs"), "restart"], { cwd: t.repo, env: t.env, encoding: "utf8" })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /pane w9:p5: board [\d.]+ started \(it ran [\d.]+ from .*\/dev-board\)/)
+    assert.deepEqual(runs(t).map((a) => a[2]), ["w9:p5"], "the hand-started checkout pane is left alone")
+    assert.equal(runs(t)[0][3], `node '${root}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '${VERSION}' --as-plugin`)
+  } finally {
+    t.done()
+  }
+})
+
+test("a board started as the plugin from a linked checkout follows a newer installed root by itself", { skip: !hasScript && "needs util-linux script" }, async () => {
+  const t = setup()
+  const L = layout095(t)
+  let live
+  try {
+    const dev = devCheckout(t, "dev-board", VERSION)
+    const root = L.copy(L.inst("4100000-0"), "9.9.9")
+    L.installAt(root, "9.9.9")
+    if (!existsSync(t.store)) assert.equal(t.run(["add", "todo", "Something"]).status, 0)
+    t.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board" }))
+    const cmd = `stty cols 100 rows 30; exec node '${dev}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '${VERSION}' --as-plugin --interval 1`
+    const child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: t.repo, env: { ...t.env, HERDR_PANE_ID: "w9:p5", JOB_BOARD_UPDATE_SETTLE_MS: "1000", JOB_BOARD_ROOT_CHECK_MS: "300" }, detached: true })
+    live = { exited: false, kill: () => { try { if (!live.exited) process.kill(-child.pid, "SIGKILL") } catch {} } }
+    child.on("exit", () => (live.exited = true))
+    for (let i = 0; i < 100 && !live.exited; i++) await pause(100)
+    assert.ok(live.exited, "handed over")
+    let run
+    for (let i = 0; i < 50 && !run; i++) {
+      await pause(100)
+      run = runs(t).find((a) => a[2] === "w9:p5")
+    }
+    assert.match(run?.[3] ?? "", new RegExp(`^node '${root.replace(/[.]/g, "\\.")}/board-pane\\.mjs' .*--version '9\\.9\\.9' --as-plugin$`))
+  } finally {
+    live?.kill()
+    t.done()
+  }
+})
+
+test("doctor's old folders are this board by its manifest id: a sibling plugin's herdr-job-board-qa-<hash> gets no rm -rf; a folder hooks still run gets the hooks fix first", () => {
+  const t = setup()
+  const L = layout095(t)
+  try {
+    const root = L.copy(L.inst("3898869-0"))
+    L.installAt(root)
+    // A sibling plugin (id herdr-job-board-qa) installed by Herdr 0.9.3, listed by Herdr.
+    const qa = L.copy(join(L.plugins, "github", "herdr-job-board-qa-0123456789ab"), "0.1.0")
+    const toml = join(qa, "herdr-plugin.toml")
+    writeFileSync(toml, readFileSync(toml, "utf8").replace(/^id = "herdr-job-board"/m, 'id = "herdr-job-board-qa"'))
+    // Another copy with that id that Herdr doesn't list: still not this board's.
+    const qaOld = L.copy(join(L.plugins, "github", "herdr-job-board-ffffffffffff"), "0.1.0")
+    writeFileSync(join(qaOld, "herdr-plugin.toml"), readFileSync(toml, "utf8"))
+    t.setHerdr((s) => s.plugins.push({ plugin_id: "herdr-job-board-qa", version: "0.1.0", plugin_root: qa, enabled: true, source: { kind: "github", managed_path: qa } }))
+    // The board's own 0.9.3 folder, which the hooks still run.
+    L.copy(L.old, "0.4.0")
+    mkdirSync(join(t.home, ".claude"), { recursive: true })
+    writeFileSync(join(t.home, ".claude", "settings.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: `node '${L.old}/hooks/board-hook.mjs'` }] }] } }))
+    const r = spawnSync(process.execPath, [join(root, "board.mjs"), "doctor"], { cwd: t.repo, env: t.env, encoding: "utf8" })
+    const at = (d) => d.replace(/[.]/g, "\\.")
+    assert.doesNotMatch(r.stdout, /herdr-job-board-qa-0123456789ab|herdr-job-board-ffffffffffff/, "nothing about the sibling plugin's folders")
+    assert.match(r.stdout, new RegExp(`^fix {3}${at(L.old)}: an old install of the board \\(0\\.4\\.0\\) that the hooks in .*/home/\\.claude/settings\\.json still run\\n {6}node '${at(root)}/board\\.mjs' hooks \\(put them in .*settings\\.json\\) first, then: rm -rf '${at(L.old)}'$`, "m"))
+    assert.doesNotMatch(r.stdout, new RegExp(`^ {6}rm -rf '${at(L.old)}'$`, "m"), "never the bare rm while hooks run it")
+    assert.ok(existsSync(qa) && existsSync(qaOld) && existsSync(L.old))
   } finally {
     t.done()
   }

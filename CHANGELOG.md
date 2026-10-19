@@ -10,24 +10,31 @@ the wide layout.
   `herdr plugin update`), not 0.9.3's `plugins/github/herdr-job-board-<hash>/`, which stays
   behind. A pane watching only its own folder never saw the update. Now a board pane also asks
   Herdr where the plugin is installed (`herdr plugin list --json` → `plugin_root`, every 30 s,
-  never waiting for it, 5 s timeout); when that is another folder with a newer version and the
-  pane runs a copy Herdr installed (not a checkout), it hands over to that copy in the same pane,
+  never waiting for it, 5 s timeout); when that is an install Herdr made (from GitHub, in its
+  plugins folder: never a checkout linked with `herdr plugin link`) in another folder with a newer
+  version, and the pane runs this board as Herdr installed it (by its manifest id, so not a
+  sibling plugin such as `herdr-job-board-qa`) or was started as the plugin (`--as-plugin`, which
+  `open` and `restart` now add), it hands over to that copy in the same pane,
   with every 0.4.0 rule: the settle time, the check of the new copy (it parses, says its version,
   draws a frame), no bare shell, the wait for a busy prompt, the restart log. The new copy's own
   `pane-restart` starts it.
 - **`restart`** from the installed copy also restarts board panes running an older install folder
-  (even at the same version); `restart` and `open` typed from an old install folder run in the
-  newer installed copy instead.
+  (even at the same version), and boards started as the plugin from a checkout that was linked
+  then; a board started by hand from a checkout is left alone. `restart` and `open` typed from an
+  old install folder run in the newer installed copy instead; run from a linked checkout, they
+  move nothing onto it.
 - **`doctor`** lists panes that run a copy other than the installed one (`restart`, or `open`
   from the pane left of it), and old install folders: 0.9.3's `plugins/github/herdr-job-board-<hash>`
   with the exact `rm -rf` to remove it (printed, never run; after `restart` when a pane still runs
-  it), and older `<n>` folders as a note (Herdr removes those itself). They don't change the exit
-  code.
+  it, after `hooks` when your Claude Code hooks still run it), and older `<n>` folders as a note
+  (Herdr removes those itself). Only folders whose manifest id is `herdr-job-board` and that Herdr
+  lists for no plugin count. They don't change the exit code.
 - **The write gate** accepts the new layout at any `<n>` (a test for `github-installations/<id>/<n>/checkout`).
 - **Selecting text** (`m`, mouse capture off): the pane draws one column (the inbox) at any width,
   so a drag across the pane selects one card's lines, not two columns'; the open card shows its
   whole title, description and question (no `…`); the key line starts "selecting text: m gives the
-  mouse and the columns back". `m` again brings the wide layout back.
+  mouse and the columns back", with no message in front of it. A card taller than its section
+  says "card cut off: Enter shows the rest in its details". `m` again brings the wide layout back.
 
 A 0.5.0 pane can't follow by itself: run `open` once in its tab (or `restart` from the installed
 copy); from 0.5.1 on, panes follow.

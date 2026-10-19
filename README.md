@@ -139,7 +139,7 @@ itself out again at once.
 | `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
 | `t` | go to the job's tab |
-| `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); the key line starts `selecting text: m gives the mouse and the columns back` |
+| `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); a card taller than its section says `card cut off: Enter shows the rest in its details`; the key line starts `selecting text: m gives the mouse and the columns back` |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
 | mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `q`, `r` | quit; redraw |
@@ -375,9 +375,12 @@ folder name: the plugin action (the key binding) runs from `plugin_root`, and so
 
 An open board pane (0.4.0 or newer) sees a new version in its own folder, and (0.5.1 or newer)
 also asks Herdr every 30 seconds where the plugin is installed (`herdr plugin list --json`, with
-a 5-second timeout; the pane never waits for it). When that is another folder with a newer
-version, and the pane runs a copy Herdr installed (a checkout is left alone), that copy is the new
-one. The pane waits until the new copy has stood still for 5 seconds (an update writes several
+a 5-second timeout; the pane never waits for it). When that is an install Herdr made (from
+GitHub, in its plugins folder; never a checkout linked with `herdr plugin link`) in another folder
+with a newer version, and the pane runs this board as Herdr installed it (its manifest id is
+`herdr-job-board`) or was started as the plugin (`--as-plugin` on its command line, which `open`
+and `restart` add when they run as the plugin), that copy is the new one. A board started by hand
+from a checkout is left alone. The pane waits until the new copy has stood still for 5 seconds (an update writes several
 files), checks it (its files parse, its `version` says that version, and its pane draws a frame of
 this board outside Herdr, which links every import) and only then restarts itself with it, in the
 same pane, with the same board and coordinator: the new copy's own `pane-restart` starts it. It
@@ -400,7 +403,8 @@ A pane from before 0.5.1 only watches its own folder, so under Herdr 0.9.5 it do
 update (and one from before 0.4.0 can't restart itself at all): run `open` once from the pane
 left of it, or `node "$BOARD" restart`. `restart` restarts every board pane, in every workspace,
 that runs an older version of the installed board, a copy whose files are gone, or (run from the
-installed copy) an older install folder, even at the same version; `doctor` lists them. Typed from
+installed copy) an older install folder, even at the same version, or a checkout the board was
+started from as the plugin while it was linked; `doctor` lists them. Typed from
 an old install folder, `restart` and `open` run in the newer installed copy instead. `restart`
 looks at each pane again right before typing `q` into it, and types it only into a board still
 stale; it leaves alone a pane with no board file to start again, one whose board was quit
@@ -410,8 +414,11 @@ for that tab's pane.
 
 `doctor` also lists the install folders Herdr no longer uses: 0.9.3's
 `plugins/github/herdr-job-board-<hash>` with the exact `rm -rf` to remove it (after `restart`
-when a pane still runs it), and older `<n>` folders as a note, since Herdr removes those itself.
-It prints the command and never removes anything.
+when a pane still runs it, and after `hooks` when your Claude Code hooks still run it), and older
+`<n>` folders as a note, since Herdr removes those itself. A folder counts only when its
+`herdr-plugin.toml` says `id = "herdr-job-board"` and Herdr lists it for no plugin, so a sibling
+plugin's `herdr-job-board-qa-<hash>` is never one. It prints the command and never removes
+anything.
 
 The key binding and the sidebar token don't change after an update. The hooks name a path (see
 the hooks section): under Herdr 0.9.5 that path changes with each update, and `doctor` says when

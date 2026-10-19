@@ -754,7 +754,7 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
     r = t.pane([], "t")
     assert.match(r.stdout, /this card has no job, so no tab/)
     // m flips the footer's mouse mode (the pane also switches mouse reporting; see the pty test).
-    assert.match(t.pane([], "m").stdout.trimEnd().split("\n").at(-1), /mouse: select · drag to select text/)
+    assert.match(t.pane([], "m").stdout.trimEnd().split("\n").at(-1), /^selecting text: m mouse back/)
   } finally {
     t.done()
   }
@@ -799,6 +799,26 @@ test("mouse capture off (m): one column at any width, so a drag selects one card
   }
 })
 
+test("mouse capture off (m), a card taller than its section: the cut line says Enter shows the rest, and the key line comes first (no message pushes it aside)", () => {
+  const t = setup({ agents, tabs })
+  try {
+    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A very long card", "--desc", "Word ".repeat(700).trim(), "--ask", "Read it")
+    for (const [width, height] of [[160, 30], [120, 30]]) {
+      const r = t.pane(["--width", String(width), "--height", String(height)], "m")
+      assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /↓ card cut off: Enter shows the rest in its details/, `${width}x${height}`)
+      assert.doesNotMatch(r.stdout, /open it for the rest/)
+      const keys = r.stdout.trimEnd().split("\n").at(-1)
+      assert.match(keys, /^selecting text: m gives the mouse and the columns back/, `${width}x${height}: ${keys}`)
+      assert.doesNotMatch(keys, /…/)
+      // Enter: the details show the card, and scroll (the rest is there).
+      assert.match(t.pane(["--width", String(width), "--height", String(height)], "m\r").stdout, /── card 1 /)
+    }
+  } finally {
+    t.done()
+  }
+})
+
 test("the live pane in a terminal: mouse capture off and on with m, OSC 52 only on c, all restored on exit", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
   const t = setup()
   try {
@@ -824,7 +844,7 @@ test("the live pane in a terminal: mouse capture off and on with m, OSC 52 only 
     }
     assert.deepEqual(marks.sort((a, b) => a[0] - b[0]).map((m) => m[1]), ["on", "off", "copy", "on", "off", "leave"])
     assert.deepEqual(decode52(out), ["https://docs.example/notes"])
-    assert.match(out, /mouse: select/)
+    assert.match(out, /selecting text: m mouse back/)
   } finally {
     t.done()
   }

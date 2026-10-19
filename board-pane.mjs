@@ -3,7 +3,7 @@
 // board file changes, the pane is resized or a key is pressed. It only reads the board;
 // board.mjs writes it.
 //
-//   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
+//   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>] [--version V] [--as-plugin]
 //   node board-pane.mjs --once [--width N] [--height N] [--layout wide|inbox|compact] [--color] [--emoji] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
 // `board.mjs open` starts it in a split right of the calling pane. The layout follows the
@@ -114,7 +114,7 @@ import {
   importNotice,
   installedPluginAsync,
   LEGACY_FILE,
-  managedCopy,
+  boardCopy,
   newerRoot,
   migrates,
   projectAt,
@@ -126,7 +126,7 @@ const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "" }
+  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "", asPlugin: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
@@ -135,6 +135,8 @@ function parse(argv) {
     else if (a === "--no-color") opts.color = false
     else if (a === "--emoji") opts.emoji = true
     else if (a === "--no-emoji") opts.emoji = false
+    // Started as Herdr's plugin (board.mjs open from a plugin action or an install).
+    else if (a === "--as-plugin") opts.asPlugin = true
     else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame", "--layout", "--version"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
@@ -197,7 +199,8 @@ async function perform(action, ctx) {
   if (action.type === "mouse") {
     ctx.mouse = !ctx.mouse
     ctx.write(ctx.mouse ? MOUSE_ON : MOUSE_OFF)
-    return ctx.mouse ? "mouse: board" : "mouse: select · drag to select text, one card at a time"
+    // Selecting: the key line says it already, and how to get back; a message would push it aside.
+    return ctx.mouse ? "mouse: board" : null
   }
   const entry = ctx.drawn?.entries?.[action.key]
   if (!entry) return null
@@ -369,8 +372,9 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   // An update rewrites the plugin's folder in place (Herdr 0.9.3), or puts the new copy in a new
   // folder (0.9.5: plugins/github-installations/<id>/<n>/checkout, a new <n> each time): this
   // pane still runs the code it started with. It asks Herdr where the plugin is installed
-  // (`herdr plugin list`, every ROOT_CHECK_MS, never waiting for it); when that is another folder
-  // with a newer version and this pane runs a copy Herdr installed (not a checkout), that copy
+  // (`herdr plugin list`, every ROOT_CHECK_MS, never waiting for it); when that is an install
+  // Herdr made (never a linked checkout) in another folder with a newer version, and this pane
+  // runs this board as Herdr installed it (or was started as the plugin: --as-plugin), that copy
   // is the new one, else this folder. Each refresh reads its version and the size and time of
   // its files. Once a new
   // version has stood still for UPDATE_SETTLE_MS (a half-written update keeps changing), the new
@@ -400,7 +404,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   let rootAt = -Infinity
   let asking = false
   const rootEvery = Number(env.JOB_BOARD_ROOT_CHECK_MS) || ROOT_CHECK_MS
-  const watchRoot = env.HERDR_ENV === "1" && managedCopy(here, env)
+  // Only a board Herdr installed, or one started as the plugin (from a checkout linked then).
+  const watchRoot = env.HERDR_ENV === "1" && (boardCopy(here, env) || opts.asPlugin)
   const askRoot = () => {
     if (!watchRoot || asking || clock() - rootAt < rootEvery) return
     asking = true
@@ -426,7 +431,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
   const checkUpdate = () => {
     askRoot()
-    const dir = newerRoot(installed, here, VERSION, env)?.root || here
+    const dir = newerRoot(installed, here, VERSION, env, { asPlugin: opts.asPlugin })?.root || here
     const now = versionOf(dir)
     if (!now || now === VERSION) {
       update = null
