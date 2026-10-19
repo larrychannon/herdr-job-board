@@ -66,8 +66,11 @@
 // board.json (JOB_BOARD_HOME is another folder for it, JOB_BOARD_FILE another file; a 0.4 file
 // given there is read as it is and written back in the new shape). Each card has a project (its
 // repo, by the git common dir, so worktrees count as their repo; outside git, the folder, or
-// "home" for ~), an owner (`origin`: the coordinator pane that wrote it) and a workspace. The
-// first command in a repo with a 0.4 board, while the store is empty, imports that board.
+// "home" for ~), an owner (`origin`: the coordinator pane that wrote it) and a workspace. A repo
+// whose 0.4 board (.git/job-board.json) isn't in yet: a read there says so; a write there by a
+// coordinator or a person brings it in first (ids kept; one that would be renumbered stops the
+// write with the `import` to run); a worker's write stops. A write that creates the store brings
+// in every 0.4 board on the machine first. Not for a board of its own (JOB_BOARD_HOME, _FILE).
 // Writes take a lock (mkdir <file>.lock, with the owner's pid), then write a temp file (mode
 // 0600) and rename it over the board, so readers never see half a file and racing writers don't
 // lose each other's items. The first write of a day keeps a copy in backups/ (7 kept). Text is
@@ -81,7 +84,7 @@
 
 import { execFile, spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
-import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { appendFileSync, chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { homedir, hostname, tmpdir } from "node:os"
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -153,6 +156,12 @@ export const MIGRATED_FILE = "job-board.migrated.json"
  * `job-board.migrated.json` is beside it. A pane started for it reads the store instead.
  */
 export const wasImported = (file) => Boolean(file) && basename(file) === LEGACY_FILE && !existsSync(file) && existsSync(join(dirname(file), MIGRATED_FILE))
+
+/**
+ * The board a pane shows: its file, or the store once that file is a 0.4 board that `import`
+ * moved into it (a pane started on it before the update follows the cards).
+ */
+export const followImport = (file, env = process.env) => (!env.JOB_BOARD_FILE && wasImported(file) ? boardPath(process.cwd(), env) : file)
 
 /** The pane's title: the repo's name for a 0.4 board file, "all projects" for the store. */
 export function repoName(file) {
@@ -295,6 +304,7 @@ export function setProject(state, ref, opts) {
   state.projects = Object.fromEntries(Object.entries(state.projects).map(([n, v]) => [n === name ? to : n, v]))
   for (const item of state.items) if (item.project === name) item.project = to
   for (const c of Object.values(state.coordinators)) if (c?.project === name) c.project = to
+  for (const e of state.imports) if (e?.project === name) e.project = to
   return to
 }
 
@@ -483,7 +493,21 @@ function withLock(file, fn) {
   }
 }
 
+/**
+ * Under the test harness (JOB_BOARD_TEST_SANDBOX, set by tests/guard.mjs): a path the board
+ * writes, moves or imports must be inside one of its folders, so no test can touch a real
+ * repo's board. Returns the path.
+ */
+export function sandboxed(path) {
+  const roots = String(process.env.JOB_BOARD_TEST_SANDBOX || "").split(":").filter(Boolean)
+  if (!roots.length) return path
+  const full = join(realOr(dirname(resolve(path))), basename(path))
+  if (!roots.some((r) => full.startsWith(r + sep))) throw new Error(`test sandbox: refusing to touch ${full}: outside ${roots.join(", ")}`)
+  return path
+}
+
 function writeBoard(file, state) {
+  sandboxed(file)
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
   writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 })
   renameSync(tmp, file)
@@ -503,15 +527,43 @@ function dailyBackup(file, now) {
   const dir = join(sideDir(file), "backups")
   const name = `board-${dateOf(now)}.json`
   if (existsSync(join(dir, name))) return
-  copyFileSync(file, join(privateDir(dir), name))
-  chmodSync(join(dir, name), 0o600)
+  // Through a temp file: a disk that fills up mid-copy leaves no half backup that stops the
+  // day's retry. The caller has read the board already, so a corrupt one is never kept.
+  const tmp = join(privateDir(dir), `.${name}.${process.pid}.tmp`)
+  copyFileSync(file, tmp)
+  chmodSync(tmp, 0o600)
+  renameSync(tmp, join(dir, name))
   const daily = readdirSync(dir).filter((f) => /^board-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
   for (const old of daily.slice(0, -KEEP_BACKUPS)) rmSync(join(dir, old), { force: true })
 }
 
-/** Done cards older than KEEP_DONE_MS move to archive/YYYY-MM.jsonl (the month they were done), one line each. */
+/** The Done cards old enough to be archived. */
+const dueForArchive = (state, now) => state.items.filter((i) => i.column === "done" && now - new Date(i.since) >= KEEP_DONE_MS)
+
+/** Whether a file ends with a line break (or is empty or missing). */
+function endsWithNewline(path) {
+  let fd
+  try {
+    fd = openSync(path, "r")
+    const { size } = fstatSync(fd)
+    if (!size) return true
+    const last = Buffer.alloc(1)
+    readSync(fd, last, 0, 1, size - 1)
+    return last[0] === 10
+  } catch {
+    return true
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+/**
+ * Done cards older than KEEP_DONE_MS move to archive/YYYY-MM.jsonl (the month they were done),
+ * one line each. A card a job report finished stays in `reports`, so the same report applied
+ * again (a wait script firing late) adds no second card.
+ */
 function archiveDone(state, file, now) {
-  const old = state.items.filter((i) => i.column === "done" && now - new Date(i.since) >= KEEP_DONE_MS)
+  const old = dueForArchive(state, now)
   if (!old.length) return
   const dir = privateDir(join(sideDir(file), "archive"))
   const months = new Map()
@@ -519,7 +571,12 @@ function archiveDone(state, file, now) {
     const month = /^\d{4}-\d{2}/.exec(item.since)?.[0] || dateOf(now).slice(0, 7)
     months.set(month, [...(months.get(month) || []), JSON.stringify(item)])
   }
-  for (const [month, lines] of months) appendFileSync(join(dir, `${month}.jsonl`), `${lines.join("\n")}\n`, { mode: 0o600 })
+  for (const [month, lines] of months) {
+    const path = join(dir, `${month}.jsonl`)
+    // A line cut short by a full disk is ended first, so the next card doesn't run onto it.
+    appendFileSync(path, `${endsWithNewline(path) ? "" : "\n"}${lines.join("\n")}\n`, { mode: 0o600 })
+  }
+  for (const item of old) if (item.reported) state.reports[item.reported] = { id: item.id, at: now.toISOString() }
   const gone = new Set(old)
   state.items = state.items.filter((i) => !gone.has(i))
 }
@@ -554,12 +611,16 @@ function prune(state, now) {
  * also takes the day's backup (the first write of a day), archives old Done cards and prunes.
  */
 export function updateBoard(file, change, now = new Date()) {
+  sandboxed(file)
   privateDir(dirname(file))
+  // A 0.4 board file (a pane on it before the import) gets no archive or backups beside it:
+  // they would stay behind in .git when it is imported.
+  const legacy = basename(file) === LEGACY_FILE
   return withLock(file, () => {
-    dailyBackup(file, now)
     const state = readBoard(file)
+    if (!legacy) dailyBackup(file, now)
     const result = change(state)
-    archiveDone(state, file, now)
+    if (!legacy) archiveDone(state, file, now)
     prune(state, now)
     writeBoard(file, state)
     return result
@@ -599,19 +660,26 @@ const jobItem = (items, slug) =>
   items.findLast((i) => i.job === slug && i.column === "doing") || items.findLast((i) => i.job === slug && i.column !== "done")
 
 /**
- * The cards a job slug can mean for this writer (`me`: { pane, project }): this pane's cards
- * first, then this project's, then any. Slugs are per project, so the same slug open in two
- * other projects is ambiguous: an error that lists both ids.
+ * The cards a job slug can mean for this writer (`me`: { pane, project }): this pane's cards,
+ * else this project's; the first of the two that has the job open (not Done), else the first
+ * with any card of it. `any` (move, done, edit, rm, whose ownership is checked after) then
+ * looks in every project: slugs are per project, so the same slug open in two other projects is
+ * an error that lists both ids. job-start and job-report never take another project's card.
  */
-export function jobScope(items, slug, me) {
+export function jobScope(items, slug, me, { any = true } = {}) {
   if (!me) return items
   const mine = items.filter((i) => i.job === slug)
-  for (const group of [mine.filter((i) => me.pane && i.origin === me.pane), mine.filter((i) => i.project === me.project)]) if (group.length) return group
-  const open = mine.filter((i) => i.column !== "done")
-  if (new Set(open.map((i) => i.project)).size > 1) {
-    throw new Error(`job "${slug}" is open in several projects (${open.map((i) => `${i.id} in ${i.project}`).join(", ")}); use the card's id`)
+  const groups = [mine.filter((i) => me.pane && i.origin === me.pane), mine.filter((i) => i.project === me.project)]
+  const withOpen = groups.find((g) => g.some((i) => i.column !== "done"))
+  if (withOpen) return withOpen
+  if (any) {
+    const open = mine.filter((i) => i.column !== "done")
+    if (new Set(open.map((i) => i.project)).size > 1) {
+      throw new Error(`job "${slug}" is open in several projects (${open.map((i) => `${i.id} in ${i.project}`).join(", ")}); use the card's id`)
+    }
+    if (open.length) return mine.filter((i) => i.project === open[0].project)
   }
-  return mine
+  return groups.find((g) => g.length) ?? (any ? mine : [])
 }
 
 export function findItem(state, ref, me = null) {
@@ -651,12 +719,12 @@ export function noteCoordinator(state, me, now) {
  * from another board can't silently change another project's card.
  */
 export function checkOwner(state, item, me, projectOpt) {
-  if (projectOpt !== undefined) {
+  if (item.project === me.project || (me.pane && item.origin === me.pane)) return
+  if (projectOpt != null) {
     const want = projectRef(state, projectOpt)
     if (want === item.project) return
     throw usage(`card ${item.id} belongs to ${item.project}, not ${clean(projectOpt) || '""'}`)
   }
-  if (item.project === me.project || (me.pane && item.origin === me.pane)) return
   throw usage(`card ${item.id} belongs to ${item.project} (${item.origin ? `owner ${item.origin}` : "no owner"}); add --project ${item.project} to change it`)
 }
 
@@ -2853,15 +2921,17 @@ export async function deliver(action, item, origin, env = process.env) {
  * Button presses, one at a time. A press on a card that is still sending is ignored, so a
  * double click sends once; a card answered already asks "send again?" first (sendDecision).
  * Every failure becomes a note on the card; nothing here can stop the pane. `notes` maps a
- * card's key to the line shown on it.
+ * card's key to the line shown on it. `file` may be a function: the pane's board file can change
+ * (a 0.4 file imported into the one board).
  */
 export function createAnswerer({ file, origin = "", env = process.env, now = () => new Date(), send = deliver, onChange = () => {} }) {
+  const fileOf = typeof file === "function" ? file : () => file
   const notes = {}
   const sending = new Set()
   let confirm = null
   let chain = Promise.resolve()
   const run = async (action) => {
-    const item = readBoard(file).items.find((i) => i.id === action.id)
+    const item = readBoard(fileOf()).items.find((i) => i.id === action.id)
     if (!item || item.column !== "waiting") return
     if (action.type === "send") {
       const decision = sendDecision(item, action.label, confirm, now().getTime())
@@ -2884,7 +2954,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
     }
     delete notes[action.key]
     try {
-      markSent(file, item.id, action.label, now())
+      markSent(fileOf(), item.id, action.label, now())
     } catch (e) {
       notes[action.key] = { t: `sent, but couldn't note it on the card: ${clean(e.message)}`, s: "blocked" }
     }
@@ -2974,7 +3044,7 @@ function openPane(fileArg, opts, env, out) {
   // 0.4 board, if any, the first use imports.
   const cwd = env.HERDR_PLUGIN_ID ? me.foreground_cwd || me.cwd || process.cwd() : process.cwd()
   const file = fileArg || boardPath(cwd, env)
-  autoImport(file, cwd, env, new Date(), out)
+  if (!fileArg) migrate(file, cwd, env, new Date(), { write: true, say: out })
   const tab = me.tab_id
   const share = Number(opts.share ?? 0.3)
   if (!(share > 0.05 && share < 0.95)) throw usage("--share is the board's part of the width, e.g. 0.3")
@@ -2992,17 +3062,19 @@ function openPane(fileArg, opts, env, out) {
     pane = panes.find((p) => p.tab_id === tab && p.label === PANE_LABEL && p.pane_id !== target)?.pane_id || null
   }
   if (pane) {
-    let { state, script, origin, version } = paneState(pane, env)
+    let { state, script, origin, version, board } = paneState(pane, env)
     // Another copy of the board runs there (an older install, a moved checkout), an older
     // version of this one (an update rewrites the plugin's folder in place, so the path is the
     // same), or one that sends its answers to another pane: quit it with its `q` key and start
     // this one, so one `open` switches the pane over.
     const otherCopy = state === "board" && !sameFile(script, PANE_SCRIPT)
     const older = state === "board" && !otherCopy && version !== VERSION
-    const otherOrigin = state === "board" && !otherCopy && !older && origin !== target
+    // A board started on a repo's 0.4 file (before the import) moves to the one board.
+    const oldFile = (b) => !env.JOB_BOARD_FILE && basename(b || "") === LEGACY_FILE
+    const otherOrigin = state === "board" && !otherCopy && !older && (origin !== target || oldFile(board))
     let meanwhile = false
     if (otherCopy || older || otherOrigin) {
-      state = quitBoard(pane, env, (s) => !sameFile(s.script, PANE_SCRIPT) || s.version !== VERSION || s.origin !== target)
+      state = quitBoard(pane, env, (s) => !sameFile(s.script, PANE_SCRIPT) || s.version !== VERSION || s.origin !== target || oldFile(s.board))
       // Restarted meanwhile, as this copy for this pane: it is what open would start.
       if (state === "current") [state, meanwhile] = ["board", true]
     }
@@ -3016,7 +3088,9 @@ function openPane(fileArg, opts, env, out) {
             ? `board switched to this copy in pane ${pane}`
             : older
               ? `board updated to ${VERSION} in pane ${pane} (it ran ${version || "a version before 0.4.0"})`
-              : otherOrigin
+              : otherOrigin && oldFile(board) && origin === target
+                ? `board restarted in pane ${pane} on the one board (it showed ${board})`
+                : otherOrigin
                 ? `board restarted in pane ${pane}; its answers now go to ${target}`
                 : `board restarted in pane ${pane}`,
     )
@@ -3167,11 +3241,12 @@ function boardPanes(env) {
 
 /**
  * A board pane that runs an older version of the copy in `dir` (an update rewrote its folder in
- * place, so the path is the same), or a copy whose files are gone. A pane running another copy
- * that is still there (a checkout, say) is not stale: `open` in its tab switches it, on purpose.
+ * place, so the path is the same), a copy whose files are gone, or a board started on a repo's
+ * 0.4 file that was imported since. A pane running another copy that is still there (a
+ * checkout, say) is not stale: `open` in its tab switches it, on purpose.
  */
 const stale = (p, dir = SCRIPTS, version = VERSION) =>
-  p.state === "board" && ((sameFile(p.script, join(dir, "board-pane.mjs")) && (p.version ? p.version !== version : atLeast(version, "0.4.0"))) || !existsSync(p.script))
+  p.state === "board" && ((sameFile(p.script, join(dir, "board-pane.mjs")) && (p.version ? p.version !== version : atLeast(version, "0.4.0"))) || !existsSync(p.script) || wasImported(p.board))
 
 /**
  * `restart`, and the pane's own restart after an update (`pane`): quit each stale board pane and
@@ -3193,7 +3268,8 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
     logRestart(env, { pane: p.pane, ok: null, skipped: true, version: VERSION, error: why })
     lines.push(`pane ${p.pane}: ${why}`)
   }
-  const current = (s) => s.state === "board" && s.version === VERSION && sameFile(s.script, PANE_SCRIPT)
+  // A board on a 0.4 file that was imported since is not current: it restarts on the one board.
+  const current = (s) => s.state === "board" && s.version === VERSION && sameFile(s.script, PANE_SCRIPT) && !wasImported(s.board)
   const waitMs = Number(env.JOB_BOARD_RESTART_WAIT_MS) || RESTART_WAIT_MS
   for (const p of panes) {
     if (!p.board) {
@@ -3384,7 +3460,10 @@ function doctor(env, out) {
   if (!panes.length) say("ok", "no board pane open")
   else if (!old.length) say("ok", `${panes.length} board pane${panes.length === 1 ? "" : "s"} open`)
   else {
-    for (const p of old) say("fix", `pane ${p.pane} (tab ${p.tab}) runs ${p.version || "a version before 0.4.0"}, not ${refVersion}`)
+    for (const p of old) {
+      if (p.version === refVersion && wasImported(p.board)) say("fix", `pane ${p.pane} (tab ${p.tab}) was started on ${p.board}, imported since`)
+      else say("fix", `pane ${p.pane} (tab ${p.tab}) runs ${p.version || "a version before 0.4.0"}, not ${refVersion}`)
+    }
     missing++
     lines.push(`      ${atLeast(refVersion, "0.4.0") ? `${cli} restart` : "press q in it, then open the board again"}`)
   }
@@ -3395,7 +3474,8 @@ function doctor(env, out) {
 // --- import, export, restore -------------------------------------------------------------------
 
 const STALE_MS = 3 * 24 * 3600_000
-const TEMP_DIRS = [...new Set([tmpdir(), "/tmp", "/var/tmp"].map((d) => resolve(d)))]
+// As given and as real paths (on macOS /var is /private/var).
+const TEMP_DIRS = [...new Set([tmpdir(), "/tmp", "/var/tmp"].flatMap((d) => [resolve(d), realOr(d)]))]
 const inTemp = (path) => TEMP_DIRS.some((d) => resolve(path).startsWith(d + sep))
 
 /** A Waiting card left by a test run: its job report was in a temp folder and is gone, and it is older than 3 days. */
@@ -3439,8 +3519,15 @@ export function legacyBoards(cwd, env = process.env) {
   const here = projectAt(cwd, env)
   const files = [...(here.git ? [join(here.git, LEGACY_FILE)] : []), ...homeRepos(env).map((dir) => join(dir, ".git", LEGACY_FILE))]
   const seen = new Set()
+  const allowed = (f) => {
+    try {
+      return Boolean(sandboxed(f))
+    } catch {
+      return false
+    }
+  }
   return files.filter((f) => {
-    if (!existsSync(f)) return false
+    if (!existsSync(f) || !allowed(f)) return false
     const real = realOr(f)
     return !seen.has(real) && seen.add(real)
   })
@@ -3489,15 +3576,22 @@ function retagList(text) {
 export function importInto(state, sources, ctx) {
   const { now, me = {}, keepStale = false, retag = [], known = new Map(), workspaces = new Map(), agents = null, archived = [] } = ctx
   const at = now.toISOString()
-  const used = new Set([...state.items.map((i) => i.id), ...archived])
+  const used = new Set([...state.items.map((i) => i.id), ...archived.map((i) => i.id)])
   const result = { boards: [], leftOut: [], renumbered: [], proposals: [], retagged: [] }
+  // The card a source card already is on the board (or in the archive): one that came from the
+  // same repo (its project, or an earlier import of that repo), with the same created time and
+  // its id, or the id it was renumbered from. Whatever project it was re-tagged to since.
+  const fromRepo = (name) => new Set(state.imports.filter((e) => e?.project === name).flatMap((e) => (Array.isArray(e.ids) ? e.ids : [])))
+  const isSame = (name, card, earlier = fromRepo(name)) => (i) =>
+    i.created === card.created && (i.was ? i.was === `${name}#${card.id}` : i.id === card.id) && (i.project === name || earlier.has(i.id))
   const ordered = [...sources].sort((a, b) => b.board.items.length - a.board.items.length)
   for (const src of ordered) {
     const name = ensureProject(state, src.id)
     const project = state.projects[name]
     if (!project.workspace && workspaces.get(name)) project.workspace = workspaces.get(name)
     const origin = me.coordinator && me.project === name ? me.pane : ""
-    const entry = { from: src.file, project: name, at, cards: 0, renumbered: {}, left_out: [], merged: 0, unchanged: 0, kept: [] }
+    const entry = { from: src.file, project: name, at, cards: 0, renumbered: {}, left_out: [], merged: 0, unchanged: 0, kept: [], ids: [] }
+    const earlier = fromRepo(name)
     const cards = [...src.board.items].sort((a, b) => a.id - b.id)
     const take = []
     for (const card of cards) {
@@ -3506,12 +3600,17 @@ export function importInto(state, sources, ctx) {
         result.leftOut.push({ card, project: name, file: src.file })
         continue
       }
-      const same = state.items.find((i) => i.id === card.id && i.project === name && i.created === card.created)
+      const same = state.items.find(isSame(name, card, earlier))
       if (same) {
         if (new Date(card.updated) > new Date(same.updated)) {
-          Object.assign(same, { ...card, project: name, origin: same.origin || card.origin || origin, workspace: same.workspace || card.workspace || project.workspace })
+          const { id: _id, project: _p, origin: _o, workspace: _w, was: _was, ...fields } = card
+          Object.assign(same, fields, { origin: same.origin || card.origin || origin, workspace: same.workspace || card.workspace || project.workspace })
           entry.merged++
         } else entry.unchanged++
+        continue
+      }
+      if (archived.some(isSame(name, card, earlier))) {
+        entry.unchanged++
         continue
       }
       take.push(card)
@@ -3528,11 +3627,14 @@ export function importInto(state, sources, ctx) {
       } else entry.kept.push(card.id)
       used.add(item.id)
       state.items.push(item)
+      entry.ids.push(item.id)
       entry.cards++
     }
+    // Cards a job report finished under 0.4: a repeat of that report stays a no-op once archived.
+    for (const item of state.items) if (item.reported && item.project === name && !state.reports[item.reported]) state.reports[item.reported] = { id: item.id, at }
     for (const [tab, pane] of Object.entries(src.board.panes || {})) if (!state.panes[tab]) state.panes[tab] = pane
     result.boards.push(entry)
-    state.imports.push({ from: entry.from, project: name, at, cards: entry.cards, renumbered: entry.renumbered, left_out: entry.left_out })
+    state.imports.push({ from: entry.from, project: name, at, cards: entry.cards, ids: entry.ids, renumbered: entry.renumbered, left_out: entry.left_out })
   }
   state.items.sort((a, b) => a.id - b.id)
   // What a left-out card would become with --keep-stale.
@@ -3573,8 +3675,8 @@ export function importInto(state, sources, ctx) {
   return result
 }
 
-/** The lines `import` prints, for a dry run ("then:") or after it ran ("done:"). */
-export function importPreview(result, state, { file, backup, dryRun, keepStale }) {
+/** The lines `import` prints, for a dry run ("then:") or after it ran ("done:"). `totals`: the board after it. */
+export function importPreview(result, state, { file, backup, dryRun, keepStale, totals }) {
   const cards = result.boards.reduce((n, b) => n + b.cards + b.merged + b.unchanged, 0) + result.leftOut.length
   const lines = [`import: ${result.boards.length} board${result.boards.length === 1 ? "" : "s"}, ${cards} card${cards === 1 ? "" : "s"} → ${file}${dryRun ? " (dry run: nothing is written)" : ""}`]
   for (const b of result.boards) {
@@ -3600,19 +3702,29 @@ export function importPreview(result, state, { file, backup, dryRun, keepStale }
     lines.push(`re-tag (suggested from titles and running jobs; apply with --retag ${result.proposals.map((p) => `${p.id}=${p.project}`).join(",")}):`)
     for (const p of result.proposals) lines.push(`  ${p.id} → ${p.project}   ${clean(p.title).slice(0, 70)}`)
   }
-  const open = state.items.filter((i) => i.column !== "done").length
+  if (totals.due) lines.push(`archive: ${totals.due} Done card${totals.due === 1 ? "" : "s"} older than 7 days go${totals.due === 1 ? "es" : ""} to archive/ (json --archive YYYY-MM shows them)`)
   lines.push(
-    `${dryRun ? "then:" : "done:"}  ${basename(file)} ${state.items.length} cards (${open} open), next_id ${state.next_id}; old files renamed ${MIGRATED_FILE}; backups in ${backup}`,
+    `${dryRun ? "then:" : "done:"}  ${basename(file)} ${totals.cards} cards (${totals.open} open), next_id ${totals.next}; old files renamed ${MIGRATED_FILE}; backups in ${backup}`,
   )
   return lines
 }
 
-/** A source for importInto: the board file read (v1 or v2) and its repo. */
-function importSource(path, env) {
-  const file = realOr(resolve(path))
+/**
+ * A source for importInto: the board file and its repo. A copy `import` kept in
+ * backups/import-<time>/ belongs to the repo its imports[] entry names.
+ */
+function importSource(path, env, state) {
+  const file = sandboxed(realOr(resolve(path)))
   if (!existsSync(file)) throw new Error(`no board file ${file}`)
-  const id = projectAt(dirname(file), env)
-  return { file, id, board: readBoard(file) }
+  const entry = state.imports.find((e) => e?.backup && realOr(e.backup) === file)
+  if (entry) {
+    const p = state.projects[entry.project] || {}
+    return { file, id: { git: p.git || "", root: p.root || "", name: entry.project } }
+  }
+  if (/^import-/.test(basename(dirname(file))) && basename(dirname(dirname(file))) === "backups") {
+    throw new Error(`${file} is an import backup that no import on this board names, so its repo is unknown; copy it to <repo>/.git/${LEGACY_FILE} and import that`)
+  }
+  return { file, id: projectAt(dirname(file), env) }
 }
 
 /** Herdr's workspaces by label: { "sfc-integration" → "w4" }. Empty outside Herdr. */
@@ -3622,23 +3734,37 @@ function workspacesByLabel(env) {
   return new Map(spaces.filter((w) => w.label).map((w) => [clean(w.label), clean(w.workspace_id)]))
 }
 
-/** Move an imported 0.4 board aside, beside itself: job-board.migrated.json (or with a time when one is there). */
+/** Move an imported 0.4 board aside, beside itself: job-board.migrated.json (or with a time when one is there). "" when it is gone already. */
 function retire(file, now) {
+  sandboxed(file)
   let to = join(dirname(file), MIGRATED_FILE)
   if (existsSync(to)) to = join(dirname(file), `job-board.migrated-${stampOf(now)}.json`)
-  renameSync(file, to)
-  return to
+  try {
+    renameSync(file, to)
+    return to
+  } catch (e) {
+    if (e.code === "ENOENT") return ""
+    throw e
+  }
 }
 
+const CLI = () => `node ${shellQuote(join(SCRIPTS, "board.mjs"))}`
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
+
 /**
- * `import`: preview (dryRun) or merge the 0.4 boards into the store. Before anything is
- * written, each source is copied to backups/import-<time>/; after, each is renamed
- * job-board.migrated.json. Returns the lines to print.
+ * `import`: preview (dryRun) or merge 0.4 boards into the store. Everything happens under the
+ * store's lock: the sources are read there (one gone meanwhile, imported by another command, is
+ * skipped), copied to backups/import-<time>/, merged; then each 0.4 file is renamed
+ * job-board.migrated.json. `auto` (the migration on a write, see `migrate`) refuses, before
+ * anything is written, an import that would renumber a card. Returns the lines to print.
  */
 export function runImport(file, paths, opts, ctx) {
-  const { env, now, me } = ctx
+  const { env, now, me, auto = false } = ctx
   const backup = join(sideDir(file), "backups", `import-${stampOf(now)}`)
-  const sources = paths.map((p) => importSource(p, env))
+  const current = readBoard(file)
+  // The migration's sources may be imported (renamed) by another command meanwhile: skipped.
+  const sources = paths.filter((p) => !auto || existsSync(p)).map((p) => importSource(p, env, current))
+  if (!sources.length && auto) return []
   if (!sources.length) return [`import: no 0.4 board found (looked in this repo's .git and the repos under ${env.HOME || homedir()}); nothing to do`]
   if (sources.some((s) => sameFile(s.file, file))) throw usage("import: that is the store itself")
   const known = new Map(homeRepos(env).map((dir) => projectAt(dir, env)).map((id) => [id.name, id]))
@@ -3652,57 +3778,111 @@ export function runImport(file, paths, opts, ctx) {
     known,
     workspaces: workspacesByLabel(env),
     agents: inHerdr(env) ? listAgents(env) : null,
-    archived: readArchive(file).map((i) => i.id),
+    archived: readArchive(file),
   }
-  const show = (result, state) => importPreview(result, state, { file, backup, dryRun: Boolean(opts["dry-run"]), keepStale: plan.keepStale })
+  const totals = (s) => {
+    const due = dueForArchive(s, now).length
+    return { cards: s.items.length - due, open: s.items.filter((i) => i.column !== "done").length, next: s.next_id, due }
+  }
+  const read = (list) => list.filter((src) => existsSync(src.file)).map((src) => ({ ...src, board: readBoard(src.file) }))
+  const show = (result, state, sums) => importPreview(result, state, { file, backup, dryRun: Boolean(opts["dry-run"]), keepStale: plan.keepStale, totals: sums })
   if (opts["dry-run"]) {
-    const state = readBoard(file)
-    me.project = projectName(state.projects, me.id)
-    return show(importInto(state, sources, plan), state)
+    me.project = projectName(current.projects, me.id)
+    const result = importInto(current, read(sources), plan)
+    return show(result, current, totals(current))
   }
-  privateDir(backup)
-  const names = new Set()
-  for (const src of sources) {
-    let name = basename(src.id.root) || "board"
-    while (names.has(name)) name = `${name}-2`
-    names.add(name)
-    copyFileSync(src.file, join(backup, `${name}.json`))
-  }
-  const { result, state } = updateBoard(
+  const outcome = updateBoard(
     file,
     (s) => {
       me.project = projectName(s.projects, me.id)
-      // Read again under the lock: what was read above may be older.
-      const fresh = sources.filter((src) => existsSync(src.file)).map((src) => ({ ...src, board: readBoard(src.file) }))
+      // Read under the lock: a source another command imported meanwhile is gone (renamed).
+      const fresh = read(sources)
+      if (!fresh.length) return null
       const result = importInto(s, fresh, plan)
+      if (auto && result.renumbered.length) {
+        const files = fresh.map((f) => shellQuote(f.file)).join(" ")
+        throw new Error(
+          `${auto} isn't on the one board yet, and bringing it in would renumber ${plural(result.renumbered.length, "card")} (${result.renumbered.map((r) => `${r.from} → ${r.to}`).join(", ")}). Nothing was changed. Look first, then import: ${CLI()} import --dry-run ${files}; ${CLI()} import ${files}`,
+        )
+      }
+      privateDir(backup)
+      const names = new Set()
+      for (const src of fresh) {
+        let name = basename(src.id.root) || "board"
+        while (names.has(name)) name = `${name}-2`
+        names.add(name)
+        copyFileSync(src.file, join(backup, `${name}.json`))
+        const entry = s.imports.findLast((e) => e.from === src.file)
+        if (entry) entry.backup = join(backup, `${name}.json`)
+      }
       noteCoordinator(s, me, now)
-      return { result, state: s }
+      return { result, fresh, sums: totals(s), state: s }
     },
     now,
   )
-  const lines = show(result, state)
-  for (const src of sources) if (existsSync(src.file)) lines.push(`  ${src.file} → ${retire(src.file, now)}`)
+  if (!outcome) return auto ? [] : ["import: nothing to do: those boards were imported meanwhile"]
+  const lines = show(outcome.result, outcome.state, outcome.sums)
+  for (const src of outcome.fresh) {
+    if (basename(src.file) !== LEGACY_FILE) continue
+    const to = retire(src.file, now)
+    if (to) lines.push(`  ${src.file} → ${to}`)
+  }
   return lines
 }
 
 /**
- * The first 0.5 command in a repo that still has a 0.4 board, while the store is empty: that
- * board is imported (every card, ids kept: the store is empty) and the CLI says so once.
+ * The migration from 0.4, one repo at a time: a repo whose `.git/job-board.json` is still there
+ * isn't on the one board yet. Before a command in such a repo:
+ * - a read (ls, json, projects, token, export) says so (its cards are missing) and goes on;
+ * - a write by a coordinator or a person brings that board in first, under the lock (ids kept,
+ *   stale test cards left out, the old file backed up and renamed), unless that would renumber
+ *   a card: then nothing is written and the command fails with the `import` to run;
+ * - a write by a worker (role set to anything else) fails with the `import` the coordinator runs.
+ * A write that creates the store brings in every 0.4 board on the machine (as `import` with no
+ * file), so the first project to write can't take the ids of a bigger board that comes later.
+ * Only for the machine's one board: a board of its own (JOB_BOARD_HOME, JOB_BOARD_FILE; tests,
+ * a trial) never takes the repos' boards by itself; `import` still brings them in on purpose.
  */
-export function autoImport(file, cwd, env, now, say) {
-  if (env.JOB_BOARD_FILE || existsSync(file)) return
+export const migrates = (env) => !env.JOB_BOARD_FILE && !env.JOB_BOARD_HOME
+
+export function migrate(file, cwd, env, now, { write, say }) {
+  if (!migrates(env)) return
   const here = projectAt(cwd, env)
-  const legacy = here.git && join(here.git, LEGACY_FILE)
-  if (!legacy || !existsSync(legacy)) return
-  try {
-    readBoard(legacy)
-  } catch {
+  const legacy = here.git ? join(here.git, LEGACY_FILE) : ""
+  const pending = legacy && existsSync(legacy) ? legacy : ""
+  const fresh = !existsSync(file)
+  if (!pending && !(write && fresh)) return
+  const readable = (path) => {
+    try {
+      readBoard(path)
+      return true
+    } catch (e) {
+      say(`board: ${path} is not a readable 0.4 board (${clean(e.message).slice(0, 120)}); left alone`)
+      return false
+    }
+  }
+  if (!write) {
+    if (readable(pending)) say(`board: this repo's 0.4 board isn't on the one board yet (${pending}), so its cards are missing here. Bring it in: ${CLI()} import --dry-run, then ${CLI()} import`)
     return
   }
-  const me = { ...writerOf(env), id: here }
-  const lines = runImport(file, [legacy], { "keep-stale": true }, { env, now, me })
-  say(`board: one board for all projects now: ${file}. Imported this repo's 0.4 board (${legacy}); other repos' boards: board.mjs import --dry-run`)
-  for (const l of lines.filter((l) => l.startsWith("  ") && l.includes(MIGRATED_FILE))) say(`board:${l}`)
+  const paths = (fresh ? legacyBoards(cwd, env) : [pending]).filter((p) => existsSync(p) && readable(p))
+  if (!paths.length) return
+  let lines
+  const what = fresh ? `the 0.4 board${paths.length === 1 ? "" : "s"} on this machine (${paths.join(", ")})` : `this repo's 0.4 board (${pending})`
+  const role = clean(env.JOB_AGENT_ROLE)
+  if (role && role !== "coordinator") {
+    throw new Error(`${what} isn't on the one board yet, and a ${role} doesn't bring it in; nothing was changed. The coordinator runs: ${CLI()} import --dry-run, then ${CLI()} import`)
+  }
+  try {
+    lines = runImport(file, paths, {}, { env, now, me: { ...writerOf(env), id: here }, auto: what })
+  } catch (e) {
+    // Gone between the look and the read: another command brought it in.
+    if (e.code === "ENOENT" || /^no board file /.test(e.message)) return
+    throw e
+  }
+  if (!lines.length) return
+  say(`board: ${what} wasn't on the one board yet: brought in first (${file})`)
+  for (const line of lines.slice(1)) say(`board: ${line}`)
 }
 
 /** `export --legacy`: one project's cards as a 0.4 board file (version 1), for a rollback. */
@@ -3712,33 +3892,48 @@ export function exportLegacy(state, project) {
   return { version: 1, next_id: state.next_id, items, panes: Object.fromEntries(Object.entries(state.panes).map(([tab, p]) => [tab, typeof p === "string" ? p : p?.pane]).filter(([, p]) => p)) }
 }
 
-/** The backups `restore` can put back, newest first. */
+/** The backups `restore` can put back, newest first: the store's own (backups/board-*.json). */
 export function backupsOf(file) {
   const dir = join(sideDir(file), "backups")
-  const found = []
-  for (const e of listDir(dir)) {
-    if (e.isFile() && e.name.endsWith(".json")) found.push(join(dir, e.name))
-    if (e.isDirectory()) for (const f of listDir(join(dir, e.name))) if (f.isFile() && f.name.endsWith(".json")) found.push(join(dir, e.name, f.name))
-  }
+  const found = listDir(dir)
+    .filter((e) => e.isFile() && /^board-.*\.json$/.test(e.name))
+    .map((e) => join(dir, e.name))
   return found.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
 }
 
 /**
- * `restore <backup>`: put a backup back, under the lock. The board as it is goes to
- * backups/board-before-restore-<time>.json first. A 0.4 file (an import backup) is read as v1.
+ * `restore <backup>`: put a backup of the board back, under the lock. The board as it is goes
+ * to backups/board-before-restore-<time>.json first. Only a version 2 board (a store backup):
+ * a 0.4 file (what `import` kept of a repo's board) is merged with `import`, not restored over
+ * every project. `next_id` never goes down, so no id is handed out twice.
  */
 export function restoreBackup(file, ref, now) {
+  sandboxed(file)
   const dir = join(sideDir(file), "backups")
   const path = [resolve(ref), join(dir, ref), join(sideDir(file), ref)].find((p) => existsSync(p))
   if (!path) throw new Error(`no backup ${ref} (board.mjs restore lists them)`)
+  let raw
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"))
+  } catch (e) {
+    throw new Error(`${path} is not a board backup (${clean(e.message).slice(0, 120)})`)
+  }
+  if (!(raw?.version >= 2)) {
+    throw new Error(`${path} is a 0.4 board (one repo's cards, e.g. what import kept), not a backup of the one board; restore puts back only backups/board-*.json. To merge its cards in again: ${CLI()} import ${shellQuote(path)}`)
+  }
   const restored = readBoard(path)
   privateDir(dirname(file))
   return withLock(file, () => {
     let saved = ""
+    let next = 1
     if (existsSync(file)) {
       saved = join(privateDir(dir), `board-before-restore-${stampOf(now)}.json`)
       copyFileSync(file, saved)
+      try {
+        next = readBoard(file).next_id
+      } catch {}
     }
+    restored.next_id = Math.max(restored.next_id, next, ...readArchive(file).map((i) => i.id + 1))
     writeBoard(file, restored)
     return { path, saved, cards: restored.items.length }
   })
@@ -3788,6 +3983,9 @@ function only(opts, allowed, command) {
 }
 
 const label = (column) => (column === "waiting" ? "waiting on you" : column === "todo" ? "to do" : column)
+// The commands that change the board, and those that only read it (see migrate).
+const WRITES = new Set(["add", "move", "done", "edit", "rm", "retag", "adopt", "front", "project", "job-start", "job-report"])
+const READS = new Set(["ls", "json", "projects", "token", "export"])
 
 export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
   // Everything printed goes through safeText, except `ls` (already made printable, and coloured).
@@ -3846,7 +4044,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return (here ??= projectAt(process.cwd(), env))
       },
     }
-    if (!["import", "path", "restore", "export"].includes(command)) autoImport(file, process.cwd(), env, now, err)
+    // A repo whose 0.4 board isn't on the one board yet: writes bring it in first, reads say so.
+    if (WRITES.has(command) || READS.has(command)) migrate(file, process.cwd(), env, now, { write: WRITES.has(command), say: err })
     // Every write notes a coordinator, and knows this writer's project by its name on the board.
     const change = (fn) => {
       const result = updateBoard(
@@ -3868,7 +4067,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     let agentList
     const agents = () => (agentList === undefined ? (agentList = listAgents(env)) : agentList)
     // A card this writer may change (checkOwner); a gone owner's card is taken over, and said so.
-    const owned = (s, item, projectOpt = opts.project) => {
+    // `projectOpt` null: no --project (job-start's --project says where the job runs).
+    const owned = (s, item, projectOpt = opts.project ?? null) => {
       checkOwner(s, item, me, projectOpt)
       const was = takeOver(item, me, agents())
       if (was) err(`board: card ${item.id}'s coordinator (${was}) is gone: this pane (${me.pane}) owns it now`)
@@ -3934,6 +4134,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return ids.map((ref) => {
             const it = owned(s, findItem(s, ref, me))
             it.project = to
+            // A card nobody owned (imported by a shell or a worker) is the re-tagging coordinator's
+            // now, so it can go on changing it in its new project.
+            if (!it.origin && me.coordinator) it.origin = me.pane
             it.updated = now.toISOString()
             return it
           })
@@ -3996,8 +4199,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           // A Waiting item of the same job stays: it is the user's open question from its last run.
           const open = (i) => i.job === slug && (i.column === "todo" || i.column === "doing")
           // Here --project is where the job runs, not the card's project for the ownership check.
-          const it = opts.id ? owned(s, findItem(s, String(opts.id)), undefined) : jobScope(s.items, slug, me).findLast(open)
-          if (!it) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now, who(s))
+          // By slug: this pane's or this project's card only, never another project's.
+          const found = opts.id ? findItem(s, String(opts.id)) : jobScope(s.items, slug, me, { any: false }).findLast(open)
+          if (!found) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now, who(s))
+          const it = owned(s, found, null)
           moveItem(it, "doing", now)
           dropOptions(it)
           if (opts.worktree !== undefined || opts.project !== undefined) it.project = projectFor(s)
@@ -4016,7 +4221,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const quiet = Boolean(opts["if-final"])
         const board = readBoard(file)
         me.project = projectName(board.projects, me.id)
-        const scope = (list) => jobScope(list, slug, me)
+        // This pane's or this project's card of the job, never another project's.
+        const scope = (list) => jobScope(list, slug, me, { any: false })
         const items = scope(board.items)
         const path = given ? resolve(given) : (jobItem(items, slug) || items.findLast((i) => i.job === slug))?.report
         if (!path) {
@@ -4094,6 +4300,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         only(opts, ["dry-run", "keep-stale", "retag"], command)
         const paths = rest.length ? rest : legacyBoards(process.cwd(), env)
         for (const line of runImport(file, paths, opts, { env, now, me })) out(line)
+        if (!opts["dry-run"] && existsSync(file)) syncToken(file, env)
         return 0
       }
       case "export": {

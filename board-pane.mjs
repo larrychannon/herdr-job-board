@@ -62,7 +62,7 @@
 // The board file: --board, else JOB_BOARD_FILE, else the store (board.mjs path prints it).
 
 import { spawn } from "node:child_process"
-import { statSync, watch } from "node:fs"
+import { existsSync, statSync, watch } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -102,7 +102,10 @@ import {
   VERIFY_TIMEOUT_MS,
   verifyCopy,
   versionOf,
-  wasImported,
+  followImport,
+  LEGACY_FILE,
+  migrates,
+  projectAt,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -128,9 +131,20 @@ function parse(argv) {
 
 function locate(opts, env) {
   // A 0.4 board's file that was imported (a pane started for it before the update): the store.
-  if (opts.board && !(wasImported(resolve(opts.board)) && !env.JOB_BOARD_FILE)) return resolve(opts.board)
+  if (opts.board) return followImport(resolve(opts.board), env)
   return boardPath(process.cwd(), env)
 }
+
+/**
+ * While this folder's repo still has a 0.4 board that isn't on the one board, a pane on the one
+ * board says so (its cards are missing). The path to watch, or "".
+ */
+function legacyOf(file, env) {
+  if (!migrates(env) || basename(file) === LEGACY_FILE) return ""
+  const { git } = projectAt(process.cwd(), env)
+  return git ? join(git, LEGACY_FILE) : ""
+}
+const legacyNotice = (legacy) => (legacy && existsSync(legacy) ? `this repo's 0.4 board isn't on the one board yet (${legacy}): run board.mjs import --dry-run, then board.mjs import` : "")
 
 /** The board's data, live agents and tab labels, read fresh; drawing then works from this cache. */
 async function load(file, env) {
@@ -208,14 +222,16 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     process.stderr.write(`board-pane: ${error.message}\n`)
     return 2
   }
-  const file = locate(opts, env)
+  let file = locate(opts, env)
   if (!file) {
     process.stderr.write("board-pane: no board here. Run `node board.mjs open` from the repo, or pass --board <file>.\n")
     return 2
   }
 
+  const legacy = legacyOf(file, env)
   if (opts.once) {
     let data = await load(file, env)
+    data.notice = legacyNotice(legacy)
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env) })
     const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
@@ -240,7 +256,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       if (action) {
         ctx.drawn = drawn
         message = (await perform(action, ctx)) ?? message
-        data = await load(file, env)
+        data = { ...(await load(file, env)), notice: data.notice }
       }
       drawn = draw(scroll)
       if (ctx.copy && ctx.copy.place !== copyPlace(drawn.scroll)) ctx.copy = null
@@ -253,10 +269,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const color = opts.color ?? !env.NO_COLOR
   const emoji = opts.emoji ?? emojiOn(env)
   let data = await load(file, env)
+  data.notice = legacyNotice(legacy)
   // Presses run one at a time and never stop the pane. Each change shows its note at once and
   // reloads the board (for "sent"); onChange only runs once a key is pressed, after setup.
   const answers = createAnswerer({
-    file,
+    file: () => file,
     origin: opts.origin,
     env,
     now: () => clockNow(env),
@@ -413,8 +430,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     if (loading) return
     loading = true
     try {
+      // The 0.4 file this pane showed was imported: from now on, the one board.
+      const now = followImport(file, env)
+      if (now !== file) {
+        file = now
+        watchBoard()
+      }
       data = await load(file, env)
-      data.notice = checkUpdate()
+      data.notice = checkUpdate() || legacyNotice(legacy)
       paint()
     } finally {
       loading = false
@@ -477,13 +500,20 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   }
   // The file is replaced by a rename on every write, so watch its folder, not the file.
   let pending
-  try {
-    watch(dirname(file), (_, name) => {
-      if (name && name !== basename(file)) return
-      clearTimeout(pending)
-      pending = setTimeout(refresh, 100)
-    })
-  } catch {}
+  let watcher = null
+  function watchBoard() {
+    watcher?.close()
+    try {
+      watcher = watch(dirname(file), (_, name) => {
+        if (name && name !== basename(file)) return
+        clearTimeout(pending)
+        pending = setTimeout(refresh, 100)
+      })
+    } catch {
+      watcher = null
+    }
+  }
+  watchBoard()
   setInterval(refresh, Math.max(1, Number(opts.interval) || 3) * 1000)
   paint()
   return null

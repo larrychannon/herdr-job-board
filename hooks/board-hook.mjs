@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameS
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { boardPath, readBoard, sideDir } from "../board.mjs"
+import { boardPath, LEGACY_FILE, migrates, projectAt, readBoard, sideDir } from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BOARD_CLI = resolve(HERE, "..", "board.mjs")
@@ -162,10 +162,25 @@ export function applies(input, env, roleEnv = "JOB_AGENT_ROLE") {
  * One hook call: the hook's input and env in, { stdout } out ("" for nothing). Pure apart from
  * the board file it reads and the turn record it writes.
  */
+/**
+ * This repo's 0.4 board while it isn't on the one board: a line telling the coordinator to bring
+ * it in (the hook only reads; the next board write in this repo brings it in by itself).
+ */
+export function legacyLine(cwd, env, cli = BOARD_CLI) {
+  if (!migrates(env)) return ""
+  const { git } = projectAt(cwd, env)
+  const legacy = git ? join(git, LEGACY_FILE) : ""
+  if (!legacy || !existsSync(legacy)) return ""
+  return `Job board: this repo's 0.4 board (${legacy}) isn't on the one board yet, so its cards are missing from the board. Bring it in now: node ${quote(cli)} import --dry-run, then node ${quote(cli)} import.`
+}
+
 export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", now = new Date() } = {}) {
   if (!input || typeof input !== "object" || !applies(input, env, roleEnv)) return { stdout: "" }
-  const file = boardPath(input.cwd || process.cwd(), env)
-  if (!file || !existsSync(file)) return { stdout: "" }
+  const cwd = input.cwd || process.cwd()
+  const file = boardPath(cwd, env)
+  const context = (text) => ({ stdout: text ? JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }) : "" })
+  const prompt = input.hook_event_name === "UserPromptSubmit"
+  if (!file || !existsSync(file)) return prompt ? context(legacyLine(cwd, env)) : { stdout: "" }
   let state
   try {
     state = readBoard(file)
@@ -174,9 +189,9 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
   }
   const sessionId = input.session_id || "session"
 
-  if (input.hook_event_name === "UserPromptSubmit") {
+  if (prompt) {
     recordTurn(file, sessionId, state, now)
-    const text = reminder(state)
+    const text = [legacyLine(cwd, env), reminder(state)].filter(Boolean).join("\n")
     if (!text) return { stdout: "" }
     return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }) }
   }

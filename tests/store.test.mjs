@@ -2,6 +2,7 @@
 // The one board for every project (0.5): where the store is, which project a folder is, tags,
 // the ownership check, importing 0.4 boards, export, archive, backups and restore. Every test
 // has its own temp HOME and store; Herdr is faked by fixtures/fake-herdr.mjs.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -381,29 +382,126 @@ test("import --keep-stale keeps a stale card (renumbered when its id is taken); 
   }
 })
 
-test("import on first use: an empty store and a repo with a 0.4 board; once, ids kept; the pane of an imported board reads the store", () => {
+test("migration, per repo: a read says the repo's 0.4 board isn't in; the first write brings it in, ids kept; then the pane of the old file reads the store", () => {
   const h = home()
   try {
     const app = h.repo("app")
     const file = legacy(app, [{ id: 3, title: "Carried over", column: "waiting", ask: "say go" }], 5)
+    // A read changes nothing and says what to run.
     const r = h.run(app, ["ls", "--width", "80"])
     assert.equal(r.status, 0, r.stderr)
-    assert.match(r.stderr, /^board: one board for all projects now: .*board\.json\. Imported this repo's 0\.4 board/)
-    assert.match(r.stdout, /3 ! Carried over/)
+    assert.match(r.stderr, /^board: this repo's 0\.4 board isn't on the one board yet \(.*app\/\.git\/job-board\.json\), so its cards are missing here\. Bring it in: node '.*board\.mjs' import --dry-run, then node '.*board\.mjs' import$/m)
+    assert.ok(existsSync(file) && !existsSync(h.file), "nothing written")
+    // A write brings it in first.
+    const w = h.run(app, ["add", "todo", "next"])
+    assert.equal(w.status, 0, w.stderr)
+    assert.match(w.stderr, /^board: the 0\.4 board on this machine \(.*app\/\.git\/job-board\.json\) wasn't on the one board yet: brought in first/m)
+    assert.match(w.stderr, /^board: {3}.*app\/\.git\/job-board\.json {2}→ {2}app \(app\): 1 card, id kept \(3\)$/m)
+    assert.match(w.stdout, /^added 5 /, "ids go on from the old board's")
     assert.ok(!existsSync(file) && existsSync(join(app, ".git", "job-board.migrated.json")))
-    assert.equal(h.state().next_id, 5)
-    assert.match(h.ok(app, ["add", "todo", "next"]), /^added 5 /, "ids go on from the old board's")
-    assert.doesNotMatch(h.run(app, ["ls"]).stderr, /Imported/, "said once")
-    // A second repo's 0.4 board isn't imported by itself: the store isn't empty (its ids may clash).
-    const other = h.repo("other")
-    const otherFile = legacy(other, [{ id: 3, title: "Clash" }])
-    h.ok(other, ["ls"])
-    assert.ok(existsSync(otherFile), "left for an explicit import")
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.title]), [[3, "Carried over"], [5, "next"]])
+    assert.doesNotMatch(h.run(app, ["ls"]).stderr, /0\.4/, "said once")
     // A pane started (by 0.4) on the old file shows the store.
     const pane = spawnSync(process.execPath, [PANE, "--once", "--width", "80", "--height", "20", "--board", file], { cwd: app, env: h.envFor(), encoding: "utf8" })
     assert.equal(pane.status, 0, pane.stderr)
     assert.match(pane.stdout, /^all projects · 1 needs you/)
     assert.match(pane.stdout, /3 ! Carried over/)
+  } finally {
+    h.done()
+  }
+})
+
+test("migration: when another repo writes first, the store starts with every 0.4 board on the machine (biggest first, stale left out), so no repo's ids are taken", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    const ai = h.repo("ai-config")
+    const tool = h.repo("herdr-job-board")
+    legacy(sfc, [{ id: 1, title: "sfc one" }, { id: 2, title: "Review", column: "doing", job: "fix-a", report: join(sfc, "r.json") }], 3)
+    legacy(ai, [{ id: 1, title: "fix-x", column: "waiting", report: "/tmp/job-scripts-gone-xyz/r.json", since: "2026-10-13T09:00:00.000Z" }])
+    // herdr-job-board's first write: both boards come in first; its card gets the next id.
+    assert.match(h.ok(tool, ["add", "todo", "Plan"]), /^added 3 /)
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.project]), [[1, "sfc-integration"], [2, "sfc-integration"], [3, "herdr-job-board"]])
+    assert.deepEqual(h.state().imports.map((e) => [e.project, e.left_out]), [["sfc-integration", []], ["ai-config", [1]]], "the stale test card is left out")
+    // The wait script's job-report finds the 0.4 Doing card: no duplicate.
+    writeFileSync(join(sfc, "r.json"), JSON.stringify({ status: "done", summary: "ok" }))
+    assert.equal(h.ok(sfc, ["job-report", "fix-a", join(sfc, "r.json"), "--if-final"]).trim(), "2 → done: Review")
+    assert.equal(h.state().items.length, 3)
+  } finally {
+    h.done()
+  }
+})
+
+test("migration: a write that would renumber an established repo's ids is refused with the import to run; a worker never brings a board in; job-report doesn't duplicate", () => {
+  const h = home()
+  try {
+    const one = h.repo("one")
+    const two = h.repo("two")
+    h.ok(one, ["add", "todo", "first card"])
+    // A 0.4 copy wrote a board in two after the store was made: its id 1 is taken.
+    const file = legacy(two, [{ id: 1, title: "two's one", column: "doing", job: "build", report: join(two, "r.json") }])
+    writeFileSync(join(two, "r.json"), JSON.stringify({ status: "done", summary: "ok" }))
+    const before = readFileSync(h.file, "utf8")
+    for (const args of [["add", "todo", "x"], ["job-report", "build", join(two, "r.json")]]) {
+      const r = h.run(two, args)
+      assert.equal(r.status, 1, args.join(" "))
+      assert.match(r.stderr, /this repo's 0\.4 board \(.*two\/\.git\/job-board\.json\) isn't on the one board yet, and bringing it in would renumber 1 card \(two#1 → 2\)\. Nothing was changed\. Look first, then import: node '.*board\.mjs' import --dry-run '.*two\/\.git\/job-board\.json'; node '.*board\.mjs' import '.*two\/\.git\/job-board\.json'/)
+    }
+    assert.equal(readFileSync(h.file, "utf8"), before, "the store is as it was")
+    assert.ok(existsSync(file))
+    // A worker's write is refused too, whatever the ids.
+    const w = h.run(two, ["add", "todo", "x"], { JOB_AGENT_ROLE: "worker" })
+    assert.equal(w.status, 1)
+    assert.match(w.stderr, /isn't on the one board yet, and a worker doesn't bring it in; nothing was changed\. The coordinator runs: node .* import --dry-run, then node .* import/)
+    // The explicit import renumbers it (the map is printed); then job-report finds the card.
+    assert.match(h.ok(two, ["import"]), /renumbered \(the id was taken\): two#1 → 2/)
+    assert.equal(h.ok(two, ["job-report", "build", join(two, "r.json")]).trim(), "2 → done: two's one")
+    assert.equal(h.state().items.length, 2)
+  } finally {
+    h.done()
+  }
+})
+
+test("migration: the coordinator's hook says the repo's 0.4 board isn't in, with or without a store", async () => {
+  const { handle } = await import("../hooks/board-hook.mjs")
+  const h = home()
+  try {
+    const app = h.repo("app")
+    legacy(app, [{ id: 1, title: "Old", column: "waiting" }])
+    const env = { HERDR_ENV: "1", HOME: h.base, JOB_BOARD_HOME: "", XDG_STATE_HOME: "" }
+    const prompt = { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: app, prompt: "hi" }
+    let text = JSON.parse(handle(prompt, env).stdout).hookSpecificOutput.additionalContext
+    assert.match(text, /^Job board: this repo's 0\.4 board \(.*app\/\.git\/job-board\.json\) isn't on the one board yet.*Bring it in now: node .* import --dry-run, then node .* import\.$/)
+    assert.ok(!existsSync(h.store), "the hook writes nothing")
+    // With a store already there (made before this repo had its 0.4 board): the warning comes first.
+    rmSync(join(app, ".git", "job-board.json"))
+    h.ok(h.repo("other"), ["add", "waiting", "Elsewhere"])
+    legacy(app, [{ id: 1, title: "Old", column: "waiting" }])
+    text = JSON.parse(handle(prompt, env).stdout).hookSpecificOutput.additionalContext
+    assert.match(text, /^Job board: this repo's 0\.4 board .* isn't on the one board yet.*\nJob board, cards waiting on the user .*#1 "Elsewhere"/s)
+    // A board of its own (JOB_BOARD_HOME) never takes the repos' boards, and says nothing about them.
+    const own = join(h.base, "own-store")
+    assert.match(h.ok(app, ["add", "todo", "trial"], { JOB_BOARD_HOME: own }), /^added 1 /)
+    assert.ok(existsSync(join(app, ".git", "job-board.json")), "left alone")
+    assert.equal(h.run(app, ["ls"], { JOB_BOARD_HOME: own }).stderr, "")
+  } finally {
+    h.done()
+  }
+})
+
+test("migration: two first writes at once in one repo both succeed, and the board comes in once", async () => {
+  const h = home()
+  try {
+    const app = h.repo("app")
+    for (let round = 0; round < 4; round++) {
+      rmSync(h.store, { recursive: true, force: true })
+      rmSync(join(app, ".git", "job-board.migrated.json"), { force: true })
+      legacy(app, Array.from({ length: 20 }, (_, i) => ({ id: i + 1, title: `old ${i + 1}` })))
+      const runs = Array.from({ length: 4 }, (_, w) => new Promise((done) => spawn(process.execPath, [BOARD, "add", "todo", `new ${w}`], { cwd: app, env: h.envFor() }).on("exit", done)))
+      assert.deepEqual(await Promise.all(runs), [0, 0, 0, 0], `round ${round}`)
+      assert.equal(h.state().items.length, 24)
+      assert.equal(h.state().imports.length, 1)
+    }
   } finally {
     h.done()
   }
@@ -521,6 +619,235 @@ test("job-start --worktree: the card goes to that worktree's repo, with the writ
     h.ok(sfc, ["add", "todo", "sfc's tool-a", "--job", "tool-a"])
     assert.match(h.ok(sfc, ["job-start", "tool-a"]), /^2 → doing/)
     assert.equal(h.run(sfc, ["job-start", "x", "--worktree", join(h.base, "missing")]).status, 2)
+  } finally {
+    h.done()
+  }
+})
+
+const hasScript = /util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "")
+const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+const words = (text) => text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, " ").replace(/\s+/g, " ")
+
+test("upgrade path: a pane on a repo's 0.4 file (self-updated before the import) follows the cards into the store, and says the board isn't in until then", { skip: !hasScript && "needs util-linux script" }, async () => {
+  const h = home()
+  let child
+  try {
+    const app = h.repo("app")
+    const file = legacy(app, [{ id: 3, title: "Approve the waves", column: "waiting", ask: "say go" }], 5)
+    const cmd = `stty cols 100 rows 30; exec node '${PANE}' --board '${file}' --origin 'w4:p6' --interval 1`
+    child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: app, env: h.envFor(), detached: true })
+    let out = ""
+    child.stdout.on("data", (d) => (out += d.toString("utf8")))
+    await pause(1500)
+    assert.match(words(out), /Approve the waves/)
+    // The first write in the repo brings the board in and renames the file.
+    h.ok(app, ["add", "waiting", "Second question", "--ask", "yes?"])
+    out = ""
+    await pause(2500)
+    // Only changed lines are repainted: the title (now the store's, with both questions) and the new card.
+    assert.match(words(out), /Job board · all projects · 2 need you/)
+    assert.match(words(out), /5 ! Second question/)
+
+    // A pane on the store in a repo whose 0.4 board isn't in yet says so.
+    const other = h.repo("other")
+    legacy(other, [{ id: 9, title: "Not in yet" }])
+    const once = spawnSync(process.execPath, [PANE, "--once", "--width", "100", "--height", "20"], { cwd: other, env: h.envFor(), encoding: "utf8" })
+    assert.match(words(once.stdout), /this repo's 0\.4 board isn't on the one board yet \(.*other\/\.git\/job-board\.json\): run board\.mjs import --dry-run, then board\.mjs import/)
+  } finally {
+    try {
+      if (child && child.exitCode === null) process.kill(-child.pid, "SIGKILL")
+    } catch {}
+    h.done()
+  }
+})
+
+test("open and restart move a board pane started on a repo's 0.4 file to the one board", () => {
+  const h = home()
+  try {
+    const app = h.repo("app")
+    const file = legacy(app, [{ id: 3, title: "Old" }], 5)
+    const fake = join(h.base, "herdr-open.json")
+    const running = `node '${PANE}' --board '${file}' --origin 'w4:p6' --version '0.4.0'`
+    writeFileSync(
+      fake,
+      JSON.stringify({
+        agents: [{ name: "coord", pane_id: "w4:p6", workspace_id: "w4" }],
+        panes: [
+          { pane_id: "w4:p6", tab_id: "w4:t1", workspace_id: "w4", cwd: app },
+          { pane_id: "w4:p9", tab_id: "w4:t1", workspace_id: "w4", label: "board", running },
+        ],
+      }),
+    )
+    const log = () => JSON.parse(readFileSync(fake, "utf8")).log
+    const r = h.run(app, ["open"], h.inHerdr(fake))
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /board restarted in pane w4:p9 on the one board \(it showed .*app\/\.git\/job-board\.json\)/)
+    assert.deepEqual(log().filter((a) => a[1] === "send-text").at(-1), ["pane", "send-text", "w4:p9", "q"])
+    assert.match(log().filter((a) => a[1] === "run").at(-1)[3], new RegExp(`--board '${h.file.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}' --origin 'w4:p6'`))
+    assert.ok(!existsSync(file), "open (a write) brought the board in first")
+
+    // `restart` finds a current-version board still on the imported file: restarted on the store.
+    const state = JSON.parse(readFileSync(fake, "utf8"))
+    state.panes.find((p) => p.pane_id === "w4:p9").running = running
+    writeFileSync(fake, JSON.stringify(state))
+    const again = h.run(app, ["restart"], h.inHerdr(fake))
+    assert.equal(again.status, 0, again.stderr)
+    assert.match(log().filter((a) => a[1] === "run").at(-1)[3], /--board '.*\/herdr-job-board\/board\.json'/)
+  } finally {
+    h.done()
+  }
+})
+
+test("job-start and job-report by slug never take another project's card; the first group with the job open wins, so no duplicate and no stranded card", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    const ai = h.repo("ai-config")
+    const fake = h.herdr([{ name: "c1", pane_id: "w4:p6", workspace_id: "w4" }, { name: "c2", pane_id: "w4:p20", workspace_id: "w4" }, { name: "c3", pane_id: "wA:p1", workspace_id: "wA" }])
+    // F3: sfc's To do card "review"; the ai-config coordinator starts its own job "review".
+    h.ok(sfc, ["add", "todo", "Review the PR", "--job", "review"], h.inHerdr(fake))
+    assert.match(h.ok(ai, ["job-start", "review", "--title", "AI rules review"], h.inHerdr(fake, "wA:p1", "wA")), /^2 → doing: AI rules review/)
+    assert.deepEqual([h.card(1).column, h.card(1).title, h.card(1).workspace], ["todo", "Review the PR", "w4"], "sfc's card untouched")
+    assert.equal(h.card(2).project, "ai-config")
+    const report = join(ai, "r.json")
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "ok" }))
+    assert.match(h.ok(ai, ["job-report", "review", report], h.inHerdr(fake, "wA:p1", "wA")), /^2 → done/)
+    assert.equal(h.card(1).column, "todo")
+
+    // F4a: pane w4:p20 has a Done "build" card; the project's To do "build" card belongs to w4:p6.
+    h.ok(sfc, ["add", "done", "Old build", "--job", "build"], h.inHerdr(fake, "w4:p20"))
+    h.ok(sfc, ["add", "todo", "Build again", "--job", "build"], h.inHerdr(fake))
+    assert.match(h.ok(sfc, ["job-start", "build"], h.inHerdr(fake, "w4:p20")), /^4 → doing: Build again/, "the open card, not a new one")
+    assert.equal(h.state().items.filter((i) => i.job === "build").length, 2)
+
+    // F4b: w4:p20's own Done card used report R; w4:p6's card 6 runs the job again with R.
+    const R = join(sfc, "build-report.json")
+    h.ok(sfc, ["add", "todo", "Deploy", "--job", "deploy"], h.inHerdr(fake, "w4:p20"))
+    h.ok(sfc, ["job-start", "deploy", "--report", R], h.inHerdr(fake, "w4:p20"))
+    writeFileSync(R, JSON.stringify({ status: "done", summary: "deployed" }))
+    assert.match(h.ok(sfc, ["job-report", "deploy", R, "--if-final"], h.inHerdr(fake, "w4:p20")), /^5 → done/)
+    h.ok(sfc, ["add", "todo", "Deploy again", "--job", "deploy"], h.inHerdr(fake))
+    h.ok(sfc, ["job-start", "deploy", "--id", "6", "--report", R], h.inHerdr(fake, "w4:p20"))
+    assert.match(h.ok(sfc, ["job-report", "deploy", R, "--if-final"], h.inHerdr(fake, "w4:p20")), /^6 → done: Deploy again/)
+  } finally {
+    h.done()
+  }
+})
+
+test("restore takes only the store's backups; an import backup is merged with import, into its own repo; next_id never goes down", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    legacy(sfc, [{ id: 1, title: "one" }, { id: 2, title: "two" }])
+    h.ok(sfc, ["import"])
+    h.ok(sfc, ["rm", "2"])
+    h.ok(sfc, ["add", "todo", "three"], { JOB_BOARD_NOW: "2026-10-20T10:00:00Z" })
+    h.ok(sfc, ["add", "todo", "four"], { JOB_BOARD_NOW: "2026-10-20T10:00:00Z" })
+    const listed = h.ok(sfc, ["restore"])
+    assert.match(listed, /board-2026-10-20\.json/)
+    assert.doesNotMatch(listed, /import-/, "import backups aren't restore's")
+    const [dir] = readdirSync(join(h.store, "backups")).filter((f) => f.startsWith("import-"))
+    const importBackup = join(h.store, "backups", dir, "sfc-integration.json")
+    const r = h.run(sfc, ["restore", importBackup])
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /is a 0\.4 board \(one repo's cards, e\.g\. what import kept\), not a backup of the one board; restore puts back only backups\/board-\*\.json\. To merge its cards in again: node .* import '.*sfc-integration\.json'/)
+    // The import backup merged in: card 2 comes back in sfc-integration, the rest are there already.
+    assert.match(h.ok(sfc, ["import", importBackup]), /→ {2}sfc-integration \(sfc\): 1 card, id kept \(2\), 1 already there/)
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.project]), [[1, "sfc-integration"], [2, "sfc-integration"], [3, "sfc-integration"], [4, "sfc-integration"]])
+    assert.ok(existsSync(importBackup), "a backup is never renamed")
+    // Restoring the day's backup (before cards 3 and 4): next_id stays 5.
+    h.ok(sfc, ["restore", "board-2026-10-20.json"], { JOB_BOARD_NOW: "2026-10-20T11:00:00Z" })
+    assert.match(h.ok(sfc, ["add", "todo", "five"], { JOB_BOARD_NOW: "2026-10-20T11:00:00Z" }), /^added 5 /)
+  } finally {
+    h.done()
+  }
+})
+
+test("import again after a rollback: re-tagged, renumbered and archived cards are found, not added twice; reports are kept for imported and archived cards", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    h.repo("ai-config")
+    const other = h.repo("other")
+    h.ok(other, ["add", "todo", "other one"], { JOB_BOARD_NOW: "2026-10-01T10:00:00Z" })
+    // A 0.4-era board, written through JOB_BOARD_FILE: a job report finished card 1 on 1 Oct.
+    const file = join(sfc, ".git", "job-board.json")
+    const R = join(sfc, "r.json")
+    writeFileSync(R, JSON.stringify({ status: "done", summary: "built" }))
+    const old = { JOB_BOARD_FILE: file, JOB_BOARD_NOW: "2026-10-01T10:00:00Z" }
+    h.ok(sfc, ["job-start", "build", "--report", R], old)
+    h.ok(sfc, ["job-report", "build"], old)
+    h.ok(sfc, ["add", "todo", "two"], old)
+    h.ok(sfc, ["add", "todo", "three"], old)
+    // Import on 19 Oct: id 1 is taken (other's), so build becomes 4 and is archived at once.
+    const first = h.ok(sfc, ["import", "--retag", "3=ai-config"])
+    assert.match(first, /renumbered \(the id was taken\): sfc-integration#1 → 4/)
+    assert.match(first, /^archive: 1 Done card older than 7 days goes to archive\//m)
+    assert.deepEqual(h.state().items.map((i) => [i.id, i.project]), [[1, "other"], [2, "sfc-integration"], [3, "ai-config"]])
+    // The same report again: archived, so no new card.
+    assert.match(h.ok(sfc, ["job-report", "build", R]), /^4 unchanged \(archived\)/)
+    // Rollback (mv back), then forward again: nothing added twice.
+    spawnSync("mv", [join(sfc, ".git", "job-board.migrated.json"), file])
+    const again = h.ok(sfc, ["import"])
+    assert.match(again, /sfc-integration \(sfc\): 0 cards, 3 already there/)
+    assert.equal(h.state().items.length, 3)
+  } finally {
+    h.done()
+  }
+})
+
+test("the dry run shows the archive the import does, and its totals match the real run", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    legacy(sfc, [{ id: 1, title: "old done", column: "done", since: "2026-10-01T09:00:00.000Z" }, { id: 2, title: "open" }])
+    const dry = h.ok(sfc, ["import", "--dry-run"])
+    const real = h.ok(sfc, ["import"])
+    const tail = (text) => text.split("\n").filter((l) => /^(archive|then|done):/.test(l)).map((l) => l.replace(/^(then|done):/, "x:"))
+    assert.deepEqual(tail(dry), tail(real))
+    assert.match(dry, /^archive: 1 Done card older than 7 days goes to archive\/ \(json --archive YYYY-MM shows them\)$/m)
+    assert.match(dry, /^then: {2}board\.json 1 cards \(1 open\), next_id 3;/m)
+  } finally {
+    h.done()
+  }
+})
+
+test("job-start --id N --project P on one's own card runs it in P; retag gives an unowned card to the coordinator", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    h.repo("herdr-job-board")
+    h.repo("ai-config")
+    const fake = h.herdr([{ name: "c1", pane_id: "w4:p6", workspace_id: "w4" }])
+    h.ok(sfc, ["add", "todo", "Card"], h.inHerdr(fake))
+    assert.match(h.ok(sfc, ["job-start", "p2", "--id", "1", "--project", "herdr-job-board"], h.inHerdr(fake)), /^1 → doing/)
+    assert.equal(h.card(1).project, "herdr-job-board")
+    // A card nobody owns (written from a plain shell), re-tagged by the coordinator: it may go on.
+    h.ok(sfc, ["add", "todo", "Unowned"])
+    assert.equal(h.card(2).origin, "")
+    h.ok(sfc, ["retag", "2", "ai-config"], h.inHerdr(fake))
+    assert.equal(h.card(2).origin, "w4:p6")
+    h.ok(sfc, ["done", "2"], h.inHerdr(fake))
+  } finally {
+    h.done()
+  }
+})
+
+test("a corrupt board is never backed up over the good ones; an archive line cut short doesn't swallow the next card", () => {
+  const h = home()
+  try {
+    const app = h.repo("app")
+    h.ok(app, ["add", "todo", "a"], { JOB_BOARD_NOW: "2026-10-01T10:00:00Z" })
+    writeFileSync(h.file, "{ not json")
+    const r = h.run(app, ["add", "todo", "b"], { JOB_BOARD_NOW: "2026-10-02T10:00:00Z" })
+    assert.equal(r.status, 1)
+    assert.ok(!existsSync(join(h.store, "backups", "board-2026-10-02.json")), "no backup of a corrupt board")
+    // An archive whose last line has no line break (a full disk): the next card starts a new line.
+    writeFileSync(h.file, JSON.stringify({ version: 2, next_id: 3, items: [{ id: 2, project: "app", title: "done", column: "done", since: "2026-10-01T10:00:00.000Z", updated: "2026-10-01T10:00:00.000Z" }] }))
+    mkdirSync(join(h.store, "archive"), { recursive: true })
+    writeFileSync(join(h.store, "archive", "2026-10.jsonl"), JSON.stringify({ id: 1, title: "earlier", column: "done" }))
+    h.ok(app, ["add", "todo", "c"], { JOB_BOARD_NOW: "2026-10-12T10:00:00Z" })
+    assert.deepEqual(JSON.parse(h.ok(app, ["json", "--archive", "2026-10"])).items.map((i) => i.id), [1, 2])
   } finally {
     h.done()
   }

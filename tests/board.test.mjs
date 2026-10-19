@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // board.mjs (the CLI, the only writer) and board-pane.mjs (the renderer). Herdr is faked by
 // fixtures/fake-herdr.mjs; the real one is never called.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
@@ -43,7 +44,8 @@ function repo(base, name = "app") {
 
 /** The env for a run: no real Herdr unless a fake state file is given. */
 function envFor({ herdr = null, now = "2026-10-13T10:30:00Z", extra = {} } = {}) {
-  const env = { ...process.env, TZ: "UTC", JOB_BOARD_NOW: now, NO_COLOR: "1", JOB_BOARD_HOME: STATE, ...extra }
+  // HOME too: nothing a test runs may look at the user's repos or boards.
+  const env = { ...process.env, TZ: "UTC", JOB_BOARD_NOW: now, NO_COLOR: "1", JOB_BOARD_HOME: STATE, HOME: join(STATE, "..", "home"), ...extra }
   for (const key of ["JOB_BOARD_FILE", "HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT", "JOB_AGENT_ROLE"]) if (!(key in extra)) delete env[key]
   if (herdr) Object.assign(env, { HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1" }, extra)
   else Object.assign(env, { HERDR_ENV: "0", HERDR_WORKSPACE_ID: "", HERDR_PANE_ID: "" })

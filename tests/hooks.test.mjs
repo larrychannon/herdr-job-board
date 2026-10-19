@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // hooks/board-hook.mjs (the Claude Code hooks that keep the board current) and the wait-script
 // side of `board.mjs job-report --if-final`.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs"
@@ -15,7 +16,7 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
 const HOOK = join(ROOT, "hooks", "board-hook.mjs")
 // The hook's env inside Herdr; repo() points JOB_BOARD_HOME at its own store, never the user's.
-const HERDR = { HERDR_ENV: "1", JOB_BOARD_HOME: "" }
+const HERDR = { HERDR_ENV: "1", JOB_BOARD_HOME: "", HOME: "" }
 
 function repo() {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "board-hooks-")))
@@ -23,7 +24,8 @@ function repo() {
   const state = join(base, ".git", "board-state")
   mkdirSync(state)
   HERDR.JOB_BOARD_HOME = state
-  const env = (now) => ({ ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: state, JOB_BOARD_NOW: now })
+  HERDR.HOME = join(base, ".git", "home")
+  const env = (now) => ({ ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: state, HOME: HERDR.HOME, JOB_BOARD_NOW: now })
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: env(now), encoding: "utf8" })
     assert.ok(r.status === 0 || args.includes("--if-final"), `board ${args.join(" ")}: ${r.stderr}`)
@@ -227,7 +229,7 @@ test("the hook script: stdin JSON in, Claude Code's JSON out; settings snippet; 
   const r = repo()
   try {
     r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
-    const env = { ...process.env, HERDR_ENV: "1", JOB_AGENT_ROLE: "", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state }
+    const env = { ...process.env, HERDR_ENV: "1", JOB_AGENT_ROLE: "", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, HOME: HERDR.HOME }
     const run = (input, args = []) => spawnSync(process.execPath, [HOOK, ...args], { input: typeof input === "string" ? input : JSON.stringify(input), env, encoding: "utf8" })
     // An old record from another session is cleaned up on the next prompt.
     mkdirSync(r.turns, { recursive: true })
@@ -267,7 +269,7 @@ test("job-report is idempotent with a real clock: one card, `updated` unchanged,
   try {
     const report = join(r.base, "r.json")
     const real = (...args) => {
-      const res = spawnSync(process.execPath, [BOARD, ...args], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, JOB_BOARD_NOW: "" }, encoding: "utf8" })
+      const res = spawnSync(process.execPath, [BOARD, ...args], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, HOME: HERDR.HOME, JOB_BOARD_NOW: "" }, encoding: "utf8" })
       assert.equal(res.status, 0, res.stderr)
       return res
     }
@@ -344,7 +346,7 @@ test("job-report --if-final: what a wait script calls whenever the report change
     assert.deepEqual([r.items()[0].column, r.items()[0].ask], ["waiting", "failed: tests fail on CI"])
     // Without --if-final a non-final report is still an error.
     writeFileSync(report, JSON.stringify({ status: "running" }))
-    assert.equal(spawnSync(process.execPath, [BOARD, "job-report", "build", report], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state }, encoding: "utf8" }).status, 1)
+    assert.equal(spawnSync(process.execPath, [BOARD, "job-report", "build", report], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, HOME: HERDR.HOME }, encoding: "utf8" }).status, 1)
   } finally {
     r.done()
   }

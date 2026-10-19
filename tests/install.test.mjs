@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // Install, update and run: version, hooks, doctor, restart, and a board pane that picks up an
 // update of its own folder. Herdr is faked (fixtures/fake-herdr.mjs).
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"

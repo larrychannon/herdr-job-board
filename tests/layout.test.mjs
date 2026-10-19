@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // The layout by pane size (wide, inbox, compact): breakpoints, one-line rows, folding, every
 // card counted, widths with emoji and CJK text, colour never the only signal, Space and ← →.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import test from "node:test"
 

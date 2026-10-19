@@ -1,5 +1,6 @@
 // Run: node --test (from the repo root)
 // Colours, the card details panel, links (OSC 8), copying (OSC 52) and the mouse toggle.
+import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -29,7 +30,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   spawnSync("git", ["-C", base, "init", "-q"])
   const herdr = join(root, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ agents, tabs }))
-  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(root, "store"), JOB_BOARD_NOW: NOW, TZ: "UTC" }
+  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(root, "store"), HOME: root, JOB_BOARD_NOW: NOW, TZ: "UTC" }
   delete env.NO_COLOR
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: { ...env, HERDR_ENV: "0", JOB_BOARD_NOW: now }, encoding: "utf8" })
