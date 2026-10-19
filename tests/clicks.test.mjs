@@ -257,7 +257,7 @@ test("the live pane times clicks and paints with a monotonic clock: a wall-clock
     const y = screen.findIndex((l) => l.includes("[ Yes ]")) + 1
     const x = [...screen[y - 1].slice(0, screen[y - 1].indexOf("[ Yes ]"))].length + 2
     const board = join(t.store, "board.json")
-    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(root, "herdr.json"), HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
+    const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(root, "herdr.json"), HERDR_WORKSPACE_ID: "w9", JOB_BOARD_HOME: t.store, JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1" }
     const cmd = `stty cols 100 rows 30; exec node --import '${preload}' '${join(ROOT, "board-pane.mjs")}' --board '${board}' --origin 'w9:p1' --interval 1`
     child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: t.repo, env, detached: true })
     child.stdout.on("data", () => {})

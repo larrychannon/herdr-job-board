@@ -1,57 +1,83 @@
 #!/usr/bin/env node
-// herdr-job-board: what is to do, being done, and waiting on the user, for one repo. The board
-// pane (board-pane.mjs) draws it; this script is the only thing that writes it. Agents (a
-// coordinator that starts jobs) and people use the same commands.
+// herdr-job-board: what is to do, being done, and waiting on the user, for every project on
+// this machine. The board pane (board-pane.mjs) draws it; this script is the only thing that
+// writes it. Agents (a coordinator that starts jobs) and people use the same commands.
 //
 //   node board.mjs <command> …        (installed as a Herdr plugin: "$HERDR_PLUGIN_ROOT/board.mjs")
 //
-//   add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L]
-//                           add an item; prints its id. --option (up to 4, Waiting only) puts
-//                           answer buttons on the card, --suggest marks the suggested one
+//   add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]
+//                           add an item to this folder's project (or P); prints its id. --option
+//                           (up to 4, Waiting only) puts answer buttons on the card, --suggest
+//                           marks the suggested one
 //   move <ref> <column> [--ask A] [--desc D]                   <ref> is an item id or a job slug
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //   done <ref>                                                 same as move <ref> done
 //   rm <ref>
+//                           move, edit, done, rm and retag change a card of another project only
+//                           with --project <its project> (or from the coordinator pane that owns it)
+//   retag <id>… <project>   move cards to another project
+//   adopt <id>… | adopt --project P --gone
+//                           this coordinator pane owns these cards (--gone: P's open cards whose
+//                           owner pane is gone)
+//   front [show]            this coordinator pane gets the answers no other coordinator can take
+//   projects                every project: tag, colour, open cards, folder, coordinators
+//   project set <name> [--tag T] [--color C] [--name N]
 //   ls [--width N]          the board as text: the pane's view at that width with every Waiting
 //                           card open and Done open (today's finished cards), with live agent
 //                           status; piped with no --width (or --width 120 or more), the wide
 //                           layout, every card whole
-//   json                    the board file as it is
-//   job-start <slug> [--id N] [--title T] [--desc D] [--report path]
+//   json [--archive YYYY-MM]
+//                           the board file as it is (version 2: items, projects, …), or a
+//                           month's archived Done cards
+//   job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
-//                           Doing item, else a new one)
+//                           Doing item, else a new one, in W's repo, P, or this folder's project)
 //   job-report <slug> [report.json] [--if-final]
 //                           a job's report landed (default: the --report given at job-start):
 //                           done → Done; done with needs_user → Waiting, asking needs_user;
 //                           blocked / failed → Waiting with the reason. --if-final: a missing,
 //                           unreadable or non-final report is a quiet no-op (exit 0), for wait
 //                           scripts that call it whenever the report file changes
+//   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
+//                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
+//                           of the repos under $HOME) into the one board. Ids are kept when free,
+//                           else renumbered (the map is printed); stale test cards are left out;
+//                           the old files are backed up, then renamed job-board.migrated.json
+//   export --legacy [--project P|all]
+//                           a project's cards as a 0.4 board file, on stdout (a rollback)
+//   restore [<backup>]      list the backups, or put one back (the board before it is kept)
 //   open [--share 0.3]      open the board pane right of this pane, once per tab; its answer
 //                           buttons send to this pane. A pane running another copy or an older
 //                           version of the board is restarted with this one
 //   restart                 restart every board pane that runs an older version of this board,
 //                           or a copy whose files are gone (after `herdr plugin install` updated it)
-//   doctor                  check the install (Node, Herdr, the plugin, this repo's board, the
-//                           key binding, the sidebar, the hooks, open panes) and print the one
+//   doctor                  check the install (Node, Herdr, the plugin, the board, the key
+//                           binding, the sidebar, the hooks, open panes) and print the one
 //                           command that fixes each thing missing
 //   hooks                   print the Claude Code hooks to merge into .claude/settings.json
 //   version                 print this copy's version
 //   token                   print the sidebar text, and report it to Herdr as $board
 //   path                    print the board file's path
 //
-// Columns: todo, doing, waiting (on the user), done. Done items are kept 14 days (the pane's
-// Done, folded to one line until opened, shows today's), then dropped.
+// Columns: todo, doing, waiting (on the user), done. Done items stay 7 days (the pane's Done,
+// folded to one line until opened, shows today's), then move to archive/YYYY-MM.jsonl.
 //
-// The board file is $(git rev-parse --git-common-dir)/job-board.json: inside .git, so every
-// worktree of the repo shares one board and it is never committed. JOB_BOARD_FILE overrides it.
+// One board for every project on this machine: ${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/
+// board.json (JOB_BOARD_HOME is another folder for it, JOB_BOARD_FILE another file; a 0.4 file
+// given there is read as it is and written back in the new shape). Each card has a project (its
+// repo, by the git common dir, so worktrees count as their repo; outside git, the folder, or
+// "home" for ~), an owner (`origin`: the coordinator pane that wrote it) and a workspace. The
+// first command in a repo with a 0.4 board, while the store is empty, imports that board.
 // Writes take a lock (mkdir <file>.lock, with the owner's pid), then write a temp file (mode
 // 0600) and rename it over the board, so readers never see half a file and racing writers don't
-// lose each other's items. Text is stored and printed without control characters.
+// lose each other's items. The first write of a day keeps a copy in backups/ (7 kept). Text is
+// stored and printed without control characters.
 //
 // After each change, and from the board pane, the counts go to Herdr as the workspace token
 // `board` ("1 doing · 3 need you"); a `$board` entry in the sidebar's Space rows shows it.
 //
-// Exit: 0 ok, 1 error (unknown item, unreadable board, Herdr failed), 2 bad usage.
+// Exit: 0 ok, 1 error (unknown item, unreadable board, Herdr failed), 2 bad usage (and a
+// change to another project's card without --project).
 
 import { execFile, spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
@@ -173,7 +199,9 @@ const sameProject = (p, id) => (id.git ? p.git === id.git : !p.git && p.root ===
 export function projectName(projects, id) {
   for (const [name, p] of Object.entries(projects)) if (sameProject(p, id)) return name
   const name = clean(id.name).slice(0, 60) || "project"
-  if (!Object.hasOwn(projects, name)) return name
+  // A project known only by its name (a hand edit, a card written without one): the first
+  // folder of that name claims it.
+  if (!Object.hasOwn(projects, name) || (!projects[name].root && !projects[name].git)) return name
   const parent = clean(basename(dirname(id.root)))
   if (parent && !Object.hasOwn(projects, `${parent}-${name}`)) return `${parent}-${name}`
   for (let i = 2; ; i++) if (!Object.hasOwn(projects, `${name}-${i}`)) return `${name}-${i}`
@@ -214,7 +242,9 @@ function colorFor(projects) {
 /** The project's name on this board, adding it (tag, colour, root, git) the first time. */
 export function ensureProject(state, id) {
   const name = projectName(state.projects, id)
-  if (!state.projects[name]) state.projects[name] = { tag: tagFor(name, state.projects), color: colorFor(state.projects), root: id.root, git: id.git, workspace: "" }
+  const p = state.projects[name]
+  if (!p) state.projects[name] = { tag: tagFor(name, state.projects), color: colorFor(state.projects), root: id.root, git: id.git, workspace: "" }
+  else if (!p.root && !p.git) Object.assign(p, { root: id.root, git: id.git })
   return name
 }
 
@@ -3551,7 +3581,8 @@ export function importPreview(result, state, { file, backup, dryRun, keepStale }
     const tag = state.projects[b.project]?.tag
     const parts = [`${b.cards} card${b.cards === 1 ? "" : "s"}`]
     const renumbered = Object.keys(b.renumbered).length
-    if (b.kept.length && !renumbered) parts.push(`ids kept (${Math.min(...b.kept)}–${Math.max(...b.kept)})`)
+    if (b.kept.length === 1 && !renumbered) parts.push(`id kept (${b.kept[0]})`)
+    else if (b.kept.length && !renumbered) parts.push(`ids kept (${Math.min(...b.kept)}–${Math.max(...b.kept)})`)
     else if (renumbered) parts.push(`${b.kept.length} ids kept, ${renumbered} renumbered`)
     if (b.merged) parts.push(`${b.merged} updated`)
     if (b.unchanged) parts.push(`${b.unchanged} already there`)
@@ -3837,8 +3868,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     let agentList
     const agents = () => (agentList === undefined ? (agentList = listAgents(env)) : agentList)
     // A card this writer may change (checkOwner); a gone owner's card is taken over, and said so.
-    const owned = (s, item) => {
-      checkOwner(s, item, me, opts.project)
+    const owned = (s, item, projectOpt = opts.project) => {
+      checkOwner(s, item, me, projectOpt)
       const was = takeOver(item, me, agents())
       if (was) err(`board: card ${item.id}'s coordinator (${was}) is gone: this pane (${me.pane}) owns it now`)
       return item
@@ -3964,7 +3995,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const item = change((s) => {
           // A Waiting item of the same job stays: it is the user's open question from its last run.
           const open = (i) => i.job === slug && (i.column === "todo" || i.column === "doing")
-          const it = opts.id ? owned(s, findItem(s, String(opts.id))) : jobScope(s.items, slug, me).findLast(open)
+          // Here --project is where the job runs, not the card's project for the ownership check.
+          const it = opts.id ? owned(s, findItem(s, String(opts.id)), undefined) : jobScope(s.items, slug, me).findLast(open)
           if (!it) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now, who(s))
           moveItem(it, "doing", now)
           dropOptions(it)
