@@ -61,7 +61,9 @@
 //                           buttons send to this pane. A pane running another copy or an older
 //                           version of the board is restarted with this one
 //   restart                 restart every board pane that runs an older version of this board,
-//                           or a copy whose files are gone (after `herdr plugin install` updated it)
+//                           a copy whose files are gone (after `herdr plugin install` or `update`),
+//                           or, from the installed copy, an older install folder (Herdr 0.9.5
+//                           installs each update to a new one)
 //   setup [--dry-run] [--key K] [--no-key] [--no-sidebar] [--no-reload]
 //                           write the board's key binding (default prefix+shift+b; Herdr's own
 //                           prefix+b toggles the sidebar) and "$board" in the sidebar's space rows
@@ -70,8 +72,8 @@
 //   contract                what this copy offers, as JSON (version, contract 2, commands, flags)
 //   guide                   the instructions for agents
 //   doctor                  check the install (Node, Herdr, the plugin, the board, the key
-//                           binding, the sidebar, the hooks, open panes) and print the one
-//                           command that fixes each thing missing
+//                           binding, the sidebar, the hooks, open panes, old install folders)
+//                           and print the one command that fixes each thing missing
 //   hooks                   print the Claude Code hooks to merge into .claude/settings.json
 //   version                 print this copy's version
 //   token                   print this workspace's sidebar text, and report every workspace's to
@@ -555,16 +557,25 @@ function pluginDirs(env) {
 }
 
 /**
+ * Whether `dir` is a copy Herdr installed: a folder inside Herdr's plugin folder. Herdr 0.9.3
+ * cloned the repo to plugins/github/herdr-job-board-<hash>/; 0.9.5 puts each install and update
+ * in a new plugins/github-installations/herdr-job-board-<hash>/<n>/checkout/. Any depth counts,
+ * so a later layout does too. Anything else (a checkout, a worktree, `herdr plugin link` of one)
+ * is a development copy.
+ */
+export function managedCopy(dir, env = process.env) {
+  const here = realOr(dir)
+  return pluginDirs(env).some((d) => insidePath(here, d) && here !== d)
+}
+
+/**
  * Whether `scripts` is the copy Herdr runs as the plugin: HERDR_PLUGIN_ROOT (a plugin action, the
- * board pane), or a folder inside Herdr's plugin folder (`herdr plugin install` clones the repo
- * to <config>/herdr/plugins/github/herdr-job-board-<hash>/). Decided from paths alone: no Herdr
- * call, so it holds outside Herdr and while Herdr is slow or down. Anything else (a checkout, a
- * worktree, `herdr plugin link` of one) is a development copy.
+ * board pane), or a copy Herdr installed (managedCopy). Decided from paths alone: no Herdr call,
+ * so it holds outside Herdr and while Herdr is slow or down.
  */
 function installedCopy(env, scripts) {
   if (env.HERDR_PLUGIN_ROOT && sameFile(env.HERDR_PLUGIN_ROOT, scripts)) return true
-  const here = realOr(scripts)
-  return pluginDirs(env).some((dir) => insidePath(here, dir) && here !== dir)
+  return managedCopy(scripts, env)
 }
 
 /**
@@ -1143,6 +1154,59 @@ export function listTabsAsync(env = process.env) {
   })
 }
 
+// --- the installed copy, as Herdr says --------------------------------------------------------
+
+/** This plugin's entry in `herdr plugin list --json` output, or null. */
+function pluginEntry(json) {
+  const plugins = json?.result?.plugins
+  return Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID) || null : null
+}
+// `herdr plugin list` may take this long; slower counts as "Herdr didn't say".
+export const ROOT_TIMEOUT_MS = 5000
+let installedCache
+
+/**
+ * The plugin as Herdr has it installed, from `herdr plugin list --json`: { root (plugin_root, the
+ * folder Herdr runs it from), version (the copy's own, read from that folder), listed (what Herdr
+ * lists), entry }, or null outside Herdr, when it isn't installed or Herdr didn't answer. Asked
+ * once a process.
+ */
+export function installedPlugin(env = process.env) {
+  if (installedCache !== undefined) return installedCache
+  if (!inHerdr(env)) return (installedCache = null)
+  const r = spawnSync(herdrBin(env), ["plugin", "list", "--json"], { encoding: "utf8", env, timeout: ROOT_TIMEOUT_MS })
+  let json = null
+  try {
+    json = r.status === 0 ? JSON.parse(r.stdout) : null
+  } catch {}
+  return (installedCache = rootOf(pluginEntry(json)))
+}
+const rootOf = (entry) => (entry?.plugin_root ? { root: entry.plugin_root, version: versionOf(entry.plugin_root), listed: entry.version ?? "", entry } : entry ? { root: "", version: "", listed: entry.version ?? "", entry } : null)
+
+/** installedPlugin, without blocking (for the pane, which caches it itself). */
+export function installedPluginAsync(env = process.env) {
+  if (!inHerdr(env)) return Promise.resolve(null)
+  return new Promise((done) => {
+    execFile(herdrBin(env), ["plugin", "list", "--json"], { env, timeout: Number(env.JOB_BOARD_ROOT_TIMEOUT_MS) || ROOT_TIMEOUT_MS }, (error, stdout) => {
+      try {
+        done(error ? null : rootOf(pluginEntry(JSON.parse(stdout))))
+      } catch {
+        done(null)
+      }
+    })
+  })
+}
+
+/**
+ * The installed copy a copy in `dir` (at `version`) should hand over to, or null: Herdr's
+ * installed root when it is another folder, `dir` is a copy Herdr installed too (an older
+ * install folder; a development copy is left alone) and the root's version is newer.
+ */
+export function newerRoot(installed, dir, version, env = process.env) {
+  if (!installed?.root || !installed.version || sameFile(installed.root, dir) || !managedCopy(dir, env)) return null
+  return atLeast(installed.version, version) && installed.version !== version ? installed : null
+}
+
 /** Switch the user's view to a job's agent (its tab): `herdr agent focus <name>`, argv only. */
 export function focusAgent(name, env = process.env) {
   if (!inHerdr(env)) return Promise.resolve("not inside Herdr")
@@ -1610,7 +1674,7 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   // The buttons come straight under the question; anything else about it goes after them.
   const buttons = shownOptions(entry, column).length > 0
   const asks = column === "waiting" || blocked ? asksOf(entry.ask) : []
-  for (const ask of asks.slice(0, 2)) lines.push(...askLines(ask, askLabel(buttons), inner, 2, indent, urls, { key: keyOf(entry) }))
+  for (const ask of asks.slice(0, 2)) lines.push(...askLines(ask, askLabel(buttons), inner, ui.full ? Infinity : 2, indent, urls, { key: keyOf(entry) }))
   if (buttons) lines.push(...buttonLines(entry, width, indent, ui.selected ? ui.button : -1))
   if (asks.length > 2) lines.push([indent, { t: `  +${asks.length - 2} more (board.mjs json)`, s: "dim" }])
   if (buttons && entry.sent?.label) {
@@ -1702,13 +1766,17 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const want = Math.min(12, textWidth(title))
   if (roomFor() < want && status.length > 1) status = status.slice(0, 1)
   if (roomFor() < want) status = []
-  const shown = fit(title, roomFor())
+  const opened = (ui.open || (ui.openWaiting && column === "waiting")) && column !== "done"
+  // Open while the mouse selects text (ui.full): a long title wraps instead of being cut.
+  const titleLines = ui.full && opened && textWidth(title) > roomFor() ? wrap(title, Math.max(4, roomFor()), Infinity) : [fit(title, roomFor())]
+  const shown = titleLines[0]
   const style = blocked ? "blocked" : ui.selected || column === "waiting" ? "title" : ""
   const line = [...head, ...linkify(shown, style, urlsIn(entry.title))]
   const tail = right()
   if (tail.length) line.push({ t: " ".repeat(Math.max(1, width - segWidth(line) - segWidth(tail))) }, ...tail)
   const lines = [line]
-  if ((ui.open || (ui.openWaiting && column === "waiting")) && column !== "done") lines.push(...cardBody(entry, column, width, indent, DESC_LINES, ui, { status: false }))
+  for (const t of titleLines.slice(1)) lines.push([indent, ...linkify(t, style, urlsIn(entry.title))])
+  if (opened) lines.push(...cardBody(entry, column, width, indent, ui.full ? Infinity : DESC_LINES, ui, { status: false }))
   else if (ui.note) for (const t of wrap(ui.note.t, width - lead, 2)) lines.push([indent, { t, s: ui.note.s }])
   return lines
 }
@@ -1900,6 +1968,12 @@ const projectHint = (line, keys, filtered) => {
   const add = filtered ? `${keys} · P all` : keys
   return / · d done/.test(line) ? line.replace(" · d done", ` · ${add} · d done`) : `${line.replace(/ · q$/, "")} · ${add} · q`
 }
+// The key line while the mouse selects text (one column): first how to get the mouse back.
+const SELECT_HINTS = [
+  "selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit",
+  "selecting text: m mouse back · ↑↓ · Space · Tab · c copy · q",
+  "select: m back · ↑↓ · Space · q",
+]
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
 /** Done folded: one line, its count (and in a view of one project, the others') and ▸, for "d or a click here opens it". */
@@ -2417,7 +2491,11 @@ export function renderBoard(view, opts = {}) {
   }
   const finite = Number.isFinite(height)
   const paint = (segs, w = width) => paintLine(segs, w, color, links)
-  const layout = ["wide", "inbox", "compact"].includes(opts.layout) ? opts.layout : layoutOf(width, height)
+  // Mouse capture off (m: the terminal selects text): one column, whatever the width, so a drag
+  // across the pane selects one card's lines, and the open card shows all of its text.
+  const selecting = interactive && opts.footer?.mouse === "select"
+  const chosenLayout = ["wide", "inbox", "compact"].includes(opts.layout) ? opts.layout : layoutOf(width, height)
+  const layout = selecting && chosenLayout === "wide" ? "inbox" : chosenLayout
   const form = layout === "wide" ? "card" : "row"
   const emoji = opts.emoji === true
   // The selected card is open in the inbox and closed in compact; Space (scroll.open) flips that.
@@ -2515,7 +2593,7 @@ export function renderBoard(view, opts = {}) {
       : {}
   // Cards carry their notes everywhere, so heights are the same before and after selection. In
   // `ls` (not interactive, nothing selected) every Waiting row is open.
-  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive, ...tagUi(e) })
+  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive, full: selecting, ...tagUi(e) })
   // The selected section's selected card: the one chosen, else the first one in view. Its
   // button is chosen only with ← →, never in advance.
   const uiFor = (section, perRow, w, h) => {
@@ -2777,6 +2855,8 @@ export function renderBoard(view, opts = {}) {
       ? keyLine(...(several ? [detailHint(wide, detailInfo.buttons, detailInfo.more, NEXT_COPY)] : []), detailHint(wide, detailInfo.buttons, detailInfo.more), detailHint(false, detailInfo.buttons, detailInfo.more))
       : send
         ? keyLine(CHOSEN_HINT(true), CHOSEN_HINT(false))
+        : selecting
+          ? keyLine(...SELECT_HINTS)
         : layout === "compact"
           ? // The mouse mode only when it isn't the usual one, where the line is short.
             showStrip
@@ -3783,6 +3863,22 @@ export function verifyCopy(dir, version, env = process.env, file = "") {
   })()
 }
 
+/**
+ * `open` and `restart` from a copy Herdr installed that is no longer its installed root (an
+ * older install folder, typed by hand): the command runs in the installed copy instead, when it
+ * is newer, so it starts that copy's board. Returns its exit code, or null to run here.
+ */
+function handOver(argv, env, raw, err) {
+  if (env.JOB_BOARD_HANDED === "1") return null
+  const root = newerRoot(installedPlugin(env), SCRIPTS, VERSION, env)
+  if (!root || !existsSync(join(root.root, "board.mjs"))) return null
+  err(`this copy (${SCRIPTS}, ${VERSION}) is an old install folder: running it in the installed copy, ${root.version} at ${root.root}`)
+  const r = spawnSync(process.execPath, [join(root.root, "board.mjs"), ...argv], { encoding: "utf8", env: { ...env, JOB_BOARD_HANDED: "1" }, cwd: process.cwd() })
+  if (r.stdout) raw(r.stdout.replace(/\n$/, ""))
+  if (r.stderr) err(r.stderr.replace(/\n$/, ""))
+  return r.status ?? 1
+}
+
 /** Every board pane Herdr has, in every workspace: [{ pane, tab, workspace, ...paneState }]. */
 function boardPanes(env) {
   const spaces = herdr(["workspace", "list"], env, { quiet: true })?.result?.workspaces || []
@@ -3806,6 +3902,16 @@ function boardPanes(env) {
 const stale = (p, dir = SCRIPTS, version = VERSION) =>
   p.state === "board" && ((sameFile(p.script, join(dir, "board-pane.mjs")) && (p.version ? p.version !== version : atLeast(version, "0.4.0"))) || !existsSync(p.script) || wasImported(p.board))
 
+/** A board pane running a copy Herdr installed that isn't the one in `dir` (an older install folder). */
+const oldInstall = (p, dir, env) => p.state === "board" && existsSync(p.script) && !sameFile(p.script, join(dir, "board-pane.mjs")) && managedCopy(dirname(p.script), env)
+
+/** Whether this copy is the one Herdr runs: HERDR_PLUGIN_ROOT, else `herdr plugin list`'s root. */
+function isRoot(env) {
+  if (env.HERDR_PLUGIN_ROOT) return sameFile(env.HERDR_PLUGIN_ROOT, SCRIPTS)
+  const root = installedPlugin(env)?.root
+  return Boolean(root) && sameFile(root, SCRIPTS)
+}
+
 /**
  * `restart`, and the pane's own restart after an update (`pane`): quit each stale board pane and
  * start this copy in it, with the board file and coordinator pane it had. Before anything is
@@ -3815,7 +3921,10 @@ const stale = (p, dir = SCRIPTS, version = VERSION) =>
  * say why the last restart failed. Returns the lines to print.
  */
 function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyOrigin = "" } = {}) {
-  const panes = only ? [{ pane: only, ...paneState(only, env), ...(onlyFile ? { board: onlyFile, origin: onlyOrigin } : {}) }] : boardPanes(env).filter((p) => stale(p))
+  // From the installed root: a board on an older install folder (Herdr 0.9.5 puts each install in
+  // a new one) is stale too.
+  const root = !only && isRoot(env)
+  const panes = only ? [{ pane: only, ...paneState(only, env), ...(onlyFile ? { board: onlyFile, origin: onlyOrigin } : {}) }] : boardPanes(env).filter((p) => stale(p) || (root && oldInstall(p, SCRIPTS, env)))
   const lines = []
   const fail = (p, error) => {
     logRestart(env, { pane: p.pane, ok: false, version: VERSION, error })
@@ -3895,7 +4004,8 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       continue
     }
     logRestart(env, { pane: p.pane, ok: true, version: VERSION })
-    lines.push(`pane ${p.pane}: board ${VERSION} started (it ran ${existsSync(p.script ?? "") ? p.version || "a version before 0.4.0" : `${p.script}, now gone`})`)
+    const ran = !existsSync(p.script ?? "") ? `${p.script}, now gone` : `${p.version || "a version before 0.4.0"}${p.script && !sameFile(p.script, PANE_SCRIPT) ? ` from ${dirname(p.script)}` : ""}`
+    lines.push(`pane ${p.pane}: board ${VERSION} started (it ran ${ran})`)
   }
   return lines
 }
@@ -4244,7 +4354,9 @@ rows = [
  * `doctor`: what works and what is missing, one line each, with the one command (or the lines
  * to paste) that fixes it. Required: Node 20+, Herdr (new enough, this pane inside it) and the
  * plugin; optional: the key binding, the sidebar count, the Claude Code hooks. Board panes that
- * run an older version are listed with `restart`. Exit 1 when something required is missing.
+ * run an older version or an older install folder are listed with `restart`; install folders Herdr
+ * no longer uses with the `rm -rf` to remove them (never removed here). Exit 1 when something
+ * required is missing.
  */
 function doctor(env, out) {
   const lines = []
@@ -4267,9 +4379,9 @@ function doctor(env, out) {
     out(lines.join("\n"))
     return 1
   }
-  const plugins = herdr(["plugin", "list", "--json"], env, { quiet: true })?.result?.plugins
-  const plugin = Array.isArray(plugins) ? plugins.find((p) => (p.plugin_id ?? p.id) === PLUGIN_ID) : null
-  const root = plugin?.plugin_root ?? ""
+  const installed = installedPlugin(env)
+  const plugin = installed?.entry ?? null
+  const root = installed?.root ?? ""
   const from = plugin?.source?.kind === "github" ? `${plugin.source.owner}/${plugin.source.repo} @ ${String(plugin.source.resolved_commit || "").slice(0, 7)}` : plugin ? "a local folder (herdr plugin link)" : ""
   need(Boolean(plugin), plugin ? `plugin installed: ${PLUGIN_ID} ${plugin.version ?? ""} from ${from}` : "plugin not installed", `herdr plugin install ${PLUGIN_SOURCE}`)
   if (plugin && plugin.enabled === false) need(false, "plugin disabled", `herdr plugin enable ${PLUGIN_ID}`)
@@ -4311,12 +4423,22 @@ function doctor(env, out) {
   const settings = [join(env.HOME || "", ".claude", "settings.json"), ...[".claude/settings.json", ".claude/settings.local.json"].map((f) => join(repoRoot, f))]
   const hooked = settings.find((f) => /board-hook\.mjs|job-board\.mjs\\?"? hook/.test(readText(f) ?? ""))
   say(hooked ? "ok" : "opt", hooked ? `Claude Code hooks (in ${hooked})` : "Claude Code hooks not set up (only for a Claude Code coordinator): print them with", ...(hooked ? [] : [`${cli} hooks`]))
+  // Hooks that name an install folder other than the installed one: Herdr 0.9.5 installs each
+  // update to a new folder and removes the old one once nothing uses it.
+  for (const f of settings) {
+    const dirs = [...(readText(f) ?? "").matchAll(/([^\s'"\\]+)\/hooks\/board-hook\.mjs/g)].map((m) => m[1])
+    const old = [...new Set(dirs)].filter((d) => root && managedCopy(d, env) && !sameFile(d, root))
+    for (const d of old) say("fix", `the hooks in ${f} run ${d}, an older install folder: put in the ones \`hooks\` prints now (or the job skill's job-board.mjs, which finds the installed copy)`, `${cli} hooks`)
+  }
 
   // Open panes, against the installed copy (this one when it isn't installed).
   const refDir = root || SCRIPTS
-  const refVersion = (root ? plugin.version : VERSION) || VERSION
+  const refVersion = (root ? installed.version || plugin.version : VERSION) || VERSION
   const panes = boardPanes(env)
-  const old = panes.filter((p) => stale(p, refDir, refVersion))
+  // A board on an older install folder (Herdr 0.9.5 puts each install in a new one) counts as
+  // old even at the same version: `restart` from the installed copy moves it over.
+  const moved = (p) => Boolean(root) && oldInstall(p, refDir, env)
+  const old = panes.filter((p) => stale(p, refDir, refVersion) || moved(p))
   for (const p of panes.filter((p) => p.state === "board" && !old.includes(p) && !sameFile(p.script, join(refDir, "board-pane.mjs")))) {
     say("note", `pane ${p.pane} (tab ${p.tab}) runs another copy: ${p.script}`)
   }
@@ -4324,14 +4446,57 @@ function doctor(env, out) {
   else if (!old.length) say("ok", `${panes.length} board pane${panes.length === 1 ? "" : "s"} open`)
   else {
     for (const p of old) {
-      if (p.version === refVersion && wasImported(p.board)) say("fix", `pane ${p.pane} (tab ${p.tab}) was started on ${p.board}, imported since`)
+      if (moved(p)) say("fix", `pane ${p.pane} (tab ${p.tab}) runs ${p.version || "a version before 0.4.0"} from ${dirname(p.script)}, not the installed copy (${refVersion} at ${refDir})`)
+      else if (p.version === refVersion && wasImported(p.board)) say("fix", `pane ${p.pane} (tab ${p.tab}) was started on ${p.board}, imported since`)
       else say("fix", `pane ${p.pane} (tab ${p.tab}) runs ${p.version || "a version before 0.4.0"}, not ${refVersion}`)
     }
     missing++
-    lines.push(`      ${atLeast(refVersion, "0.4.0") ? `${cli} restart` : "press q in it, then open the board again"}`)
+    lines.push(`      ${atLeast(refVersion, "0.4.0") ? `${cli} restart   (or ${cli} open, from the pane left of it)` : "press q in it, then open the board again"}`)
+  }
+
+  // Install folders Herdr no longer uses: printed with the command to remove them, never removed.
+  // Not required: the exit code stays as it is.
+  for (const o of oldFolders(env, root, panes)) {
+    if (o.managed) say("note", `${o.dir}: an older install of the board (${o.version || "version unknown"}); Herdr removes it itself once nothing uses it`)
+    else if (o.used.length) say("fix", `${o.dir}: an old install of the board (${o.version || "version unknown"}) that pane ${o.used.join(", ")} still runs`, `${cli} restart   (then: rm -rf ${shellQuote(o.dir)})`)
+    else say("fix", `${o.dir}: an old install of the board (${o.version || "version unknown"}) that Herdr no longer uses`, `rm -rf ${shellQuote(o.dir)}`)
   }
   out(lines.join("\n"))
   return missing ? 1 : 0
+}
+
+/**
+ * Copies of the board in Herdr's plugin folders other than the installed `root`: [{ dir,
+ * version, managed, used }]. Herdr 0.9.3's plugins/github/herdr-job-board-<hash> folders, which
+ * 0.9.5 leaves behind; an older plugins/github-installations/…/<n>/checkout, which Herdr keeps
+ * while it is in use and removes itself (managed: true); used: the board panes that run it.
+ * Looked for only in the plugins folder that holds `root`; nothing when Herdr didn't say.
+ */
+function oldFolders(env, root, panes) {
+  if (!root) return []
+  const list = (dir) => {
+    try {
+      return readdirSync(dir).filter((n) => !n.startsWith("."))
+    } catch {
+      return []
+    }
+  }
+  const mine = (n) => n === PLUGIN_ID || n.startsWith(`${PLUGIN_ID}-`)
+  const found = []
+  // Only the plugins folder Herdr runs the board from (none for `herdr plugin link`).
+  for (const plugins of pluginDirs(env).filter((d) => insidePath(realOr(root), d))) {
+    for (const n of list(join(plugins, "github")).filter(mine)) found.push({ dir: join(plugins, "github", n), managed: false })
+    for (const n of list(join(plugins, "github-installations")).filter(mine)) {
+      for (const k of list(join(plugins, "github-installations", n))) {
+        const at = join(plugins, "github-installations", n, k)
+        found.push({ dir: existsSync(join(at, "checkout")) ? join(at, "checkout") : at, managed: true })
+      }
+    }
+  }
+  const rootReal = realOr(root)
+  return found
+    .filter((o) => existsSync(join(o.dir, "herdr-plugin.toml")) && !insidePath(rootReal, realOr(o.dir)) && !insidePath(realOr(o.dir), rootReal))
+    .map((o) => ({ ...o, version: versionOf(o.dir), used: panes.filter((p) => p.state === "board" && insidePath(realOr(p.script), realOr(o.dir))).map((p) => p.pane) }))
 }
 
 // --- import, export, restore -------------------------------------------------------------------
@@ -4990,6 +5155,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     }
     if (command === "open") {
       only(opts, command)
+      const handed = handOver(argv, env, raw, err)
+      if (handed !== null) return handed
       const file = openPane(env.JOB_BOARD_FILE ? boardPath(process.cwd(), env) : null, opts, env, out)
       if (file) syncToken(file, env)
       return 0
@@ -5034,6 +5201,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       only(opts, command)
+      const handed = handOver(argv, env, raw, err)
+      if (handed !== null) return handed
       const lines = restartPanes(env)
       out(lines.length ? lines.join("\n") : `every board pane runs ${VERSION}: nothing to restart`)
       return 0

@@ -760,6 +760,45 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
   }
 })
 
+test("mouse capture off (m): one column at any width, so a drag selects one card; the open card whole; m brings the columns back (snapshots 160x45, 200x60)", () => {
+  const t = setup({ agents, tabs })
+  try {
+    seed(t)
+    const long = `Invoices round per line now, not per total. ${"Every line of this description has to be selectable in one drag. ".repeat(7)}The end of it.`
+    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A card whose title runs on well past the width of one row at one hundred and sixty columns, so it would be cut short with an ellipsis when it is drawn as one row of the inbox", "--desc", long, "--ask", "Read all of it, then say go", "--option", "Go")
+    const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
+    let all = ""
+    for (const [width, height] of [[160, 45], [200, 60]]) {
+      const size = ["--width", String(width), "--height", String(height)]
+      const wide = t.pane(size).stdout
+      assert.match(wide, /DOING \(2\) +TO DO \(1\)/, `${width}x${height}: the wide layout, columns side by side`)
+      // m, then ↓ ↓: the long card (Waiting is oldest first) is the open one.
+      const r = t.pane(size, "m\x1b[B\x1b[B")
+      assert.equal(r.status, 0, r.stderr)
+      assert.ok(r.stdout.startsWith(MOUSE_OFF), "m turned mouse reporting off")
+      const text = r.stdout.slice(MOUSE_OFF.length)
+      const lines = text.trimEnd().split("\n")
+      // One column: every section header starts its own line, and no line holds two cards' text.
+      for (const head of ["WAITING ON YOU", "DOING", "TO DO"]) assert.match(text, new RegExp(`^▸? ?${head} \\(\\d+\\) ─+$`, "m"), `${width}x${height}: ${head} across the width`)
+      assert.ok(!lines.some((l) => /DOING.*TO DO|Export to CSV.*Nightly|Billing fix.*Old question/.test(l)), "no two columns on a line")
+      // The selected card is open whole: the title wraps, every word of the description is there.
+      const flat = lines.map((l) => l.trim()).join(" ")
+      assert.ok(flat.includes(long), `${width}x${height}: the whole description`)
+      assert.ok(flat.includes("drawn as one row of the inbox"), "the whole title")
+      assert.ok(!lines.slice(0, lines.length - 1).some((l) => l.replace("Other…", "").includes("…")), "nothing cut with …")
+      assert.match(lines.at(-1), /m gives the mouse and the columns back/, "the key line says how to get back")
+      all += `===== m (mouse capture off) · ${width}x${height} =====\n${text}`
+      // m again: the columns are back.
+      assert.match(t.pane(size, "mm").stdout, /DOING \(2\) +TO DO \(1\)/)
+    }
+    const snap = join(FIXTURES, "select-plain.txt")
+    if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, all)
+    assert.equal(all, readFileSync(snap, "utf8"), "snapshot select-plain.txt (UPDATE_SNAPSHOTS=1 to rewrite)")
+  } finally {
+    t.done()
+  }
+})
+
 test("the live pane in a terminal: mouse capture off and on with m, OSC 52 only on c, all restored on exit", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
   const t = setup()
   try {

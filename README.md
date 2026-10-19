@@ -139,7 +139,7 @@ itself out again at once.
 | `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
 | `t` | go to the job's tab |
-| `m` | mouse capture off (select text in the terminal) and on again |
+| `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); the key line starts `selecting text: m gives the mouse and the columns back` |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
 | mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `q`, `r` | quit; redraw |
@@ -311,22 +311,25 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    ```
 
    ```
-   herdr-job-board 0.5.0 at /home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876
+   herdr-job-board 0.5.1 at /home/me/.config/herdr/plugins/github-installations/herdr-job-board-2d3b6201c876/3898869-0/checkout
    ok    Node.js 22.23.2
    ok    Herdr 0.9.5
-   ok    plugin installed: herdr-job-board 0.5.0 from larrychannon/herdr-job-board @ 1a2b3c4
+   ok    plugin installed: herdr-job-board 0.5.1 from larrychannon/herdr-job-board @ 1a2b3c4
    ok    the board: /home/me/.local/state/herdr-job-board/board.json (12 cards, 3 projects)
    add   no key binding for the board in /home/me/.config/herdr/config.toml
    add   no "$board" in the sidebar's space rows
          node '…/board.mjs' setup --dry-run   (to see the change), then: node '…/board.mjs' setup
          (until then: node '…/board.mjs' open)
    opt   Claude Code hooks not set up (only for a Claude Code coordinator): print them with
-         node '/home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876/board.mjs' hooks
+         node '…/board.mjs' hooks
    ok    1 board pane open
+   fix   /home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876: an old install of the board (0.4.0) that Herdr no longer uses
+         rm -rf '/home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876'
    ```
 
    It exits 1 only when something the board needs is missing (Node, Herdr, the plugin, or a
-   board pane on an older version); the key binding, the sidebar and the hooks are optional.
+   board pane on an older version or an older install folder); the key binding, the sidebar and
+   the hooks are optional, and so is removing an old install folder (see Update).
 
 3. The key binding and the sidebar count: `setup` writes both into Herdr's `config.toml`
    (below). Look first, then write:
@@ -348,40 +351,71 @@ beside whatever pane is focused.
 
 ### Update
 
-Install it again: Herdr 0.9.3 has no `plugin update`, and installing over an installed plugin
-replaces its files in the same folder.
+Herdr 0.9.5 has `herdr plugin update`; on 0.9.3, install it again.
 
 ```sh
-herdr plugin install larrychannon/herdr-job-board
+herdr plugin update herdr-job-board      # Herdr 0.9.5 (-y: no question first)
+herdr plugin install larrychannon/herdr-job-board   # Herdr 0.9.3
 ```
 
-An open board pane (0.4.0 or newer) sees its folder's new version, waits until it has stood
-still for 5 seconds (an update writes several files), checks the new copy (its files parse, its
-`version` says that version, and its pane draws a frame of this board outside Herdr, which links
-every import) and only then restarts itself with it, in the same pane, with the same board and
-coordinator. It waits while a card's details are open or a button is chosen, and says so. A copy
-that fails the check is never started: the pane keeps running and says why, with "run herdr
-plugin install larrychannon/herdr-job-board again" for a broken update, or "quit (q) and open the
-board again to run X" for an older version put there on purpose (a board before 0.4.0 can't take
-over a pane by itself). A check that takes too long is tried again a minute later, then later
-still; after 3 timeouts in a row the pane says "the new copy took too long to start". Once the
-old board has quit, the restart waits up to 10 seconds for the shell to get back to its prompt (a
-prompt hook such as a zsh `precmd`, a git prompt or direnv shows as busy for a moment) and for the
-new board to show; a pane that stays busy is logged as a failed restart. Restarts are logged to
+What `herdr plugin update` is, from its help and messages (not run here): it updates plugins
+installed from GitHub (the ones named, or all of them), asks first unless `-y`, says "… is
+already up to date." when there is nothing new, and refuses a plugin linked with
+`herdr plugin link`.
+
+Where the copy goes depends on Herdr. 0.9.3 cloned the plugin to
+`~/.config/herdr/plugins/github/herdr-job-board-<hash>/` and an update rewrote that folder in
+place. 0.9.5 puts each install in a new folder,
+`~/.config/herdr/plugins/github-installations/herdr-job-board-<hash>/<n>/checkout` (`<n>` such
+as `3898869-0`, a new one each time, with an `.in-use` marker beside `checkout`), and
+`herdr plugin list --json` names it as `plugin_root`. It leaves the 0.9.3 folder behind, and
+removes its own older `<n>` folders once nothing uses them. The board doesn't depend on the
+folder name: the plugin action (the key binding) runs from `plugin_root`, and so does
+`$BOARD` under Install.
+
+An open board pane (0.4.0 or newer) sees a new version in its own folder, and (0.5.1 or newer)
+also asks Herdr every 30 seconds where the plugin is installed (`herdr plugin list --json`, with
+a 5-second timeout; the pane never waits for it). When that is another folder with a newer
+version, and the pane runs a copy Herdr installed (a checkout is left alone), that copy is the new
+one. The pane waits until the new copy has stood still for 5 seconds (an update writes several
+files), checks it (its files parse, its `version` says that version, and its pane draws a frame of
+this board outside Herdr, which links every import) and only then restarts itself with it, in the
+same pane, with the same board and coordinator: the new copy's own `pane-restart` starts it. It
+waits while a card's details are open or a button is chosen, and says so. A copy that fails the
+check is never started: the pane keeps running and says why, with "run herdr plugin install
+larrychannon/herdr-job-board again" for a broken update, or "quit (q) and open the board again to
+run X" for an older version put there on purpose (a board before 0.4.0 can't take over a pane by
+itself). An installed copy older than the pane is not followed. A check that takes too long is
+tried again a minute later, then later still; after 3 timeouts in a row the pane says "the new
+copy took too long to start". Once the old board has quit, the restart waits up to 10 seconds for
+the shell to get back to its prompt (a prompt hook such as a zsh `precmd`, a git prompt or direnv
+shows as busy for a moment) and for the new board to show; a pane that stays busy is logged as a
+failed restart. Restarts are logged to
 `${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log` (beside the board when
 `JOB_BOARD_HOME` gives it a folder of its own); a board started in a pane within a
 few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
-skips, not failures. A pane from before 0.4.0 can't:
-`node "$BOARD" restart` restarts every board pane, in every workspace, that runs an older version
-of the installed board (or a copy whose files are gone), and `doctor` lists them. It looks at
-each pane again right before typing `q` into it, and types it only into a board still on the old
-version; it leaves alone a pane with no board file to start again, one whose board was quit
-meanwhile, and one that already restarted itself. If a new board doesn't stay running, the reason
-is printed in the pane only when the pane is a shell at that moment. `open` in a
-tab does the same for that tab's pane.
+skips, not failures.
 
-The key binding, the sidebar token and the hooks don't change: the plugin's folder is the same
-after an update.
+A pane from before 0.5.1 only watches its own folder, so under Herdr 0.9.5 it doesn't see the
+update (and one from before 0.4.0 can't restart itself at all): run `open` once from the pane
+left of it, or `node "$BOARD" restart`. `restart` restarts every board pane, in every workspace,
+that runs an older version of the installed board, a copy whose files are gone, or (run from the
+installed copy) an older install folder, even at the same version; `doctor` lists them. Typed from
+an old install folder, `restart` and `open` run in the newer installed copy instead. `restart`
+looks at each pane again right before typing `q` into it, and types it only into a board still
+stale; it leaves alone a pane with no board file to start again, one whose board was quit
+meanwhile, and one that already restarted itself. If a new board doesn't stay running, the reason
+is printed in the pane only when the pane is a shell at that moment. `open` in a tab does the same
+for that tab's pane.
+
+`doctor` also lists the install folders Herdr no longer uses: 0.9.3's
+`plugins/github/herdr-job-board-<hash>` with the exact `rm -rf` to remove it (after `restart`
+when a pane still runs it), and older `<n>` folders as a note, since Herdr removes those itself.
+It prints the command and never removes anything.
+
+The key binding and the sidebar token don't change after an update. The hooks name a path (see
+the hooks section): under Herdr 0.9.5 that path changes with each update, and `doctor` says when
+the hooks in your settings run an older install folder, with `hooks` to print the current ones.
 
 ### Upgrading from 0.4
 
@@ -588,7 +622,10 @@ node "$BOARD" hooks
 ```
 
 (`$BOARD` as under Install; `hooks/board-hook.mjs --print-settings` prints the same.) The path
-in them is the plugin's folder, which an update keeps, so they keep working after one.
+in them is the plugin's folder. Herdr 0.9.3 keeps it across updates; 0.9.5 installs each update
+to a new folder and removes the old one once nothing uses it, so after an update print them again
+(`doctor` says when they run an older install folder), or point them at the job skill's
+`job-board.mjs`, which finds the installed copy itself.
 
 Each session's turn record is kept in the store's `turns/` folder and removed after 7 days.
 
