@@ -1235,12 +1235,22 @@ export function installedRoot(installed, env = process.env) {
  * when it is an install Herdr made (installedRoot: never a linked checkout), another folder, its
  * version is newer, and `dir` is this board installed by Herdr too (an older install folder) or,
  * with `asPlugin`, a copy of this board that was started as the plugin (a pane `open` started
- * from a linked checkout). A development copy started by hand is left alone.
+ * from a linked checkout). A development copy started by hand is left alone. `self` (a pane's
+ * own answer, settled when it started: selfIsBoard) replaces the look at `dir`, whose files Herdr
+ * may have removed since (0.9.5 removes an old <n> once nothing uses it).
  */
-export function newerRoot(installed, dir, version, env = process.env, { asPlugin = false } = {}) {
+export function newerRoot(installed, dir, version, env = process.env, { asPlugin = false, self } = {}) {
   if (!installedRoot(installed, env) || !installed.version || sameFile(installed.root, dir)) return null
-  if (!boardCopy(dir, env) && !(asPlugin && pluginIdOf(dir) === PLUGIN_ID)) return null
+  if (!(self ?? selfIsBoard(dir, env, { asPlugin }))) return null
   return atLeast(installed.version, version) && installed.version !== version ? installed : null
+}
+
+/**
+ * Whether the copy in `dir` is this board as Herdr installed it (boardCopy), or, with `asPlugin`,
+ * a copy of this board started as the plugin. Read from its files: a pane asks once, at start.
+ */
+export function selfIsBoard(dir, env = process.env, { asPlugin = false } = {}) {
+  return boardCopy(dir, env) || (asPlugin && pluginIdOf(dir) === PLUGIN_ID)
 }
 
 /** Switch the user's view to a job's agent (its tab): `herdr agent focus <name>`, argv only. */

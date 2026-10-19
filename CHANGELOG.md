@@ -14,7 +14,8 @@ the wide layout.
   plugins folder: never a checkout linked with `herdr plugin link`) in another folder with a newer
   version, and the pane runs this board as Herdr installed it (by its manifest id, so not a
   sibling plugin such as `herdr-job-board-qa`) or was started as the plugin (`--as-plugin`, which
-  `open` and `restart` now add), it hands over to that copy in the same pane,
+  `open` and `restart` now add; settled when the pane starts, so it still holds once Herdr has
+  removed the pane's own `<n>`), it hands over to that copy in the same pane,
   with every 0.4.0 rule: the settle time, the check of the new copy (it parses, says its version,
   draws a frame), no bare shell, the wait for a busy prompt, the restart log. The new copy's own
   `pane-restart` starts it.

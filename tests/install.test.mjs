@@ -829,3 +829,40 @@ test("doctor's old folders are this board by its manifest id: a sibling plugin's
     t.done()
   }
 })
+
+test("a pane whose own <n> folder Herdr removed still follows the installed root: it settled at start that it is the board's", { skip: !hasScript && "needs util-linux script" }, async () => {
+  for (const flag of ["", " --as-plugin"]) {
+    const t = setup()
+    const L = layout095(t)
+    let live
+    try {
+      const first = L.copy(L.inst("1-0"))
+      L.installAt(first)
+      if (!existsSync(t.store)) assert.equal(t.run(["add", "todo", "Something"]).status, 0)
+      t.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board" }))
+      const cmd = `stty cols 100 rows 30; exec node '${first}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '${VERSION}'${flag} --interval 1`
+      const child = spawn("script", ["-qefc", cmd, "/dev/null"], { cwd: t.repo, env: { ...t.env, HERDR_PANE_ID: "w9:p5", JOB_BOARD_UPDATE_SETTLE_MS: "1500", JOB_BOARD_ROOT_CHECK_MS: "300" }, detached: true })
+      live = { out: "", exited: false, kill: () => { try { if (!live.exited) process.kill(-child.pid, "SIGKILL") } catch {} } }
+      child.stdout.on("data", (d) => (live.out += d.toString("utf8")))
+      child.on("exit", () => (live.exited = true))
+      for (let i = 0; i < 100 && !/Something/.test(live.out); i++) await pause(100)
+      // The update: 2-0 written at 9.9.9, plugin_root flips to it, and Herdr removes 1-0.
+      const second = L.copy(L.inst("2-0"), "9.9.9")
+      L.installAt(second, "9.9.9")
+      rmSync(join(first, ".."), { recursive: true, force: true })
+      assert.ok(!existsSync(first))
+      for (let i = 0; i < 100 && !live.exited; i++) await pause(100)
+      assert.ok(live.exited, `${flag || "plain"}: the pane on the removed folder handed over: ${words(live).slice(-200)}`)
+      assert.match(words(live), /board 9\.9\.9 is installed: this pane restarts with it/, "and said so first")
+      let run
+      for (let i = 0; i < 50 && !run; i++) {
+        await pause(100)
+        run = runs(t).find((a) => a[2] === "w9:p5")
+      }
+      assert.equal(run?.[3], `node '${second}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '9.9.9' --as-plugin`)
+    } finally {
+      live?.kill()
+      t.done()
+    }
+  }
+})

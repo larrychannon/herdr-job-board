@@ -114,8 +114,8 @@ import {
   importNotice,
   installedPluginAsync,
   LEGACY_FILE,
-  boardCopy,
   newerRoot,
+  selfIsBoard,
   migrates,
   projectAt,
   WORKING_FRAMES,
@@ -405,7 +405,10 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   let asking = false
   const rootEvery = Number(env.JOB_BOARD_ROOT_CHECK_MS) || ROOT_CHECK_MS
   // Only a board Herdr installed, or one started as the plugin (from a checkout linked then).
-  const watchRoot = env.HERDR_ENV === "1" && (boardCopy(here, env) || opts.asPlugin)
+  // Settled once, now: Herdr may remove this folder later (an update writes a new <n>), and the
+  // pane must still know it is the board's and follow the new root.
+  const self = selfIsBoard(here, env, { asPlugin: opts.asPlugin })
+  const watchRoot = env.HERDR_ENV === "1" && self
   const askRoot = () => {
     if (!watchRoot || asking || clock() - rootAt < rootEvery) return
     asking = true
@@ -431,7 +434,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
   const checkUpdate = () => {
     askRoot()
-    const dir = newerRoot(installed, here, VERSION, env, { asPlugin: opts.asPlugin })?.root || here
+    const dir = newerRoot(installed, here, VERSION, env, { self })?.root || here
     const now = versionOf(dir)
     if (!now || now === VERSION) {
       update = null
