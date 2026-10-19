@@ -409,16 +409,18 @@ after an update.
    write already brought the boards in, `import --dry-run` shows that import and its
    suggestions, and `import --retag …` applies them; `ls`, the prompt hook and the pane say so
    until you run `import`. Later, `retag <id> <project>` moves one card.
-3. **Back to 0.4** (rollback):
-   - the boards: `export --legacy --project <name> > <repo>/.git/job-board.json` writes that
-     project's cards as they are now as a 0.4 board. For the board as it was at the import, put
-     back the exact file the import renamed: its output names it, and the store keeps it in
-     `imports[].renamed` (`node "$BOARD" json --project all | jq -r '.imports[].renamed'`). It
-     is `job-board.migrated.json`, or `job-board.migrated-<time>.json` when that name was taken,
-     so never assume the plain name.
+3. **Back to 0.4** (rollback), in this order (while 0.5.0 is installed, any write in a repo
+   brings a 0.4 file that is back in `.git` in again):
+   - keep the cards as they are now: `export --legacy --project <name> > /tmp/<name>.json`
+     writes that project's cards as a 0.4 board (it only reads);
    - the plugin: Herdr's `plugin install` takes no version, so `herdr plugin uninstall
      herdr-job-board`, then link a checkout of 0.4.0 (commit `6f4047a`: `git clone …; git
-     checkout 6f4047a`, then `herdr plugin link <that folder>`).
+     checkout 6f4047a`, then `herdr plugin link <that folder>`);
+   - the boards back: either that export as `<repo>/.git/job-board.json`, or, for the board as it
+     was at the import, the exact file the import renamed. The import's output names it, and the
+     store keeps it in `imports[].renamed` (read the store's `board.json` with `jq`, since the
+     0.5 CLI is gone). It is `job-board.migrated.json`, or `job-board.migrated-<time>.json` when
+     that name was taken, so never assume the plain name;
    - the board panes: 0.4.0's `restart` doesn't move a 0.5 pane (another copy). In each tab with
      a board, run the 0.4.0 copy's `open` from the pane you work in: it switches the board pane
      to that copy, on the repo's file.
