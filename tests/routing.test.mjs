@@ -83,7 +83,7 @@ test("routeAnswer: the owner while it runs, else the project's newest live coord
   const viaFront = routeAnswer(state, ai, agents("w4:p6"), { fallback: "w4:p6" })
   assert.deepEqual(viaFront, { pane: "w4:p6", to: "sfc coordinator (w4:p6)", second: true })
   assert.equal(secondPressNote(state, ai, viaFront, "Go"), "no ai coordinator is running: press Go again to send it to the board's coordinator (sfc, pane w4:p6)")
-  assert.deepEqual(routeAnswer(state, ai, agents()), { error: "no ai coordinator is running; start one there, or use Other… (no front coordinator: board.mjs front sets one)" })
+  assert.deepEqual(routeAnswer(state, ai, agents()), { error: "no ai coordinator is running; start one there, or use Other… (no front coordinator: none set, and no pane has opened the board; board.mjs front, from a coordinator's pane, sets one)" })
   // A card nobody owns, with a fallback of its own project (or one that never wrote): straight away, as in 0.4.
   assert.equal(routeAnswer(state, { id: 1, project: "sfc-integration", origin: "" }, agents("w4:p6"), { fallback: "w4:p6" }).second, false)
   assert.equal(routeAnswer(state, { id: 1, project: "ai-config", origin: "" }, agents("w9:p1"), { fallback: "w9:p1" }).second, false)
@@ -427,6 +427,46 @@ test("answer: a bare number past the last button is refused; json says how many 
     assert.match(r.stderr, /card 1 has 2 buttons; 3 is none of them/)
     h.ok(h.repo("other"), ["add", "todo", "elsewhere"])
     assert.equal(JSON.parse(h.ok(sfc, ["json"])).hidden, 1)
+  } finally {
+    h.done()
+  }
+})
+
+test("open from a plain shell pane: it opens the board but can't take answers; front and the routing note say which pane and why", () => {
+  const h = home()
+  try {
+    const app = h.repo("app")
+    // wS:p1 is a plain shell (no agent); the only agent is a job's worker elsewhere.
+    writeFileSync(h.fake, JSON.stringify({ agents: [{ name: "build", pane_id: "wS:p9", workspace_id: "wS" }], panes: [{ pane_id: "wS:p1", tab_id: "wS:t1", workspace_id: "wS", cwd: app }] }))
+    h.ok(app, ["add", "waiting", "Pick", "--option", "Go", "--job", "build"])
+    h.ok(app, ["open"], h.at("wS:p1"))
+    assert.equal(h.ok(app, ["front", "show"], h.at("wS:p1")).trim(), "(no front coordinator: the pane that last opened the board (wS:p1) runs no coordinator; board.mjs front, from a coordinator's pane, sets one)")
+    const state = h.state()
+    const r = routeAnswer(state, state.items[0], [{ name: "build", pane_id: "wS:p9" }], { fallback: "wS:p1" })
+    assert.match(r.error, /no app coordinator is running; start one there, or use Other… \(no front coordinator: the pane that last opened the board \(wS:p1\) runs no coordinator; board\.mjs front, from a coordinator's pane, sets one\)/)
+    // A front that is set but gone says that instead.
+    assert.match(routeAnswer({ ...state, front: "wS:p7" }, state.items[0], [], {}).error, /the front coordinator \(wS:p7\) isn't running/)
+  } finally {
+    h.done()
+  }
+})
+
+test("a coordinator's project is its own pane's (Herdr's agent list), not the folder a command runs in", () => {
+  const h = home()
+  try {
+    const one = h.repo("one")
+    const two = h.repo("two")
+    writeFileSync(h.fake, JSON.stringify({ agents: [{ pane_id: "wF:p1", workspace_id: "wF", cwd: two, interactive_ready: true }, { pane_id: "wA:p1", workspace_id: "wA", cwd: one, interactive_ready: true }] }))
+    // Two's coordinator (wF:p1) writes from one's folder.
+    h.ok(one, ["add", "waiting", "Two's question", "--project", "two", "--option", "Go"], h.at("wF:p1"))
+    assert.equal(h.state().coordinators["wF:p1"].project, "two")
+    assert.equal(h.state().projects.two.workspace, "wF")
+    // So an answer to its card names it right.
+    assert.match(h.ok(one, ["answer", "1", "Go"], h.at("wA:p1")), /^sent to two coordinator \(wF:p1\): Go$/m)
+    // Herdr can't say where the pane works (not in the list): the project it was noted with stays.
+    writeFileSync(h.fake, JSON.stringify({ agents: [] }))
+    h.ok(one, ["add", "todo", "x", "--project", "two"], h.at("wF:p1"))
+    assert.equal(h.state().coordinators["wF:p1"].project, "two")
   } finally {
     h.done()
   }

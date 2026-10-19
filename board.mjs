@@ -878,9 +878,13 @@ export function writerOf(env = process.env, dirs = [process.cwd()]) {
 /** A coordinator's write is noted: its pane, workspace, cwd project and when. */
 export function noteCoordinator(state, me, now) {
   if (!me.coordinator) return
-  state.coordinators[me.pane] = { workspace: me.workspace, project: me.project || "", seen: now.toISOString() }
+  // Its project: where its own pane works (`me.paneId`, from Herdr's agent list), not the folder
+  // this command runs in (a coordinator may write from anywhere, even with another pane's id);
+  // without that, the project it was noted with, else this folder's.
+  const own = me.paneId ? projectName(state.projects, me.paneId) : state.coordinators[me.pane]?.project || me.project || ""
+  state.coordinators[me.pane] = { workspace: me.workspace, project: own, seen: now.toISOString() }
   // The project's workspace (for its sidebar count): where its coordinator works, unless known.
-  const project = state.projects[me.project]
+  const project = state.projects[own]
   if (project && !project.workspace && me.workspace) project.workspace = me.workspace
 }
 
@@ -3267,6 +3271,21 @@ export function mineFor(state, { project, pane = "", agents = null }) {
   return (i) => plain(i) || orphan(i)
 }
 
+/**
+ * Why there is no front coordinator to fall back on, for the messages that say so: the one set
+ * isn't running, or the pane that last opened the board runs no coordinator (a plain shell can't
+ * take an answer), or nothing at all. `live`: coordinatorPanes.
+ */
+export function noFrontReason(state, live = null) {
+  const opened = Object.values(state.panes || {})
+    .filter((p) => p && typeof p === "object" && p.origin)
+    .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")))
+    .at(-1)?.origin
+  if (state.front && live && !live.has(state.front)) return `the front coordinator (${state.front}) isn't running`
+  if (opened && live && !live.has(opened)) return `the pane that last opened the board (${opened}) runs no coordinator`
+  return "none set, and no pane has opened the board"
+}
+
 const tagOf = (state, project) => state.projects?.[project]?.tag || project || ""
 
 /** A coordinator pane in words: "sfc coordinator (w4:p6)", by the project it wrote from. */
@@ -3305,7 +3324,7 @@ export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
     const fbProject = state.coordinators?.[fb]?.project
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
-  return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…${fb ? "" : " (no front coordinator: board.mjs front sets one)"}` }
+  return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…${fb ? "" : ` (no front coordinator: ${noFrontReason(state, live)}; board.mjs front, from a coordinator's pane, sets one)`}` }
 }
 
 /**
@@ -5032,8 +5051,17 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     const writes = WRITES.has(command) && !(command === "front" && rest[0] === "show")
     const dirs = [process.cwd(), ...(opts.worktree !== undefined ? [resolve(opts.worktree)] : [])]
     if (writes || READS.has(command)) migrate(file, process.cwd(), env, now, { write: writes, say: err, dirs })
+    // A coordinator's own project: its pane's cwd, from Herdr's agent list (asked once, outside
+    // the lock), for noteCoordinator.
+    const panePlace = () => {
+      if (!me.coordinator || me.paneId !== undefined) return
+      const agent = (agents() || []).find((a) => a.pane_id === me.pane)
+      const cwd = agent?.foreground_cwd || agent?.cwd
+      me.paneId = cwd ? projectAt(cwd, env) : null
+    }
     // Every write notes a coordinator, and knows this writer's project by its name on the board.
     const change = (fn) => {
+      panePlace()
       const result = updateBoard(
         file,
         (s) => {
@@ -5167,8 +5195,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (rest.length > 1 || (rest.length && rest[0] !== "show")) throw usage("usage: board.mjs front [show]")
         if (rest[0] === "show") {
           const state = readBoard(file)
-          const front = frontOf(state, coordinatorPanes(state, agents()))
-          out(!front ? "(no front coordinator: none set, and no pane has opened the board)" : front === state.front ? front : `${front} (the pane that last opened the board${state.front ? `; the one set, ${state.front}, is gone` : ""}; board.mjs front sets one)`)
+          const live = coordinatorPanes(state, agents())
+          const front = frontOf(state, live)
+          out(!front ? `(no front coordinator: ${noFrontReason(state, live)}; board.mjs front, from a coordinator's pane, sets one)` : front === state.front ? front : `${front} (the pane that last opened the board${state.front ? `; the one set, ${state.front}, is gone` : ""}; board.mjs front sets one)`)
           return 0
         }
         if (!me.coordinator) throw usage("front is set from a coordinator's pane inside Herdr (HERDR_ENV=1, HERDR_PANE_ID set)")
