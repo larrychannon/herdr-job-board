@@ -402,7 +402,7 @@ export function readBoard(file) {
   // (numbers written out, anything else "(not text)"), so nothing downstream stringifies an
   // object or array.
   for (const item of state.items) {
-    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported", "project", "origin", "workspace", "was"]) {
+    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported", "project", "origin", "workspace", "was", "by"]) {
       if (item[key] != null && typeof item[key] !== "string") item[key] = asText(item[key])
     }
     if (item.sent != null && !(isObject(item.sent) && typeof item.sent.label === "string")) delete item.sent
@@ -784,7 +784,7 @@ export function jobScope(items, slug, me, { any = true } = {}) {
  * `--project all` every card, `--project P` P's. Returns { items, label, hidden } (hidden: the
  * open cards left out).
  */
-export function scopeOf(state, project, me) {
+export function scopeOf(state, project, me, agents = null) {
   if (project === "all") return { items: state.items, label: "all projects", hidden: 0 }
   let keep
   let label
@@ -795,7 +795,7 @@ export function scopeOf(state, project, me) {
     label = name
   } else {
     const mine = projectName(state.projects, me.id)
-    keep = (i) => i.project === mine || (me.pane && i.origin === me.pane)
+    keep = mineFor(state, { project: mine, pane: me.pane, agents })
     label = mine
   }
   const items = state.items.filter(keep)
@@ -3046,11 +3046,47 @@ export function answerText(item, label, from = "") {
 
 // --- where an answer goes ---------------------------------------------------------------------
 
-/** The front coordinator: `front`, else the pane that last opened the board (its `panes` entry's origin). */
-export function frontOf(state) {
-  if (state.front) return state.front
-  const opened = Object.values(state.panes || {}).filter((p) => p && typeof p === "object" && p.origin)
+/**
+ * The panes where a coordinator runs, from Herdr's agent list: any agent but one named after a
+ * job on the board (Herdr names a job's agent by its slug: a worker). null when the list is
+ * unknown.
+ */
+export function coordinatorPanes(state, agents) {
+  if (!Array.isArray(agents)) return null
+  const jobs = new Set((state.items || []).map((i) => i.job).filter(Boolean))
+  return new Set(agents.filter((a) => a?.pane_id && !(a.name && jobs.has(a.name))).map((a) => a.pane_id))
+}
+
+/**
+ * The front coordinator: `front`, else the pane that last opened the board (its `panes` entry's
+ * origin). With `live` (coordinatorPanes), only a live one: a front that is gone gives way to
+ * the newest live opener.
+ */
+export function frontOf(state, live = null) {
+  const ok = (pane) => Boolean(pane) && (!live || live.has(pane))
+  if (ok(state.front)) return state.front
+  const opened = Object.values(state.panes || {}).filter((p) => p && typeof p === "object" && ok(p.origin))
   return opened.sort((a, b) => String(a.at || "").localeCompare(String(b.at || ""))).at(-1)?.origin || ""
+}
+
+/**
+ * "Mine" for a pane (the hooks' reminder and Stop check, ls and json): its project's cards, the
+ * cards it owns, and, for the front coordinator, the cards nobody else can take: unowned or
+ * owned by a pane that is gone, in a project with no live coordinator (a card re-tagged to a
+ * project that has none). `agents` (Herdr's list, or a function giving it) is asked only when a
+ * card isn't the pane's by project or owner.
+ */
+export function mineFor(state, { project, pane = "", agents = null }) {
+  const plain = (i) => i.project === project || (Boolean(pane) && i.origin === pane)
+  let orphan = () => false
+  if (pane && state.items.some((i) => !plain(i))) {
+    const live = coordinatorPanes(state, typeof agents === "function" ? agents() : agents)
+    if (live && frontOf(state, live) === pane) {
+      const staffed = new Set(Object.entries(state.coordinators || {}).filter(([q]) => live.has(q)).map(([, c]) => c?.project))
+      orphan = (i) => !(i.origin && live.has(i.origin)) && !staffed.has(i.project)
+    }
+  }
+  return (i) => plain(i) || orphan(i)
 }
 
 const tagOf = (state, project) => state.projects?.[project]?.tag || project || ""
@@ -3074,16 +3110,20 @@ export function coordinatorName(state, pane) {
  * Returns { pane, to, second } or { error }.
  */
 export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
-  const fb = fallback || frontOf(state)
   const to = (pane, second = false) => ({ pane, to: coordinatorName(state, pane), second })
-  if (!Array.isArray(agents)) return item.origin ? to(item.origin) : fb ? to(fb) : { error: "no coordinator pane known; open the board with board.mjs open" }
-  const live = new Set(agents.map((a) => a.pane_id).filter(Boolean))
+  if (!Array.isArray(agents)) {
+    const fb = fallback || frontOf(state)
+    return item.origin ? to(item.origin) : fb ? to(fb) : { error: "no coordinator pane known; open the board with board.mjs open" }
+  }
+  // Only a coordinator's pane: a job's worker that runs where a coordinator was never gets answers.
+  const live = coordinatorPanes(state, agents)
+  const fb = fallback && live.has(fallback) ? fallback : frontOf(state, live)
   if (item.origin && live.has(item.origin)) return to(item.origin)
   const own = Object.entries(state.coordinators || {})
     .filter(([pane, c]) => c?.project === item.project && live.has(pane))
     .sort(([, a], [, b]) => String(b.seen || "").localeCompare(String(a.seen || "")))
   if (own.length) return to(own[0][0])
-  if (fb && live.has(fb)) {
+  if (fb) {
     const fbProject = state.coordinators?.[fb]?.project
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
@@ -3252,13 +3292,15 @@ export function answerCard(file, ref, text, opts, { env, now, me }) {
   const labels = optionsOf(item).map((o) => o.label)
   let answer = labels.find((l) => l.toLowerCase() === typed.toLowerCase())
   if (!answer && /^\d+$/.test(typed) && Number(typed) >= 1 && Number(typed) <= labels.length) answer = labels[Number(typed) - 1]
+  // A bare number on a card with buttons is meant as one of them: past the last, it's a slip.
+  if (!answer && labels.length && /^\d+$/.test(typed)) throw usage(`card ${item.id} has ${plural(labels.length, "button")}; ${typed} is none of them (give its label or number, or words)`)
   if (!answer) {
     if (!typed) throw usage("an answer needs text")
     if ([...typed].length > 300) throw usage("a free-text answer is at most 300 characters")
     answer = typed
   }
   if (!inHerdr(env)) throw new Error("answer sends through Herdr (HERDR_ENV=1); nothing sent")
-  const route = routeAnswer(state, item, listAgents(env), { fallback: frontOf(state) })
+  const route = routeAnswer(state, item, listAgents(env))
   if (route.error) throw new Error(`couldn't send: ${route.error}`)
   const from = opts.from === "telegram" ? "telegram" : ""
   if (route.second && !opts.front) {
@@ -3966,6 +4008,8 @@ function retagImported(state, isImported, ctx, result) {
     const item = cards.find((i) => i.id === id)
     if (!item) throw usage(`--retag: card ${id} is not among the imported cards`)
     item.project = target(ref)
+    // As `retag` does: an unowned card is the re-tagging coordinator's.
+    if (!item.origin && ctx.me?.coordinator) item.origin = ctx.me.pane
     chosen.add(id)
     result.retagged.push({ id, project: item.project })
   }
@@ -4436,7 +4480,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         file,
         (s) => {
           me.project = projectName(s.projects, me.id)
+          const before = new Map(s.items.map((i) => [i.id, JSON.stringify(i)]))
           const r = fn(s)
+          // The pane that wrote a card last (`by`): its Stop check counts a card it changed this turn.
+          if (me.pane) for (const i of s.items) if (before.get(i.id) !== JSON.stringify(i)) i.by = me.pane
           noteCoordinator(s, me, now)
           return r
         },
@@ -4456,6 +4503,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       checkOwner(s, item, me, projectOpt)
       const was = takeOver(item, me, agents())
       if (was) err(`board: card ${item.id}'s coordinator (${was}) is gone: this pane (${me.pane}) owns it now`)
+      // A card nobody owned is the coordinator's that changes it: its answers, reminder and Stop
+      // check are then this pane's.
+      if (!item.origin && me.coordinator) item.origin = me.pane
       return item
     }
     // The project a new card goes to: --worktree's repo, --project, else this folder's.
@@ -4559,7 +4609,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (rest.length > 1 || (rest.length && rest[0] !== "show")) throw usage("usage: board.mjs front [show]")
         if (rest[0] === "show") {
           const state = readBoard(file)
-          out(state.front ? state.front : frontOf(state) ? `${frontOf(state)} (the pane that last opened the board; board.mjs front sets one)` : "(no front coordinator: none set, and no pane has opened the board)")
+          const front = frontOf(state, coordinatorPanes(state, agents()))
+          out(!front ? "(no front coordinator: none set, and no pane has opened the board)" : front === state.front ? front : `${front} (the pane that last opened the board${state.front ? `; the one set, ${state.front}, is gone` : ""}; board.mjs front sets one)`)
           return 0
         }
         if (!me.coordinator) throw usage("front is set from a coordinator's pane inside Herdr (HERDR_ENV=1, HERDR_PANE_ID set)")
@@ -4685,7 +4736,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const state = readBoard(file)
         const notice = importNotice(state)
         if (notice) err(`board: ${notice}`)
-        const scope = scopeOf(state, opts.project, me)
+        const scope = scopeOf(state, opts.project, me, agents)
         const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
@@ -4702,13 +4753,13 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // Scope "mine" (this project's cards and this pane's) by default: { version, scope, items, projects };
         // --project all: the whole file.
         const state = readBoard(file)
-        const scoped = (items) => scopeOf({ ...state, items }, opts.project, me)
+        const scoped = (items) => scopeOf({ ...state, items }, opts.project, me, agents)
         const data =
           opts.archive !== undefined
             ? { version: 2, month: opts.archive, items: scoped(readArchive(file, opts.archive)).items }
             : opts.project === "all"
               ? state
-              : (({ items, label }) => ({ version: 2, scope: label, items, projects: state.projects }))(scoped(state.items))
+              : (({ items, label, hidden }) => ({ version: 2, scope: label, hidden, items, projects: state.projects }))(scoped(state.items))
         // JSON escapes C0 controls itself; escape C1 and bidirectional controls too.
         const json = JSON.stringify(data, null, 2)
         raw(json.replace(/[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`))
@@ -4770,6 +4821,19 @@ function hint(err, item) {
   if (item.column === "waiting" && !item.ask) err(`board: tip: add --ask "<exactly what the user should do>"`)
 }
 
+// A workspace's token is reported again after this long, even unchanged.
+const TOKEN_FRESH_MS = 10 * 60_000
+
+/** The Herdr server this env talks to: its socket's path, inode and change time ("" when unknown). */
+function herdrServer(env) {
+  try {
+    const { ino, ctimeMs } = statSync(env.HERDR_SOCKET_PATH)
+    return `${env.HERDR_SOCKET_PATH}:${ino}:${Math.round(ctimeMs)}`
+  } catch {
+    return ""
+  }
+}
+
 /**
  * Recompute every workspace's sidebar text (its own cards, tokenFor) and report the ones that
  * changed since the last report (kept in tokens.json beside the board), without waiting for
@@ -4782,11 +4846,23 @@ function syncToken(file, env, { all = false } = {}) {
   if (!inHerdr(env)) return tokenFor(state, agents, here)
   const spaces = new Set([here, ...state.items.map((i) => i.workspace), ...Object.values(state.projects).map((p) => p.workspace)].filter(Boolean))
   const texts = Object.fromEntries([...spaces].map((w) => [w, tokenFor(state, agents, w)]))
+  // What was reported, to which Herdr server and when: a restarted server has lost every token,
+  // and a report can land late; so the writer's own workspace always, and the others when their
+  // text changed, the server changed, or they were reported over TOKEN_FRESH_MS ago.
   const kept = join(sideDir(file), "tokens.json")
+  const server = herdrServer(env)
   const last = (all ? null : readJson(kept)) || {}
-  for (const [w, text] of Object.entries(texts)) if (last[w] !== text) reportToken(text, env, { workspace: w, wait: false })
+  const fresh = last.server === server && last.texts && typeof last.texts === "object" ? last : { texts: {}, at: {} }
+  const nowMs = Date.now()
+  const stale = (w) => !(nowMs - new Date(fresh.at?.[w]).getTime() < TOKEN_FRESH_MS)
+  const at = { ...fresh.at }
+  for (const [w, text] of Object.entries(texts)) {
+    if (w !== here && fresh.texts[w] === text && !stale(w)) continue
+    reportToken(text, env, { workspace: w, wait: false })
+    at[w] = new Date(nowMs).toISOString()
+  }
   try {
-    writeFileSync(`${kept}.${process.pid}.tmp`, JSON.stringify({ ...last, ...texts }), { mode: 0o600 })
+    writeFileSync(`${kept}.${process.pid}.tmp`, JSON.stringify({ server, texts: { ...fresh.texts, ...texts }, at }), { mode: 0o600 })
     renameSync(`${kept}.${process.pid}.tmp`, kept)
   } catch {}
   return texts[here] ?? ""

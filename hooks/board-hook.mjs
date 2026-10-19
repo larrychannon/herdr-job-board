@@ -22,10 +22,11 @@
 // Code carry on: a board hook never gets in the way.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { boardPath, importNotice, LEGACY_FILE, migrates, projectAt, projectName, readBoard, roleOf, sideDir } from "../board.mjs"
+import { boardPath, importNotice, LEGACY_FILE, listAgents, migrates, mineFor, projectAt, projectName, readBoard, roleOf, sideDir } from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BOARD_CLI = resolve(HERE, "..", "board.mjs")
@@ -71,9 +72,15 @@ const turnsDir = (boardFile) => join(sideDir(boardFile), "turns")
 const safeId = (id) => String(id ?? "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100) || "session"
 const turnFile = (boardFile, sessionId) => join(turnsDir(boardFile), `${safeId(sessionId)}.json`)
 
-/** Where the board stood at the start of a turn: each item's `updated`, by id. */
+/**
+ * A card's state in a few characters: any change to it (not only `updated`, which two writes in
+ * the same millisecond share) gives another.
+ */
+const sig = (item) => createHash("sha256").update(JSON.stringify(item)).digest("hex").slice(0, 16)
+
+/** Where the board stood at the start of a turn: each item's sig, by id. */
 export function snapshot(state, at = new Date()) {
-  return { at: at.toISOString(), items: Object.fromEntries(state.items.map((i) => [i.id, i.updated ?? ""])), blocked: false }
+  return { at: at.toISOString(), items: Object.fromEntries(state.items.map((i) => [i.id, sig(i)])), blocked: false }
 }
 
 export function recordTurn(boardFile, sessionId, state, now = new Date()) {
@@ -116,13 +123,17 @@ function markBlocked(boardFile, sessionId, turn) {
  * meantime doesn't count. With no `mine`, every card.
  */
 export const waitingTouched = (state, turn, mine = null) =>
-  state.items.some((i) => (!mine || mine(i)) && i.column === "waiting" && (turn.items[i.id] === undefined || turn.items[i.id] !== (i.updated ?? "")))
+  state.items.some((i) => (!mine || mine(i)) && i.column === "waiting" && turn.items[i.id] !== sig(i))
 
-/** "Mine" for the hooks: the cwd's project's cards, and those this pane owns. */
+/**
+ * "Mine" for the hooks (mineFor): the cwd's project's cards, those this pane owns, and for the
+ * front coordinator the cards no live coordinator can take. Herdr's agent list is asked only
+ * when some card is neither this project's nor this pane's.
+ */
 export function mineOf(state, cwd, env) {
   const project = projectName(state.projects, projectAt(cwd, env))
   const pane = env.HERDR_ENV === "1" ? String(env.HERDR_PANE_ID || "") : ""
-  return (i) => i.project === project || (Boolean(pane) && i.origin === pane)
+  return mineFor(state, { project, pane, agents: () => listAgents(env) })
 }
 
 // --- what the hooks say ----------------------------------------------------------------------
@@ -225,7 +236,11 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
     const turn = readTurn(file, sessionId)
     if (!turn || turn.blocked) return { stdout: "" }
     if (!asksUser(input.last_assistant_message)) return { stdout: "" }
-    if (waitingTouched(state, turn, mineOf(state, cwd, env))) return { stdout: "" }
+    // Its cards, and any card this pane wrote this turn (`by`): editing another project's card
+    // and asking about it is not a question without a card.
+    const mine = mineOf(state, cwd, env)
+    const pane = env.HERDR_ENV === "1" ? String(env.HERDR_PANE_ID || "") : ""
+    if (waitingTouched(state, turn, (i) => mine(i) || (Boolean(pane) && i.by === pane))) return { stdout: "" }
     markBlocked(file, sessionId, turn)
     return { stdout: JSON.stringify({ decision: "block", reason: blockReason() }) }
   }

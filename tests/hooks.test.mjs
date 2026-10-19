@@ -81,7 +81,7 @@ test("UserPromptSubmit: records the turn start and reminds of the Waiting cards"
     assert.equal(context.additionalContext.match(/#\d+/g).length, 8, "at most 8 cards listed")
     const turn = readTurn(r.file, "s1")
     assert.equal(turn.at, "2026-10-13T10:05:00.000Z")
-    assert.equal(turn.items[1], "2026-10-13T10:00:00.000Z")
+    assert.match(turn.items[1], /^[0-9a-f]{16}$/, "each card's state as a short hash (not only its updated time)")
     assert.equal(Object.keys(turn.items).length, 11)
     assert.equal(turn.blocked, false)
 

@@ -274,12 +274,12 @@ test("sidebar: each workspace counts its own cards; only the workspaces whose te
       ["w4", "--token board=1 doing · 1 needs you"],
       ["wA", "--token board=1 doing · 1 to do"],
     ])
-    // A write that changes nothing in a workspace's count reports nothing for it.
+    // A write that changes nothing in a workspace's count: only the writer's own is reported again.
     h.ok(sfc, ["edit", "1", "--desc", "more words"], h.at("w4:p6"))
-    assert.equal(reports().length, 4)
+    assert.deepEqual(reports().slice(4), [["w4", "--token board=1 doing · 1 needs you"]])
     // `token`: every workspace, and this one's text printed.
     assert.equal(h.ok(sfc, ["token"], h.at("w4:p6")).trim(), "1 doing · 1 needs you")
-    assert.equal(reports().length, 6)
+    assert.equal(reports().length, 7)
   } finally {
     h.done()
   }
@@ -302,6 +302,131 @@ test("an empty HOME is refused (the store and the migration would land in the cu
     const env = { HOME: h.base, JOB_BOARD_PROTECT: h.base, XDG_CONFIG_HOME: join(h.base, "x") }
     assert.match(writeRefusal(join(h.store, "board.json"), env, { version: "0.5.0", scripts: installed }), /isn't the installed plugin/)
     assert.equal(writeRefusal(join(h.store, "board.json"), { ...env, HERDR_CONFIG_PATH: config }, { version: "0.5.0", scripts: installed }), "")
+  } finally {
+    h.done()
+  }
+})
+
+test("orphans: an unowned card re-tagged to a project with no coordinator is the front's: its reminder lists it, ls shows it, editing it claims it, and Stop counts it", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    h.repo("ai-config")
+    // A person (no Herdr) wrote the cards: nobody owns them. Card 2 was re-tagged to ai-config.
+    h.ok(sfc, ["add", "todo", "sfc card"])
+    h.ok(sfc, ["add", "waiting", "Git access on the LXC: narrower tokens instead of Touch-ID: pick", "--ask", "pick one"])
+    h.ok(sfc, ["retag", "2", "ai-config"])
+    assert.deepEqual([h.card(2).project, h.card(2).origin], ["ai-config", ""])
+    // The sfc coordinator (w4:p6) opened the board: it is the front; no ai-config coordinator runs.
+    h.live("w4:p6")
+    h.ok(sfc, ["front"], h.at("w4:p6"))
+    const env = { HERDR_ENV: "1", HERDR_PANE_ID: "w4:p6", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: h.fake, HOME: h.base }
+    const prompt = { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: sfc, prompt: "hi" }
+    assert.match(JSON.parse(handle(prompt, env).stdout).hookSpecificOutput.additionalContext, /#2 "Git access on the LXC/)
+    assert.match(h.ok(sfc, ["ls", "--width", "100"], h.at("w4:p6")), /Git access on the LXC/)
+    // Another pane, not the front: only counted.
+    assert.doesNotMatch(JSON.parse(handle(prompt, { ...env, HERDR_PANE_ID: "w4:p7" }).stdout).hookSpecificOutput.additionalContext, /#2/)
+    // The coordinator works on it and asks the user: the edit claims it, and Stop doesn't block.
+    h.ok(sfc, ["edit", "2", "--ask", "tokens or Touch-ID?", "--project", "ai-config"], h.at("w4:p6"))
+    assert.equal(h.card(2).origin, "w4:p6")
+    const stop = { hook_event_name: "Stop", session_id: "s1", cwd: sfc, stop_hook_active: false, last_assistant_message: "Tokens or Touch-ID?" }
+    assert.equal(handle(stop, env).stdout, "")
+    // A live ai-config coordinator appears: the card is its project's again for everyone but its owner.
+    h.ok(h.repo("ai-config-2"), ["ls"])
+  } finally {
+    h.done()
+  }
+})
+
+test("Stop counts a card this pane changed this turn, even one it doesn't own; import --retag gives unowned cards to the importing coordinator", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    const ai = h.repo("ai-config")
+    h.live("w4:p6", "wA:p1")
+    h.ok(ai, ["add", "waiting", "ai question"], h.at("wA:p1"))
+    const env = { HERDR_ENV: "1", HERDR_PANE_ID: "w4:p6", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: h.fake, HOME: h.base }
+    handle({ hook_event_name: "UserPromptSubmit", session_id: "s2", cwd: sfc, prompt: "hi" }, env)
+    h.ok(sfc, ["edit", "1", "--ask", "now?", "--project", "ai-config"], h.at("w4:p6"))
+    assert.equal(h.card(1).by, "w4:p6")
+    assert.equal(h.card(1).origin, "wA:p1", "owned by its live coordinator: not claimed")
+    assert.equal(handle({ hook_event_name: "Stop", session_id: "s2", cwd: sfc, stop_hook_active: false, last_assistant_message: "Now?" }, env).stdout, "")
+
+    // import --retag by a coordinator: the re-tagged unowned card is its.
+    const h2 = home()
+    try {
+      const s2 = h2.repo("sfc-integration")
+      h2.repo("ai-config")
+      const legacyFile = join(s2, ".git", "job-board.json")
+      writeFileSync(legacyFile, JSON.stringify({ version: 1, next_id: 205, items: [{ id: 204, title: "Git access", column: "waiting", created: "2026-10-18T09:00:00.000Z", since: "2026-10-18T09:00:00.000Z", updated: "2026-10-18T09:00:00.000Z" }] }))
+      h2.ok(s2, ["import", "--retag", "204=ai-config"], h2.at("w4:p6"))
+      assert.deepEqual([h2.card(204).project, h2.card(204).origin], ["ai-config", "w4:p6"])
+    } finally {
+      h2.done()
+    }
+  } finally {
+    h.done()
+  }
+})
+
+test("routing only reaches a coordinator: a job's worker in an owner's pane, a gone front", () => {
+  const state = {
+    front: "w4:p6",
+    panes: { "w4:t1": { pane: "w4:p9", origin: "w8:p1", at: "2026-10-19T11:00:00Z" } },
+    projects: { s: { tag: "sfc" } },
+    coordinators: { "w4:p6": { project: "s", seen: "a" } },
+    items: [{ id: 1, project: "s", origin: "w4:p6", job: "usage-redesign" }],
+  }
+  // The owner's pane now runs the job "usage-redesign" (a worker): not a coordinator.
+  const viaWorker = routeAnswer(state, state.items[0], [{ pane_id: "w4:p6", name: "usage-redesign" }, { pane_id: "w8:p1" }])
+  assert.equal(viaWorker.pane, "w8:p1", "the front (w4:p6) isn't live as a coordinator: the newest live opener")
+  assert.equal(frontOf(state, new Set(["w8:p1"])), "w8:p1")
+  assert.equal(frontOf(state, new Set(["w4:p6", "w8:p1"])), "w4:p6")
+  assert.equal(frontOf(state), "w4:p6", "without a list, as set")
+})
+
+test("sidebar after a Herdr restart: every workspace is reported again; and again after 10 minutes", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    const ai = h.repo("ai-config")
+    h.live("w4:p6", "wA:p1")
+    const socket = join(h.base, "herdr.sock")
+    writeFileSync(socket, "")
+    const at = (pane) => h.at(pane, { HERDR_SOCKET_PATH: socket })
+    const reports = () => h.log().filter((a) => a[1] === "report-metadata").map((a) => a[2])
+    h.ok(sfc, ["add", "waiting", "q"], at("w4:p6"))
+    h.ok(ai, ["add", "todo", "t"], at("wA:p1"))
+    assert.deepEqual(reports(), ["w4", "wA"])
+    h.ok(sfc, ["edit", "1", "--desc", "x"], at("w4:p6"))
+    assert.deepEqual(reports().slice(2), ["w4"], "the writer's own only")
+    // Herdr restarted: a new socket. Every workspace's token is reported again.
+    rmSync(socket)
+    writeFileSync(socket, "")
+    h.ok(sfc, ["edit", "1", "--desc", "y"], at("w4:p6"))
+    assert.deepEqual(reports().slice(3).sort(), ["w4", "wA"])
+    // Reported long ago: again.
+    const kept = JSON.parse(readFileSync(join(h.store, "tokens.json"), "utf8"))
+    kept.at.wA = "2026-01-01T00:00:00.000Z"
+    writeFileSync(join(h.store, "tokens.json"), JSON.stringify(kept))
+    h.ok(sfc, ["edit", "1", "--desc", "z"], at("w4:p6"))
+    assert.deepEqual(reports().slice(5).sort(), ["w4", "wA"])
+  } finally {
+    h.done()
+  }
+})
+
+test("answer: a bare number past the last button is refused; json says how many cards it hides", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    h.live("w4:p6")
+    h.ok(sfc, ["add", "waiting", "Pick", "--option", "A", "--option", "B"], h.at("w4:p6"))
+    const r = h.run(sfc, ["answer", "1", "3"], h.at("w4:p6"))
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /card 1 has 2 buttons; 3 is none of them/)
+    h.ok(h.repo("other"), ["add", "todo", "elsewhere"])
+    assert.equal(JSON.parse(h.ok(sfc, ["json"])).hidden, 1)
   } finally {
     h.done()
   }
