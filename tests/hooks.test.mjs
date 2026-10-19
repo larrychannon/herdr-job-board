@@ -14,19 +14,23 @@ import { asksUser, blockReason, handle, readTurn, reminder, settingsSnippet, sna
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
 const HOOK = join(ROOT, "hooks", "board-hook.mjs")
-const HERDR = { HERDR_ENV: "1" }
+// The hook's env inside Herdr; repo() points JOB_BOARD_HOME at its own store, never the user's.
+const HERDR = { HERDR_ENV: "1", JOB_BOARD_HOME: "" }
 
 function repo() {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "board-hooks-")))
   spawnSync("git", ["-C", base, "init", "-q"])
-  const env = (now) => ({ ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_NOW: now })
+  const state = join(base, ".git", "board-state")
+  mkdirSync(state)
+  HERDR.JOB_BOARD_HOME = state
+  const env = (now) => ({ ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: state, JOB_BOARD_NOW: now })
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: env(now), encoding: "utf8" })
     assert.ok(r.status === 0 || args.includes("--if-final"), `board ${args.join(" ")}: ${r.stderr}`)
     return r
   }
-  const file = join(base, ".git", "job-board.json")
-  return { base, board, file, items: () => JSON.parse(readFileSync(file, "utf8")).items, done: () => rmSync(base, { recursive: true, force: true }) }
+  const file = join(state, "board.json")
+  return { base, state, board, file, turns: join(state, "turns"), items: () => JSON.parse(readFileSync(file, "utf8")).items, done: () => rmSync(base, { recursive: true, force: true }) }
 }
 
 const prompt = (cwd, extra = {}) => ({ hook_event_name: "UserPromptSubmit", session_id: "s1", cwd, prompt: "hi", ...extra })
@@ -195,17 +199,18 @@ test("the hooks do nothing outside their scope: no Herdr, a worker, a subagent, 
       silent(prompt(r.base), env)
       silent(stop(r.base, ask), env)
     }
-    assert.ok(!existsSync(join(r.base, ".git", "job-board.turns")), "nothing recorded out of scope")
+    assert.ok(!existsSync(r.turns), "nothing recorded out of scope")
     silent(prompt(r.base, { agent_type: "general-purpose" }), HERDR)
     // The role variable can be another one (the job skill's role_env).
     silent(prompt(r.base), { ...HERDR, APP_ROLE: "worker" }, { roleEnv: "APP_ROLE" })
     assert.notEqual(handle(prompt(r.base), { ...HERDR, JOB_AGENT_ROLE: "coordinator" }).stdout, "", "role coordinator counts")
-    // No board in this repo, or not a repo at all.
+    // No board yet (an empty store), in a repo or not.
     const empty = realpathSync(mkdtempSync(join(tmpdir(), "board-hooks-empty-")))
     spawnSync("git", ["-C", empty, "init", "-q"])
-    silent(prompt(empty), HERDR)
-    silent(prompt(tmpdir()), HERDR)
-    assert.ok(!existsSync(join(empty, ".git", "job-board.turns")))
+    const none = { ...HERDR, JOB_BOARD_HOME: join(empty, "store") }
+    silent(prompt(empty), none)
+    silent(prompt(tmpdir()), none)
+    assert.ok(!existsSync(join(empty, "store")))
     rmSync(empty, { recursive: true, force: true })
     // A broken board file.
     writeFileSync(r.file, "not json")
@@ -222,18 +227,18 @@ test("the hook script: stdin JSON in, Claude Code's JSON out; settings snippet; 
   const r = repo()
   try {
     r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
-    const env = { ...process.env, HERDR_ENV: "1", JOB_AGENT_ROLE: "", JOB_BOARD_FILE: "" }
+    const env = { ...process.env, HERDR_ENV: "1", JOB_AGENT_ROLE: "", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state }
     const run = (input, args = []) => spawnSync(process.execPath, [HOOK, ...args], { input: typeof input === "string" ? input : JSON.stringify(input), env, encoding: "utf8" })
     // An old record from another session is cleaned up on the next prompt.
-    mkdirSync(join(r.base, ".git", "job-board.turns"), { recursive: true })
-    const old = join(r.base, ".git", "job-board.turns", "old.json")
+    mkdirSync(r.turns, { recursive: true })
+    const old = join(r.turns, "old.json")
     writeFileSync(old, "{}")
     utimesSync(old, new Date(Date.now() - 10 * 24 * 3600_000), new Date(Date.now() - 10 * 24 * 3600_000))
 
     const p = run(prompt(r.base))
     assert.equal(p.status, 0)
     assert.match(JSON.parse(p.stdout).hookSpecificOutput.additionalContext, /#1 "Old question"/)
-    assert.deepEqual(readdirSync(join(r.base, ".git", "job-board.turns")), ["s1.json"])
+    assert.deepEqual(readdirSync(r.turns), ["s1.json"])
     const s = run(stop(r.base, "Want me to start it now."))
     assert.equal(s.status, 0)
     assert.equal(JSON.parse(s.stdout).decision, "block")
@@ -262,7 +267,7 @@ test("job-report is idempotent with a real clock: one card, `updated` unchanged,
   try {
     const report = join(r.base, "r.json")
     const real = (...args) => {
-      const res = spawnSync(process.execPath, [BOARD, ...args], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_NOW: "" }, encoding: "utf8" })
+      const res = spawnSync(process.execPath, [BOARD, ...args], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, JOB_BOARD_NOW: "" }, encoding: "utf8" })
       assert.equal(res.status, 0, res.stderr)
       return res
     }
@@ -339,7 +344,7 @@ test("job-report --if-final: what a wait script calls whenever the report change
     assert.deepEqual([r.items()[0].column, r.items()[0].ask], ["waiting", "failed: tests fail on CI"])
     // Without --if-final a non-final report is still an error.
     writeFileSync(report, JSON.stringify({ status: "running" }))
-    assert.equal(spawnSync(process.execPath, [BOARD, "job-report", "build", report], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "" }, encoding: "utf8" }).status, 1)
+    assert.equal(spawnSync(process.execPath, [BOARD, "job-report", "build", report], { cwd: r.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state }, encoding: "utf8" }).status, 1)
   } finally {
     r.done()
   }

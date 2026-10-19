@@ -29,7 +29,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   spawnSync("git", ["-C", base, "init", "-q"])
   const herdr = join(root, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ agents, tabs }))
-  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_NOW: NOW, TZ: "UTC" }
+  const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(root, "store"), JOB_BOARD_NOW: NOW, TZ: "UTC" }
   delete env.NO_COLOR
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: { ...env, HERDR_ENV: "0", JOB_BOARD_NOW: now }, encoding: "utf8" })
@@ -39,7 +39,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   const pane = (args = [], keys = "") =>
     spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "40", "--origin", "w9:p1", ...args, "--keys", keys], { cwd: base, env, encoding: "utf8" })
   const log = () => JSON.parse(readFileSync(herdr, "utf8")).log ?? []
-  return { base, env, board, pane, log, file: join(base, ".git", "job-board.json"), done: () => rmSync(root, { recursive: true, force: true }) }
+  return { base, env, board, pane, log, file: join(root, "store", "board.json"), done: () => rmSync(root, { recursive: true, force: true }) }
 }
 
 /** The board used for colours and details: every column, a link, buttons, an old question, a job with a report. */

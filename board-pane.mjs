@@ -59,11 +59,11 @@
 // working bar still unless --frame N picks its frame): for tests and a quick look.
 // --keys feeds it input first, e.g. --keys $'\t\e[B' (next section, then one card down); a
 // button pressed there is really sent.
-// The board file: --board, else JOB_BOARD_FILE, else the current directory's repo.
+// The board file: --board, else JOB_BOARD_FILE, else the store (board.mjs path prints it).
 
 import { spawn } from "node:child_process"
 import { statSync, watch } from "node:fs"
-import { basename, dirname, join, resolve, sep } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
@@ -102,6 +102,7 @@ import {
   VERIFY_TIMEOUT_MS,
   verifyCopy,
   versionOf,
+  wasImported,
   WORKING_FRAMES,
 } from "./board.mjs"
 import { osc52 } from "./links.mjs"
@@ -126,9 +127,8 @@ function parse(argv) {
 }
 
 function locate(opts, env) {
-  if (opts.board) return resolve(opts.board)
-  // A plugin pane starts in the plugin's own folder, which is not the board's repo.
-  if (!env.JOB_BOARD_FILE && env.HERDR_PLUGIN_ROOT && (process.cwd() + sep).startsWith(resolve(env.HERDR_PLUGIN_ROOT) + sep)) return null
+  // A 0.4 board's file that was imported (a pane started for it before the update): the store.
+  if (opts.board && !(wasImported(resolve(opts.board)) && !env.JOB_BOARD_FILE)) return resolve(opts.board)
   return boardPath(process.cwd(), env)
 }
 

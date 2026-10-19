@@ -55,9 +55,9 @@
 
 import { execFile, spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { hostname } from "node:os"
-import { basename, dirname, join, resolve } from "node:path"
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { homedir, hostname, tmpdir } from "node:os"
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { findUrls, osc8 } from "./links.mjs"
@@ -85,7 +85,7 @@ const SLUG = /^[a-z][a-z0-9_-]{0,31}$/
 const LOCK_WAIT_MS = 10_000
 // A lock with no owner written yet (or one from another host) counts as stale after this long.
 const LOCK_STALE_MS = 10_000
-const KEEP_DONE_MS = 14 * 24 * 3600_000
+const KEEP_DONE_MS = 7 * 24 * 3600_000
 // The layout follows the pane's size (layoutOf): from INBOX_BELOW cells wide, columns side by
 // side; under it, the inbox (one column of one-line rows, the selected card open); under
 // COMPACT_BELOW cells or COMPACT_ROWS rows, compact (rows only, no blank lines).
@@ -95,23 +95,218 @@ export const COMPACT_ROWS = 24
 // Under this width the sections stack (the inbox and compact layouts).
 export const STACK_BELOW = INBOX_BELOW
 
-// --- the board file -----------------------------------------------------------------------
+// --- the store --------------------------------------------------------------------------------
 
-export function boardPath(cwd = process.cwd(), env = process.env) {
-  if (env.JOB_BOARD_FILE) return resolve(cwd, env.JOB_BOARD_FILE)
-  const r = spawnSync("git", ["-C", cwd, "rev-parse", "--git-common-dir"], { encoding: "utf8" })
-  if (r.status !== 0) return null
-  return join(resolve(cwd, r.stdout.trim()), "job-board.json")
+/**
+ * The store's folder: JOB_BOARD_HOME, else ${XDG_STATE_HOME:-~/.local/state}/herdr-job-board.
+ * Never $HERDR_PLUGIN_STATE_DIR: Herdr sets it only for plugin actions, so the CLI, the hooks and
+ * the pane would each find a different board.
+ */
+export function storeDir(env = process.env) {
+  if (env.JOB_BOARD_HOME) return resolve(env.JOB_BOARD_HOME)
+  const xdg = env.XDG_STATE_HOME && isAbsolute(env.XDG_STATE_HOME) ? env.XDG_STATE_HOME : join(env.HOME || homedir(), ".local", "state")
+  return join(xdg, PLUGIN_ID)
 }
 
-/** The repo's folder name, for the pane's title line. */
+/** The board file: JOB_BOARD_FILE (a file of its own, e.g. for tests), else the store's board.json. */
+export function boardPath(cwd = process.cwd(), env = process.env) {
+  if (env.JOB_BOARD_FILE) return resolve(cwd, env.JOB_BOARD_FILE)
+  return join(storeDir(env), "board.json")
+}
+
+/** Where archive/, backups/ and turns/ go: the store's folder, or <name>.d beside another board file. */
+export function sideDir(file) {
+  return basename(file) === "board.json" ? dirname(file) : join(dirname(file), `${basename(file).replace(/\.json$/, "")}.d`)
+}
+
+export const LEGACY_FILE = "job-board.json"
+export const MIGRATED_FILE = "job-board.migrated.json"
+
+/**
+ * A 0.4 board (`.git/job-board.json`) that `import` moved into the store: it is gone and its
+ * `job-board.migrated.json` is beside it. A pane started for it reads the store instead.
+ */
+export const wasImported = (file) => Boolean(file) && basename(file) === LEGACY_FILE && !existsSync(file) && existsSync(join(dirname(file), MIGRATED_FILE))
+
+/** The pane's title: the repo's name for a 0.4 board file, "all projects" for the store. */
 export function repoName(file) {
+  if (basename(file) === "board.json") return "all projects"
   const dir = dirname(file)
   return basename(dir) === ".git" ? basename(dirname(dir)) : basename(dir)
 }
 
-export const emptyBoard = () => ({ version: 1, next_id: 1, items: [], panes: {} })
+// --- projects ---------------------------------------------------------------------------------
 
+const realOr = (path) => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return resolve(path)
+  }
+}
+
+/**
+ * The project a folder belongs to: { git, root, name }. In git, the repo's common dir, so every
+ * worktree counts as its repo; its name is the main worktree's folder (a bare repo's own name).
+ * Outside git: $HOME and anything under it is "home"; another folder is its own project.
+ */
+export function projectAt(cwd, env = process.env) {
+  const dir = realOr(cwd)
+  const r = spawnSync("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" })
+  if (r.status === 0 && r.stdout.trim()) {
+    const git = realOr(resolve(dir, r.stdout.trim()))
+    const bare = basename(git) !== ".git"
+    const root = bare ? git : dirname(git)
+    return { git, root, name: bare ? basename(git).replace(/\.git$/, "") || basename(git) : basename(root) }
+  }
+  const home = realOr(env.HOME || homedir())
+  if (home !== "/" && (dir === home || dir.startsWith(home + sep))) return { git: "", root: home, name: "home" }
+  return { git: "", root: dir, name: basename(dir) || "root" }
+}
+
+const sameProject = (p, id) => (id.git ? p.git === id.git : !p.git && p.root === id.root)
+
+/**
+ * The name a project has, or gets, on this board. First come keeps its folder's name; a second
+ * repo with the same name gets "<parent>-<name>" (then "-2", "-3").
+ */
+export function projectName(projects, id) {
+  for (const [name, p] of Object.entries(projects)) if (sameProject(p, id)) return name
+  const name = clean(id.name).slice(0, 60) || "project"
+  if (!Object.hasOwn(projects, name)) return name
+  const parent = clean(basename(dirname(id.root)))
+  if (parent && !Object.hasOwn(projects, `${parent}-${name}`)) return `${parent}-${name}`
+  for (let i = 2; ; i++) if (!Object.hasOwn(projects, `${name}-${i}`)) return `${name}-${i}`
+}
+
+export const MAX_TAG = 7
+const TAG = /^[a-z0-9][a-z0-9-]{0,6}$/
+// Terminal palette colours for the tags, given in turn. Not yellow or red: they mean urgency.
+export const PROJECT_COLORS = ["magenta", "cyan", "blue", "green", "bright magenta", "bright cyan"]
+
+/**
+ * A project's short tag, at most 7 characters: its name's first part ("sfc" for
+ * sfc-integration), then that part with the next parts' initials on a clash ("sfc-a" for
+ * sfc-app-track), then with a number.
+ */
+export function tagFor(name, projects) {
+  const taken = new Set(Object.values(projects).map((p) => p.tag))
+  const parts = String(name).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  const first = (parts[0] || "p").slice(0, MAX_TAG)
+  if (!taken.has(first)) return first
+  for (let k = 1; k < parts.length; k++) {
+    const initials = parts.slice(1, k + 1).map((p) => p[0]).join("")
+    const tag = `${first.slice(0, Math.max(1, MAX_TAG - 1 - initials.length))}-${initials}`.slice(0, MAX_TAG)
+    if (!taken.has(tag)) return tag
+  }
+  for (let i = 2; ; i++) {
+    const tag = `${first.slice(0, MAX_TAG - String(i).length)}${i}`
+    if (!taken.has(tag)) return tag
+  }
+}
+
+/** The colour least used so far, in PROJECT_COLORS order. */
+function colorFor(projects) {
+  const used = (c) => Object.values(projects).filter((p) => p.color === c).length
+  return PROJECT_COLORS.reduce((best, c) => (used(c) < used(best) ? c : best), PROJECT_COLORS[0])
+}
+
+/** The project's name on this board, adding it (tag, colour, root, git) the first time. */
+export function ensureProject(state, id) {
+  const name = projectName(state.projects, id)
+  if (!state.projects[name]) state.projects[name] = { tag: tagFor(name, state.projects), color: colorFor(state.projects), root: id.root, git: id.git, workspace: "" }
+  return name
+}
+
+/** A project by its name or tag, or undefined. */
+export function projectRef(state, ref) {
+  const text = clean(ref)
+  if (Object.hasOwn(state.projects, text)) return text
+  return Object.keys(state.projects).find((name) => state.projects[name].tag === text.toLowerCase())
+}
+
+/**
+ * The project a command names: a name or tag on the board, "home", a path to a folder (its repo),
+ * or the name of a repo under $HOME (added to the board).
+ */
+export function projectOf(state, ref, env = process.env) {
+  const name = projectRef(state, ref)
+  if (name) return name
+  const text = String(ref ?? "")
+  if (text === "home") return ensureProject(state, projectAt(env.HOME || homedir(), env))
+  if (text.includes("/") && existsSync(resolve(text))) return ensureProject(state, projectAt(resolve(text), env))
+  const repo = text && homeRepos(env).find((dir) => basename(dir) === text)
+  if (repo) return ensureProject(state, projectAt(repo, env))
+  throw usage(`no project "${clean(text)}" (board.mjs projects lists them; a repo's path works too)`)
+}
+
+/** `project set`: a new tag, colour or name. Returns the project's name after. */
+export function setProject(state, ref, opts) {
+  const name = projectRef(state, ref)
+  if (!name) throw usage(`no project "${clean(ref)}" (board.mjs projects lists them)`)
+  const p = state.projects[name]
+  if (opts.tag !== undefined) {
+    const tag = clean(opts.tag).toLowerCase()
+    if (!TAG.test(tag)) throw usage(`--tag "${clean(opts.tag)}": at most ${MAX_TAG} characters, a to z, 0 to 9 and -`)
+    const other = Object.keys(state.projects).find((n) => n !== name && state.projects[n].tag === tag)
+    if (other) throw usage(`--tag ${tag} is ${other}'s`)
+    p.tag = tag
+  }
+  if (opts.color !== undefined) {
+    const color = clean(opts.color).toLowerCase().replace(/-/g, " ")
+    if (!PROJECT_COLORS.includes(color)) throw usage(`--color: one of ${PROJECT_COLORS.join(", ")}`)
+    p.color = color
+  }
+  if (opts.name === undefined) return name
+  const to = clean(opts.name).slice(0, 60)
+  if (!to) throw usage("--name needs a name")
+  if (to === name) return name
+  if (Object.hasOwn(state.projects, to)) throw usage(`there is a project ${to} already`)
+  state.projects = Object.fromEntries(Object.entries(state.projects).map(([n, v]) => [n === name ? to : n, v]))
+  for (const item of state.items) if (item.project === name) item.project = to
+  for (const c of Object.values(state.coordinators)) if (c?.project === name) c.project = to
+  return to
+}
+
+/** `projects`: one line each, with its open cards and its coordinators (live, gone, or unknown outside Herdr). */
+export function projectLines(state, agents) {
+  const names = Object.keys(state.projects).sort((a, b) => a.localeCompare(b))
+  if (!names.length) return ["no projects on the board yet"]
+  const alive = Array.isArray(agents) ? new Set(agents.map((a) => a.pane_id)) : null
+  const width = Math.max(...names.map((n) => n.length))
+  const lines = []
+  for (const name of names) {
+    const p = state.projects[name]
+    const cards = state.items.filter((i) => i.project === name)
+    const n = (column) => cards.filter((i) => i.column === column).length
+    const counts = [n("waiting") && `${n("waiting")} need you`, n("doing") && `${n("doing")} doing`, n("todo") && `${n("todo")} to do`, n("done") && `${n("done")} done`].filter(Boolean)
+    const coordinators = Object.entries(state.coordinators)
+      .filter(([, c]) => c?.project === name)
+      .sort(([, a], [, b]) => String(b.seen).localeCompare(String(a.seen)))
+      .map(([pane]) => `${pane}${pane === state.front ? " front" : ""} ${alive ? (alive.has(pane) ? "live" : "gone") : "?"}`)
+    lines.push(
+      `${name.padEnd(width)}  ${p.tag.padEnd(MAX_TAG)}  ${p.color.padEnd(14)}  ${counts.join(" · ") || "no cards"}  ${p.root || "(no folder)"}${coordinators.length ? `  coordinator ${coordinators.join(", ")}` : ""}`,
+    )
+  }
+  return lines
+}
+
+// --- the board file -----------------------------------------------------------------------
+
+export const emptyBoard = () => ({ version: 2, next_id: 1, front: "", projects: {}, coordinators: {}, items: [], panes: {}, reports: {}, imports: [] })
+
+// The project of a 0.4 board file's cards (v1 has none): the repo whose .git holds it.
+const legacyProjects = new Map()
+function legacyProject(file) {
+  if (!legacyProjects.has(file)) legacyProjects.set(file, projectAt(dirname(file)))
+  return legacyProjects.get(file)
+}
+
+/**
+ * The board, checked and in the version 2 shape. A version 1 file (a 0.4 board, or
+ * JOB_BOARD_FILE pointing at one) is read as v2: every card gets the file's project. It is
+ * written back as v2 by the next write.
+ */
 export function readBoard(file) {
   if (!existsSync(file)) return emptyBoard()
   let state
@@ -132,13 +327,36 @@ export function readBoard(file) {
   // (numbers written out, anything else "(not text)"), so nothing downstream stringifies an
   // object or array.
   for (const item of state.items) {
-    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported"]) {
+    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported", "project", "origin", "workspace", "was"]) {
       if (item[key] != null && typeof item[key] !== "string") item[key] = asText(item[key])
     }
     if (item.sent != null && !(isObject(item.sent) && typeof item.sent.label === "string")) delete item.sent
   }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}
+  if (!isObject(state.projects)) state.projects = {}
+  for (const [name, p] of Object.entries(state.projects)) {
+    if (!isObject(p)) state.projects[name] = p = {}
+    for (const key of ["tag", "color", "root", "git", "workspace"]) p[key] = typeof p[key] === "string" ? p[key] : ""
+  }
+  if (!isObject(state.coordinators)) state.coordinators = {}
+  if (!isObject(state.reports)) state.reports = {}
+  if (!Array.isArray(state.imports)) state.imports = []
+  state.front = typeof state.front === "string" ? state.front : ""
+  // Cards without a project (a 0.4 file, a hand edit) belong to the file's own repo.
+  if (state.items.some((i) => !i.project)) {
+    const name = ensureProject(state, legacyProject(file))
+    for (const item of state.items) item.project ||= name
+  }
+  for (const item of state.items) {
+    if (!state.projects[item.project]) state.projects[item.project] = { tag: tagFor(item.project, state.projects), color: colorFor(state.projects), root: "", git: "", workspace: "" }
+    item.origin ??= ""
+    item.workspace ??= ""
+  }
+  for (const p of Object.values(state.projects)) {
+    if (!TAG.test(p.tag)) p.tag = tagFor(p.tag || "p", state.projects)
+  }
+  state.version = 2
   return state
 }
 
@@ -241,12 +459,78 @@ function writeBoard(file, state) {
   renameSync(tmp, file)
 }
 
-/** Read, change and write the board under its lock. Returns what `change` returns. */
+const KEEP_REPORTS_MS = 30 * 24 * 3600_000
+const KEEP_COORDINATORS_MS = 30 * 24 * 3600_000
+const KEEP_BACKUPS = 7
+const pad2 = (n) => String(n).padStart(2, "0")
+const dateOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+const stampOf = (d) => `${dateOf(d).replace(/-/g, "")}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
+const privateDir = (dir) => (mkdirSync(dir, { recursive: true, mode: 0o700 }), dir)
+
+/** Before the first write of a day, the board as it was goes to backups/board-YYYY-MM-DD.json; 7 are kept. */
+function dailyBackup(file, now) {
+  if (!existsSync(file)) return
+  const dir = join(sideDir(file), "backups")
+  const name = `board-${dateOf(now)}.json`
+  if (existsSync(join(dir, name))) return
+  copyFileSync(file, join(privateDir(dir), name))
+  chmodSync(join(dir, name), 0o600)
+  const daily = readdirSync(dir).filter((f) => /^board-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
+  for (const old of daily.slice(0, -KEEP_BACKUPS)) rmSync(join(dir, old), { force: true })
+}
+
+/** Done cards older than KEEP_DONE_MS move to archive/YYYY-MM.jsonl (the month they were done), one line each. */
+function archiveDone(state, file, now) {
+  const old = state.items.filter((i) => i.column === "done" && now - new Date(i.since) >= KEEP_DONE_MS)
+  if (!old.length) return
+  const dir = privateDir(join(sideDir(file), "archive"))
+  const months = new Map()
+  for (const item of old) {
+    const month = /^\d{4}-\d{2}/.exec(item.since)?.[0] || dateOf(now).slice(0, 7)
+    months.set(month, [...(months.get(month) || []), JSON.stringify(item)])
+  }
+  for (const [month, lines] of months) appendFileSync(join(dir, `${month}.jsonl`), `${lines.join("\n")}\n`, { mode: 0o600 })
+  const gone = new Set(old)
+  state.items = state.items.filter((i) => !gone.has(i))
+}
+
+/** The archived cards of a month ("2026-10"), or of every month; the last line of an id wins. */
+export function readArchive(file, month = "") {
+  const dir = join(sideDir(file), "archive")
+  let files = []
+  try {
+    files = readdirSync(dir).filter((f) => /^\d{4}-\d{2}\.jsonl$/.test(f) && (!month || f === `${month}.jsonl`)).sort()
+  } catch {}
+  const byId = new Map()
+  for (const f of files) {
+    for (const line of (readText(join(dir, f)) ?? "").split("\n")) {
+      try {
+        const item = JSON.parse(line)
+        if (item && Number.isSafeInteger(item.id)) byId.set(item.id, item)
+      } catch {}
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.id - b.id)
+}
+
+/** Old `reports` and `coordinators` entries go. */
+function prune(state, now) {
+  for (const [hash, r] of Object.entries(state.reports)) if (!(now - new Date(r?.at) < KEEP_REPORTS_MS)) delete state.reports[hash]
+  for (const [pane, c] of Object.entries(state.coordinators)) if (!(now - new Date(c?.seen) < KEEP_COORDINATORS_MS)) delete state.coordinators[pane]
+}
+
+/**
+ * Read, change and write the board under its lock. Returns what `change` returns. Each write
+ * also takes the day's backup (the first write of a day), archives old Done cards and prunes.
+ */
 export function updateBoard(file, change, now = new Date()) {
+  privateDir(dirname(file))
   return withLock(file, () => {
+    dailyBackup(file, now)
     const state = readBoard(file)
     const result = change(state)
-    state.items = state.items.filter((i) => i.column !== "done" || !(now - new Date(i.since) >= KEEP_DONE_MS))
+    archiveDone(state, file, now)
+    prune(state, now)
     writeBoard(file, state)
     return result
   })
@@ -284,16 +568,78 @@ export function columnOf(name) {
 const jobItem = (items, slug) =>
   items.findLast((i) => i.job === slug && i.column === "doing") || items.findLast((i) => i.job === slug && i.column !== "done")
 
-export function findItem(state, ref) {
+/**
+ * The cards a job slug can mean for this writer (`me`: { pane, project }): this pane's cards
+ * first, then this project's, then any. Slugs are per project, so the same slug open in two
+ * other projects is ambiguous: an error that lists both ids.
+ */
+export function jobScope(items, slug, me) {
+  if (!me) return items
+  const mine = items.filter((i) => i.job === slug)
+  for (const group of [mine.filter((i) => me.pane && i.origin === me.pane), mine.filter((i) => i.project === me.project)]) if (group.length) return group
+  const open = mine.filter((i) => i.column !== "done")
+  if (new Set(open.map((i) => i.project)).size > 1) {
+    throw new Error(`job "${slug}" is open in several projects (${open.map((i) => `${i.id} in ${i.project}`).join(", ")}); use the card's id`)
+  }
+  return mine
+}
+
+export function findItem(state, ref, me = null) {
   const text = String(ref ?? "")
   if (/^\d+$/.test(text)) {
     const item = state.items.find((i) => i.id === Number(text))
     if (!item) throw new Error(`no item ${text} on the board`)
     return item
   }
-  const item = jobItem(state.items, text) || state.items.findLast((i) => i.job === text)
+  const items = jobScope(state.items, text, me)
+  const item = jobItem(items, text) || items.findLast((i) => i.job === text)
   if (!item) throw new Error(`no item ${text === "" ? "given" : `with id or job "${text}"`} on the board`)
   return item
+}
+
+// --- who writes, and who owns a card ------------------------------------------------------------
+
+/**
+ * The writer: its Herdr pane and workspace (inside Herdr), and whether it is a coordinator (the
+ * role variable, JOB_AGENT_ROLE, unset or "coordinator"). Only a coordinator owns cards.
+ */
+export function writerOf(env = process.env) {
+  const pane = inHerdr(env) ? clean(env.HERDR_PANE_ID) : ""
+  const role = clean(env.JOB_AGENT_ROLE)
+  return { pane, workspace: inHerdr(env) ? clean(env.HERDR_WORKSPACE_ID) : "", coordinator: Boolean(pane) && (role === "" || role === "coordinator") }
+}
+
+/** A coordinator's write is noted: its pane, workspace, cwd project and when. */
+export function noteCoordinator(state, me, now) {
+  if (!me.coordinator) return
+  state.coordinators[me.pane] = { workspace: me.workspace, project: me.project || "", seen: now.toISOString() }
+}
+
+/**
+ * Whether `me` may change `item`: a card of its own project, or one it owns, or with
+ * --project naming the card's project. Anything else is refused (exit 2), so an id remembered
+ * from another board can't silently change another project's card.
+ */
+export function checkOwner(state, item, me, projectOpt) {
+  if (projectOpt !== undefined) {
+    const want = projectRef(state, projectOpt)
+    if (want === item.project) return
+    throw usage(`card ${item.id} belongs to ${item.project}, not ${clean(projectOpt) || '""'}`)
+  }
+  if (item.project === me.project || (me.pane && item.origin === me.pane)) return
+  throw usage(`card ${item.id} belongs to ${item.project} (${item.origin ? `owner ${item.origin}` : "no owner"}); add --project ${item.project} to change it`)
+}
+
+/**
+ * A coordinator that changes a card whose owner pane is gone takes it over. `agents` is Herdr's
+ * agent list (null: unknown, nothing is taken). Returns the old owner, or "".
+ */
+export function takeOver(item, me, agents) {
+  if (!me.coordinator || !item.origin || item.origin === me.pane || !Array.isArray(agents)) return ""
+  if (agents.some((a) => a.pane_id === item.origin)) return ""
+  const was = item.origin
+  item.origin = me.pane
+  return was
 }
 
 export const MAX_OPTIONS = 4
@@ -353,11 +699,15 @@ function dropOptions(item) {
   delete item.sent
 }
 
-function addItem(state, column, title, opts, now) {
+/** A new card; `who` is { project, origin, workspace } (the writer's, or what the command said). */
+function addItem(state, column, title, opts, now, who = {}) {
   if (!clean(title)) throw usage("an item needs a title")
   const at = now.toISOString()
   const item = {
     id: state.next_id++,
+    project: who.project || "",
+    origin: who.origin || "",
+    workspace: who.workspace || "",
     title: clean(title),
     desc: clean(opts.desc),
     column,
@@ -2590,14 +2940,18 @@ function openPane(fileArg, opts, env, out) {
     out(`pane ${target} is the board itself: nothing to open (open it from the pane you work in; its buttons answer that pane)`)
     return null
   }
-  // A plugin action runs in the plugin's folder: the board belongs to the pane it was called from.
-  const file = fileArg || boardPath(env.HERDR_PLUGIN_ID ? me.foreground_cwd || me.cwd : process.cwd(), env)
-  if (!file) throw new Error("not inside a git repo; set JOB_BOARD_FILE")
+  // A plugin action runs in the plugin's folder: the pane it was called from says which repo's
+  // 0.4 board, if any, the first use imports.
+  const cwd = env.HERDR_PLUGIN_ID ? me.foreground_cwd || me.cwd || process.cwd() : process.cwd()
+  const file = fileArg || boardPath(cwd, env)
+  autoImport(file, cwd, env, new Date(), out)
   const tab = me.tab_id
   const share = Number(opts.share ?? 0.3)
   if (!(share > 0.05 && share < 0.95)) throw usage("--share is the board's part of the width, e.g. 0.3")
 
-  const remembered = readBoard(file).panes?.[tab]
+  // `panes` remembers each tab's board pane: { pane, origin } (a pane id alone in 0.4).
+  const paneOf = (entry) => (typeof entry === "string" ? entry : entry?.pane || null)
+  const remembered = paneOf(readBoard(file).panes?.[tab])
   const alive = (id) => {
     const pane = id && herdr(["pane", "get", id], env, { quiet: true })?.result?.pane
     return pane && pane.tab_id === tab && pane.label === PANE_LABEL && id !== target ? id : null
@@ -2647,7 +3001,8 @@ function openPane(fileArg, opts, env, out) {
     herdr(["pane", "run", pane, paneCommand(file, target)], env)
     out(`board opened in pane ${pane}, right of ${target}`)
   }
-  if (remembered !== pane) updateBoard(file, (s) => void (s.panes[tab] = pane))
+  const known = readBoard(file).panes?.[tab]
+  if (paneOf(known) !== pane || known?.origin !== target) updateBoard(file, (s) => void (s.panes[tab] = { pane, origin: target }))
   return file
 }
 
@@ -2851,7 +3206,8 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       continue
     }
     try {
-      herdr(["pane", "run", p.pane, paneCommand(p.board, p.origin)], env)
+      // A 0.4 board's pane whose board file was imported into the store: it starts on the store.
+      herdr(["pane", "run", p.pane, paneCommand(wasImported(p.board) ? boardPath(process.cwd(), { ...env, JOB_BOARD_FILE: "" }) : p.board, p.origin)], env)
     } catch (e) {
       fail(p, `couldn't start board ${VERSION}: ${e.message}`)
       continue
@@ -2953,15 +3309,26 @@ function doctor(env, out) {
   const cli = root ? `node ${shellQuote(join(root, "board.mjs"))}` : here
 
   const file = boardPath(process.cwd(), env)
-  if (!file) say("note", "not in a git repo: each repo has its own board; run this from one to check it")
-  else {
-    let cards = null
+  {
+    let state = null
     try {
-      cards = readBoard(file).items.length
+      state = readBoard(file)
     } catch (e) {
-      need(false, `board file unreadable: ${clean(e.message).slice(0, 160)}`, `fix or move ${file}`)
+      need(false, `board file unreadable: ${clean(e.message).slice(0, 160)}`, `fix it, or put a backup back: ${cli} restore`)
     }
-    if (cards !== null) say("ok", `this repo's board: ${file} (${cards} card${cards === 1 ? "" : "s"}${existsSync(file) ? "" : ", created on the first add"})`)
+    if (state) {
+      const projects = new Set(state.items.map((i) => i.project)).size
+      say("ok", `the board: ${file} (${state.items.length} card${state.items.length === 1 ? "" : "s"}, ${projects} project${projects === 1 ? "" : "s"}${existsSync(file) ? "" : ", created on the first add"})`)
+    }
+    if (env.HERDR_PLUGIN_STATE_DIR && !env.JOB_BOARD_HOME && !env.JOB_BOARD_FILE && !sameFile(env.HERDR_PLUGIN_STATE_DIR, dirname(file))) {
+      say("note", `HERDR_PLUGIN_STATE_DIR is ${env.HERDR_PLUGIN_STATE_DIR}; the board stays in ${dirname(file)} so the CLI, the hooks and the pane agree`)
+    }
+    const here = projectAt(process.cwd(), env)
+    const legacy = here.git && join(here.git, LEGACY_FILE)
+    if (legacy && existsSync(legacy) && !env.JOB_BOARD_FILE) {
+      say("fix", `a 0.4 board is still in this repo (${legacy}): import it (it merges by id)`, `${cli} import --dry-run`, `${cli} import`)
+      missing++
+    }
   }
 
   const config = herdrConfig(env)
@@ -2971,7 +3338,8 @@ function doctor(env, out) {
   if (!keyed) say("", `(until then: ${cli} open)`)
   const sidebar = /"\$board"/.test(text)
   say(sidebar ? "ok" : "add", sidebar ? "sidebar shows the board's counts ($board)" : `no "$board" in the sidebar: add it to the rows in ${config}, e.g.`, ...(sidebar ? [] : SIDEBAR_SNIPPET.split("\n")))
-  const settings = [join(env.HOME || "", ".claude", "settings.json"), ...(file ? [".claude/settings.json", ".claude/settings.local.json"].map((f) => join(dirname(dirname(file)), f)) : [])]
+  const repoRoot = projectAt(process.cwd(), env).root
+  const settings = [join(env.HOME || "", ".claude", "settings.json"), ...[".claude/settings.json", ".claude/settings.local.json"].map((f) => join(repoRoot, f))]
   const hooked = settings.find((f) => /board-hook\.mjs|job-board\.mjs\\?"? hook/.test(readText(f) ?? ""))
   say(hooked ? "ok" : "opt", hooked ? `Claude Code hooks (in ${hooked})` : "Claude Code hooks not set up (only for a Claude Code coordinator): print them with", ...(hooked ? [] : [`${cli} hooks`]))
 
@@ -2994,6 +3362,357 @@ function doctor(env, out) {
   return missing ? 1 : 0
 }
 
+// --- import, export, restore -------------------------------------------------------------------
+
+const STALE_MS = 3 * 24 * 3600_000
+const TEMP_DIRS = [...new Set([tmpdir(), "/tmp", "/var/tmp"].map((d) => resolve(d)))]
+const inTemp = (path) => TEMP_DIRS.some((d) => resolve(path).startsWith(d + sep))
+
+/** A Waiting card left by a test run: its job report was in a temp folder and is gone, and it is older than 3 days. */
+export const staleCard = (item, now) => item.column === "waiting" && Boolean(item.report) && inTemp(item.report) && !existsSync(item.report) && now - new Date(item.since) > STALE_MS
+
+const listDir = (dir) => {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+}
+
+// Mount points (from /proc/self/mounts, on Linux) are never looked into: a network mount whose
+// server is away blocks the first read of it for good.
+function mountPoints() {
+  const text = readText("/proc/self/mounts") ?? ""
+  return new Set(text.split("\n").map((l) => l.split(" ")[1]?.replace(/\\040/g, " ")).filter(Boolean))
+}
+
+/** The git repos in $HOME/* and $HOME/*\/* (no hidden folders, no mount points): their folders. */
+export function homeRepos(env = process.env) {
+  const home = env.HOME || homedir()
+  const mounts = mountPoints()
+  const repos = []
+  const visit = (dir, depth) => {
+    for (const e of listDir(dir)) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue
+      const sub = join(dir, e.name)
+      if (mounts.has(sub)) continue
+      if (existsSync(join(sub, ".git"))) repos.push(sub)
+      else if (depth < 2) visit(sub, depth + 1)
+    }
+  }
+  visit(home, 1)
+  return repos
+}
+
+/** The 0.4 boards to import when none are named: this repo's, then those of the repos under $HOME. */
+export function legacyBoards(cwd, env = process.env) {
+  const here = projectAt(cwd, env)
+  const files = [...(here.git ? [join(here.git, LEGACY_FILE)] : []), ...homeRepos(env).map((dir) => join(dir, ".git", LEGACY_FILE))]
+  const seen = new Set()
+  return files.filter((f) => {
+    if (!existsSync(f)) return false
+    const real = realOr(f)
+    return !seen.has(real) && seen.add(real)
+  })
+}
+
+/** "15 Oct" */
+const dayMonth = (iso) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? "?" : `${d.getDate()} ${MONTHS[d.getMonth()]}`
+}
+
+/**
+ * Whether a title names a project: its name as words ("ai-config", "ai config"), or its name
+ * without the first part when that is two words or more ("job board" for herdr-job-board).
+ */
+function namesProject(title, name) {
+  const parts = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  const text = ` ${String(title).toLowerCase().replace(/[^a-z0-9-]+/g, " ")} `
+  const words = [name.toLowerCase(), parts.join(" "), ...(parts.length > 2 ? [parts.slice(1).join(" ")] : [])]
+  return words.some((n) => n.length >= 3 && text.includes(` ${n} `))
+}
+
+/**
+ * Parse --retag "200=home,204=ai-config" into [[200, "home"], …].
+ */
+function retagList(text) {
+  if (text === undefined) return []
+  return String(text)
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const m = /^(\d+)=(.+)$/.exec(pair)
+      if (!m) throw usage(`--retag takes <id>=<project>,… (got "${pair}")`)
+      return [Number(m[1]), clean(m[2])]
+    })
+}
+
+/**
+ * Merge 0.4 boards into the store's `state`. `sources`: [{ file, id (projectAt), board }].
+ * The biggest board goes first, so the most ids stay. A card keeps its id when it is free (on
+ * the board and in the archive), else gets the next one, with `was: "<project>#<old id>"`. A
+ * card already on the board (same project, id and created time) is merged: the newer `updated`
+ * wins. Stale cards are left out unless keepStale. Returns what happened, for the preview.
+ */
+export function importInto(state, sources, ctx) {
+  const { now, me = {}, keepStale = false, retag = [], known = new Map(), workspaces = new Map(), agents = null, archived = [] } = ctx
+  const at = now.toISOString()
+  const used = new Set([...state.items.map((i) => i.id), ...archived])
+  const result = { boards: [], leftOut: [], renumbered: [], proposals: [], retagged: [] }
+  const ordered = [...sources].sort((a, b) => b.board.items.length - a.board.items.length)
+  for (const src of ordered) {
+    const name = ensureProject(state, src.id)
+    const project = state.projects[name]
+    if (!project.workspace && workspaces.get(name)) project.workspace = workspaces.get(name)
+    const origin = me.coordinator && me.project === name ? me.pane : ""
+    const entry = { from: src.file, project: name, at, cards: 0, renumbered: {}, left_out: [], merged: 0, unchanged: 0, kept: [] }
+    const cards = [...src.board.items].sort((a, b) => a.id - b.id)
+    const take = []
+    for (const card of cards) {
+      if (!keepStale && staleCard(card, now)) {
+        entry.left_out.push(card.id)
+        result.leftOut.push({ card, project: name, file: src.file })
+        continue
+      }
+      const same = state.items.find((i) => i.id === card.id && i.project === name && i.created === card.created)
+      if (same) {
+        if (new Date(card.updated) > new Date(same.updated)) {
+          Object.assign(same, { ...card, project: name, origin: same.origin || card.origin || origin, workspace: same.workspace || card.workspace || project.workspace })
+          entry.merged++
+        } else entry.unchanged++
+        continue
+      }
+      take.push(card)
+    }
+    const kept = take.filter((c) => !used.has(c.id))
+    state.next_id = Math.max(state.next_id, Number(src.board.next_id) || 1, ...kept.map((c) => c.id + 1))
+    for (const card of take) {
+      const item = { ...card, project: name, origin: card.origin || origin, workspace: card.workspace || project.workspace }
+      if (used.has(card.id)) {
+        item.id = state.next_id++
+        item.was = `${name}#${card.id}`
+        entry.renumbered[card.id] = item.id
+        result.renumbered.push({ from: item.was, to: item.id })
+      } else entry.kept.push(card.id)
+      used.add(item.id)
+      state.items.push(item)
+      entry.cards++
+    }
+    for (const [tab, pane] of Object.entries(src.board.panes || {})) if (!state.panes[tab]) state.panes[tab] = pane
+    result.boards.push(entry)
+    state.imports.push({ from: entry.from, project: name, at, cards: entry.cards, renumbered: entry.renumbered, left_out: entry.left_out })
+  }
+  state.items.sort((a, b) => a.id - b.id)
+  // What a left-out card would become with --keep-stale.
+  let next = state.next_id
+  for (const l of result.leftOut) l.as = used.has(l.card.id) ? next++ : l.card.id
+
+  const imported = new Set(result.boards.map((b) => b.project))
+  const target = (ref) => {
+    const name = projectRef(state, ref)
+    if (name) return name
+    if (known.has(ref)) return ensureProject(state, known.get(ref))
+    throw usage(`--retag: no project "${ref}" (known: ${[...new Set([...Object.keys(state.projects), ...known.keys()])].sort().join(", ")})`)
+  }
+  const retagged = new Set()
+  for (const [id, ref] of retag) {
+    const item = state.items.find((i) => i.id === id && imported.has(i.project))
+    if (!item) throw usage(`--retag: card ${id} is not among the imported cards`)
+    item.project = target(ref)
+    retagged.add(id)
+    result.retagged.push({ id, project: item.project })
+  }
+  // Suggestions: open imported cards whose title names another project, or whose job's agent
+  // runs in another project's folder.
+  const names = [...new Set([...Object.keys(state.projects), ...known.keys()])]
+  const agentProject = new Map()
+  for (const a of agents || []) {
+    const cwd = a.foreground_cwd || a.cwd
+    if (a.name && cwd) agentProject.set(a.name, projectName(state.projects, projectAt(cwd, ctx.env)))
+  }
+  for (const item of state.items) {
+    if (!imported.has(item.project) || item.column === "done" || retagged.has(item.id)) continue
+    const byAgent = item.job && agentProject.get(item.job)
+    // A title that names its own project too ("Bring sfc-app-track into sfc-integration") stays.
+    const byTitle = !namesProject(item.title, item.project) && names.find((n) => n !== item.project && namesProject(item.title, n))
+    const to = byAgent && byAgent !== item.project ? byAgent : byTitle
+    if (to) result.proposals.push({ id: item.id, title: item.title, project: to })
+  }
+  return result
+}
+
+/** The lines `import` prints, for a dry run ("then:") or after it ran ("done:"). */
+export function importPreview(result, state, { file, backup, dryRun, keepStale }) {
+  const cards = result.boards.reduce((n, b) => n + b.cards + b.merged + b.unchanged, 0) + result.leftOut.length
+  const lines = [`import: ${result.boards.length} board${result.boards.length === 1 ? "" : "s"}, ${cards} card${cards === 1 ? "" : "s"} → ${file}${dryRun ? " (dry run: nothing is written)" : ""}`]
+  for (const b of result.boards) {
+    const tag = state.projects[b.project]?.tag
+    const parts = [`${b.cards} card${b.cards === 1 ? "" : "s"}`]
+    const renumbered = Object.keys(b.renumbered).length
+    if (b.kept.length && !renumbered) parts.push(`ids kept (${Math.min(...b.kept)}–${Math.max(...b.kept)})`)
+    else if (renumbered) parts.push(`${b.kept.length} ids kept, ${renumbered} renumbered`)
+    if (b.merged) parts.push(`${b.merged} updated`)
+    if (b.unchanged) parts.push(`${b.unchanged} already there`)
+    if (b.left_out.length) parts.push(`${b.left_out.length} left out`)
+    lines.push(`  ${b.from}  →  ${b.project} (${tag}): ${parts.join(", ")}`)
+  }
+  for (const l of result.leftOut) {
+    const why = `${l.card.column} since ${dayMonth(l.card.since)}, report gone (${l.card.report})`
+    lines.push(`      ${l.project}#${l.card.id} ${clean(l.card.job || l.card.title)}  ${why}: left out`, `      ${" ".repeat(String(l.card.id).length + l.project.length + 1)} (--keep-stale imports it as ${l.as})`)
+  }
+  if (keepStale) lines.push("  stale cards kept (--keep-stale)")
+  if (result.renumbered.length) lines.push(`renumbered (the id was taken): ${result.renumbered.map((r) => `${r.from} → ${r.to}`).join(", ")}`)
+  if (result.retagged.length) lines.push(`re-tagged: ${result.retagged.map((r) => `${r.id}→${r.project}`).join(" ")}`)
+  if (result.proposals.length) {
+    lines.push(`re-tag (suggested from titles and running jobs; apply with --retag ${result.proposals.map((p) => `${p.id}=${p.project}`).join(",")}):`)
+    for (const p of result.proposals) lines.push(`  ${p.id} → ${p.project}   ${clean(p.title).slice(0, 70)}`)
+  }
+  const open = state.items.filter((i) => i.column !== "done").length
+  lines.push(
+    `${dryRun ? "then:" : "done:"}  ${basename(file)} ${state.items.length} cards (${open} open), next_id ${state.next_id}; old files renamed ${MIGRATED_FILE}; backups in ${backup}`,
+  )
+  return lines
+}
+
+/** A source for importInto: the board file read (v1 or v2) and its repo. */
+function importSource(path, env) {
+  const file = realOr(resolve(path))
+  if (!existsSync(file)) throw new Error(`no board file ${file}`)
+  const id = projectAt(dirname(file), env)
+  return { file, id, board: readBoard(file) }
+}
+
+/** Herdr's workspaces by label: { "sfc-integration" → "w4" }. Empty outside Herdr. */
+function workspacesByLabel(env) {
+  if (!inHerdr(env)) return new Map()
+  const spaces = herdr(["workspace", "list"], env, { quiet: true })?.result?.workspaces || []
+  return new Map(spaces.filter((w) => w.label).map((w) => [clean(w.label), clean(w.workspace_id)]))
+}
+
+/** Move an imported 0.4 board aside, beside itself: job-board.migrated.json (or with a time when one is there). */
+function retire(file, now) {
+  let to = join(dirname(file), MIGRATED_FILE)
+  if (existsSync(to)) to = join(dirname(file), `job-board.migrated-${stampOf(now)}.json`)
+  renameSync(file, to)
+  return to
+}
+
+/**
+ * `import`: preview (dryRun) or merge the 0.4 boards into the store. Before anything is
+ * written, each source is copied to backups/import-<time>/; after, each is renamed
+ * job-board.migrated.json. Returns the lines to print.
+ */
+export function runImport(file, paths, opts, ctx) {
+  const { env, now, me } = ctx
+  const backup = join(sideDir(file), "backups", `import-${stampOf(now)}`)
+  const sources = paths.map((p) => importSource(p, env))
+  if (!sources.length) return [`import: no 0.4 board found (looked in this repo's .git and the repos under ${env.HOME || homedir()}); nothing to do`]
+  if (sources.some((s) => sameFile(s.file, file))) throw usage("import: that is the store itself")
+  const known = new Map(homeRepos(env).map((dir) => projectAt(dir, env)).map((id) => [id.name, id]))
+  known.set("home", projectAt(env.HOME || homedir(), env))
+  const plan = {
+    now,
+    me,
+    env,
+    keepStale: Boolean(opts["keep-stale"]),
+    retag: retagList(opts.retag),
+    known,
+    workspaces: workspacesByLabel(env),
+    agents: inHerdr(env) ? listAgents(env) : null,
+    archived: readArchive(file).map((i) => i.id),
+  }
+  const show = (result, state) => importPreview(result, state, { file, backup, dryRun: Boolean(opts["dry-run"]), keepStale: plan.keepStale })
+  if (opts["dry-run"]) {
+    const state = readBoard(file)
+    me.project = projectName(state.projects, me.id)
+    return show(importInto(state, sources, plan), state)
+  }
+  privateDir(backup)
+  const names = new Set()
+  for (const src of sources) {
+    let name = basename(src.id.root) || "board"
+    while (names.has(name)) name = `${name}-2`
+    names.add(name)
+    copyFileSync(src.file, join(backup, `${name}.json`))
+  }
+  const { result, state } = updateBoard(
+    file,
+    (s) => {
+      me.project = projectName(s.projects, me.id)
+      // Read again under the lock: what was read above may be older.
+      const fresh = sources.filter((src) => existsSync(src.file)).map((src) => ({ ...src, board: readBoard(src.file) }))
+      const result = importInto(s, fresh, plan)
+      noteCoordinator(s, me, now)
+      return { result, state: s }
+    },
+    now,
+  )
+  const lines = show(result, state)
+  for (const src of sources) if (existsSync(src.file)) lines.push(`  ${src.file} → ${retire(src.file, now)}`)
+  return lines
+}
+
+/**
+ * The first 0.5 command in a repo that still has a 0.4 board, while the store is empty: that
+ * board is imported (every card, ids kept: the store is empty) and the CLI says so once.
+ */
+export function autoImport(file, cwd, env, now, say) {
+  if (env.JOB_BOARD_FILE || existsSync(file)) return
+  const here = projectAt(cwd, env)
+  const legacy = here.git && join(here.git, LEGACY_FILE)
+  if (!legacy || !existsSync(legacy)) return
+  try {
+    readBoard(legacy)
+  } catch {
+    return
+  }
+  const me = { ...writerOf(env), id: here }
+  const lines = runImport(file, [legacy], { "keep-stale": true }, { env, now, me })
+  say(`board: one board for all projects now: ${file}. Imported this repo's 0.4 board (${legacy}); other repos' boards: board.mjs import --dry-run`)
+  for (const l of lines.filter((l) => l.startsWith("  ") && l.includes(MIGRATED_FILE))) say(`board:${l}`)
+}
+
+/** `export --legacy`: one project's cards as a 0.4 board file (version 1), for a rollback. */
+export function exportLegacy(state, project) {
+  const strip = ({ project: _p, origin: _o, workspace: _w, was: _was, ...rest }) => rest
+  const items = state.items.filter((i) => project === "all" || i.project === project).map(strip)
+  return { version: 1, next_id: state.next_id, items, panes: Object.fromEntries(Object.entries(state.panes).map(([tab, p]) => [tab, typeof p === "string" ? p : p?.pane]).filter(([, p]) => p)) }
+}
+
+/** The backups `restore` can put back, newest first. */
+export function backupsOf(file) {
+  const dir = join(sideDir(file), "backups")
+  const found = []
+  for (const e of listDir(dir)) {
+    if (e.isFile() && e.name.endsWith(".json")) found.push(join(dir, e.name))
+    if (e.isDirectory()) for (const f of listDir(join(dir, e.name))) if (f.isFile() && f.name.endsWith(".json")) found.push(join(dir, e.name, f.name))
+  }
+  return found.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+}
+
+/**
+ * `restore <backup>`: put a backup back, under the lock. The board as it is goes to
+ * backups/board-before-restore-<time>.json first. A 0.4 file (an import backup) is read as v1.
+ */
+export function restoreBackup(file, ref, now) {
+  const dir = join(sideDir(file), "backups")
+  const path = [resolve(ref), join(dir, ref), join(sideDir(file), ref)].find((p) => existsSync(p))
+  if (!path) throw new Error(`no backup ${ref} (board.mjs restore lists them)`)
+  const restored = readBoard(path)
+  privateDir(dirname(file))
+  return withLock(file, () => {
+    let saved = ""
+    if (existsSync(file)) {
+      saved = join(privateDir(dir), `board-before-restore-${stampOf(now)}.json`)
+      copyFileSync(file, saved)
+    }
+    writeBoard(file, restored)
+    return { path, saved, cards: restored.items.length }
+  })
+}
+
 // --- the command line -----------------------------------------------------------------------
 
 function usage(message) {
@@ -3002,8 +3721,8 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin"])
-const SWITCHES = new Set(["clear-options", "if-final"])
+const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name"])
+const SWITCHES = new Set(["clear-options", "if-final", "dry-run", "keep-stale", "legacy", "gone"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -3088,69 +3807,171 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       return 0
     }
     const file = boardPath(process.cwd(), env)
-    if (!file) throw new Error("not inside a git repo; run this from the repo, or set JOB_BOARD_FILE")
+    // The writer: its pane (inside Herdr), whether it is a coordinator, and its cwd's project.
+    let here = null
+    const me = {
+      ...writerOf(env),
+      get id() {
+        return (here ??= projectAt(process.cwd(), env))
+      },
+    }
+    if (!["import", "path", "restore", "export"].includes(command)) autoImport(file, process.cwd(), env, now, err)
+    // Every write notes a coordinator, and knows this writer's project by its name on the board.
     const change = (fn) => {
-      const result = updateBoard(file, fn, now)
+      const result = updateBoard(
+        file,
+        (s) => {
+          me.project = projectName(s.projects, me.id)
+          const r = fn(s)
+          noteCoordinator(s, me, now)
+          return r
+        },
+        now,
+      )
       syncToken(file, env)
       return result
     }
     const need = (n, what) => {
       if (rest.length !== n) throw usage(`usage: board.mjs ${command} ${what}`)
     }
+    let agentList
+    const agents = () => (agentList === undefined ? (agentList = listAgents(env)) : agentList)
+    // A card this writer may change (checkOwner); a gone owner's card is taken over, and said so.
+    const owned = (s, item) => {
+      checkOwner(s, item, me, opts.project)
+      const was = takeOver(item, me, agents())
+      if (was) err(`board: card ${item.id}'s coordinator (${was}) is gone: this pane (${me.pane}) owns it now`)
+      return item
+    }
+    // The project a new card goes to: --worktree's repo, --project, else this folder's.
+    const projectFor = (s) => {
+      if (opts.worktree !== undefined) {
+        if (!existsSync(resolve(opts.worktree))) throw usage(`--worktree ${opts.worktree}: no such folder`)
+        return ensureProject(s, projectAt(resolve(opts.worktree), env))
+      }
+      if (opts.project !== undefined) return projectOf(s, opts.project, env)
+      return ensureProject(s, me.id)
+    }
+    const who = (s) => ({ project: projectFor(s), origin: me.coordinator ? me.pane : "", workspace: me.workspace })
 
     switch (command) {
       case "add": {
-        only(opts, ["desc", "job", "ask", "option", "suggest"], command)
-        need(2, "<column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L]")
+        only(opts, ["desc", "job", "ask", "option", "suggest", "project", "worktree"], command)
+        need(2, "<column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]")
         const column = columnOf(rest[0])
-        const item = change((s) => addItem(s, column, rest[1], opts, now))
+        const item = change((s) => addItem(s, column, rest[1], opts, now, who(s)))
         out(`added ${item.id} (${label(column)}): ${item.title}`)
         hint(err, item)
         return 0
       }
       case "move":
       case "done": {
-        only(opts, command === "move" ? ["ask", "desc"] : [], command)
-        need(command === "move" ? 2 : 1, command === "move" ? "<id|job> <column> [--ask A] [--desc D]" : "<id|job>")
+        only(opts, command === "move" ? ["ask", "desc", "project"] : ["project"], command)
+        need(command === "move" ? 2 : 1, command === "move" ? "<id|job> <column> [--ask A] [--desc D] [--project P]" : "<id|job> [--project P]")
         const column = command === "done" ? "done" : columnOf(rest[1])
         const item = change((s) => {
-          const it = moveItem(findItem(s, rest[0]), column, now)
+          const it = moveItem(owned(s, findItem(s, rest[0], me)), column, now)
           return opts.ask !== undefined || opts.desc !== undefined ? editItem(it, opts, now) : it
         })
         out(`${item.id} → ${label(column)}: ${item.title}`)
         return 0
       }
       case "edit": {
-        only(opts, ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options"], command)
-        need(1, "<id|job> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]")
-        const item = change((s) => editItem(findItem(s, rest[0]), opts, now))
+        only(opts, ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project"], command)
+        need(1, "<id|job> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--project P]")
+        const item = change((s) => editItem(owned(s, findItem(s, rest[0], me)), opts, now))
         out(`${item.id} edited: ${item.title}`)
         return 0
       }
       case "rm": {
-        only(opts, [], command)
-        need(1, "<id|job>")
+        only(opts, ["project"], command)
+        need(1, "<id|job> [--project P]")
         const item = change((s) => {
-          const it = findItem(s, rest[0])
+          const it = owned(s, findItem(s, rest[0], me))
           s.items = s.items.filter((i) => i !== it)
           return it
         })
         out(`${item.id} removed: ${item.title}`)
         return 0
       }
+      case "retag": {
+        only(opts, ["project"], command)
+        if (rest.length < 2) throw usage("usage: board.mjs retag <id>… <project>")
+        const ids = rest.slice(0, -1)
+        const moved = change((s) => {
+          const to = projectOf(s, rest.at(-1), env)
+          return ids.map((ref) => {
+            const it = owned(s, findItem(s, ref, me))
+            it.project = to
+            it.updated = now.toISOString()
+            return it
+          })
+        })
+        for (const it of moved) out(`${it.id} → project ${it.project}: ${it.title}`)
+        return 0
+      }
+      case "adopt": {
+        only(opts, ["project", "gone"], command)
+        if (!me.coordinator) throw usage("adopt is for a coordinator's pane inside Herdr (HERDR_ENV=1, HERDR_PANE_ID set)")
+        if (opts.gone ? rest.length : !rest.length) throw usage("usage: board.mjs adopt <id>…  or  board.mjs adopt --project P --gone")
+        if (opts.gone && opts.project === undefined) throw usage("adopt --gone needs --project P (or --project all)")
+        if (opts.gone && !Array.isArray(agents())) throw new Error("adopt --gone: Herdr's agent list is not available, so no owner can be called gone")
+        const taken = change((s) => {
+          if (!opts.gone) return rest.map((ref) => findItem(s, ref)).map((it) => ((it.origin = me.pane), (it.updated = now.toISOString()), it))
+          const project = opts.project === "all" ? "all" : projectRef(s, opts.project)
+          if (!project) throw usage(`no project "${opts.project}" on the board (board.mjs projects lists them)`)
+          const alive = new Set(agents().map((a) => a.pane_id))
+          const gone = s.items.filter((i) => i.column !== "done" && (project === "all" || i.project === project) && i.origin !== me.pane && !alive.has(i.origin))
+          for (const it of gone) it.origin = me.pane
+          return gone
+        })
+        out(taken.length ? taken.map((it) => `${it.id} now owned by ${me.pane}: ${it.title}`).join("\n") : "nothing to adopt")
+        return 0
+      }
+      case "front": {
+        only(opts, [], command)
+        if (rest.length > 1 || (rest.length && rest[0] !== "show")) throw usage("usage: board.mjs front [show]")
+        if (rest[0] === "show") {
+          out(readBoard(file).front || "(no front coordinator set: the pane that last opened the board)")
+          return 0
+        }
+        if (!me.coordinator) throw usage("front is set from a coordinator's pane inside Herdr (HERDR_ENV=1, HERDR_PANE_ID set)")
+        change((s) => void (s.front = me.pane))
+        out(`front coordinator: ${me.pane} (answers no other coordinator can take come here)`)
+        return 0
+      }
+      case "projects": {
+        only(opts, [], command)
+        const state = readBoard(file)
+        const live = agents()
+        for (const line of projectLines(state, live)) out(line)
+        return 0
+      }
+      case "project": {
+        only(opts, ["tag", "color", "name"], command)
+        if (rest[0] !== "set" || rest.length !== 2) throw usage("usage: board.mjs project set <name> [--tag T] [--color C] [--name N]")
+        if (opts.tag === undefined && opts.color === undefined && opts.name === undefined) throw usage("project set needs --tag, --color or --name")
+        const name = change((s) => setProject(s, rest[1], opts))
+        const p = readBoard(file).projects[name]
+        out(`project ${name}: tag ${p.tag}, ${p.color}`)
+        return 0
+      }
       case "job-start": {
-        only(opts, ["id", "title", "desc", "report"], command)
-        need(1, "<slug> [--id N] [--title T] [--desc D] [--report path]")
+        only(opts, ["id", "title", "desc", "report", "project", "worktree"], command)
+        need(1, "<slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P]")
         const slug = rest[0]
         if (!SLUG.test(slug)) throw usage(`job slug "${slug}" must match ${SLUG}`)
         const item = change((s) => {
           // A Waiting item of the same job stays: it is the user's open question from its last run.
           const open = (i) => i.job === slug && (i.column === "todo" || i.column === "doing")
-          const it = opts.id ? findItem(s, String(opts.id)) : s.items.findLast(open)
-          if (!it) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now)
+          const it = opts.id ? owned(s, findItem(s, String(opts.id))) : jobScope(s.items, slug, me).findLast(open)
+          if (!it) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now, who(s))
           moveItem(it, "doing", now)
           dropOptions(it)
-          return editItem(it, { ...opts, job: slug, id: undefined }, now)
+          if (opts.worktree !== undefined || opts.project !== undefined) it.project = projectFor(s)
+          if (me.workspace) it.workspace = me.workspace
+          if (me.coordinator && !it.origin) it.origin = me.pane
+          return editItem(it, { ...opts, job: slug, id: undefined, project: undefined, worktree: undefined }, now)
         })
         out(`${item.id} → doing: ${item.title} (job ${slug})`)
         hint(err, item)
@@ -3161,7 +3982,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (rest.length < 1 || rest.length > 2) throw usage("usage: board.mjs job-report <slug> [report.json] [--if-final]")
         const [slug, given] = rest
         const quiet = Boolean(opts["if-final"])
-        const items = readBoard(file).items
+        const board = readBoard(file)
+        me.project = projectName(board.projects, me.id)
+        const scope = (list) => jobScope(list, slug, me)
+        const items = scope(board.items)
         const path = given ? resolve(given) : (jobItem(items, slug) || items.findLast((i) => i.job === slug))?.report
         if (!path) {
           if (quiet) return 0
@@ -3182,20 +4006,24 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // The job's card: its open one, else the one this report file already moved. A card
         // remembers which outcome it got (`reported`), so a repeat call (a watcher firing twice,
         // the same report read again) changes nothing, not even the coordinator's later edits;
-        // a report rewritten with a different outcome applies again, to the same card.
+        // a report rewritten with a different outcome applies again, to the same card. When the
+        // card is gone (archived), the board's `reports` remembers it was applied.
         const reported = createHash("sha256").update(JSON.stringify([path, column, ask])).digest("hex").slice(0, 16)
-        const cardFor = (list) => jobItem(list, slug) || list.findLast((i) => i.job === slug && i.report === path)
+        const cardFor = (list) => {
+          const mine = scope(list)
+          return jobItem(mine, slug) || mine.findLast((i) => i.job === slug && i.report === path)
+        }
         const settled = (it) => it && it.reported === reported
-        const before = cardFor(readBoard(file).items)
-        if (settled(before)) {
+        const before = cardFor(board.items)
+        if (settled(before) || (!before && board.reports[reported])) {
           // Already where this report puts it: nothing is written, `updated` stays.
-          if (!quiet) out(`${before.id} unchanged (${label(column)}): ${before.title}`)
+          if (!quiet) out(before ? `${before.id} unchanged (${label(column)}): ${before.title}` : `${board.reports[reported].id} unchanged (archived): job ${slug}`)
           return 0
         }
         const item = change((s) => {
           const found = cardFor(s.items)
-          if (settled(found)) return found
-          const it = found || addItem(s, column, slug, { job: slug, report: path }, now)
+          if (settled(found) || (!found && s.reports[reported])) return found || { id: s.reports[reported].id, title: `job ${slug}`, unchanged: true }
+          const it = found || addItem(s, column, slug, { job: slug, report: path }, now, who(s))
           moveItem(it, column, now)
           // A worker's report never puts answer buttons on the board.
           dropOptions(it)
@@ -3203,9 +4031,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           it.report = path
           it.reported = reported
           it.updated = now.toISOString()
+          s.reports[reported] = { id: it.id, at: now.toISOString() }
           return it
         })
-        out(`${item.id} → ${label(column)}: ${item.title}${ask ? `\n  ask: ${ask.replace(/\n/g, "\n  ask: ")}` : ""}`)
+        if (item.unchanged) out(`${item.id} unchanged (archived): ${item.title}`)
+        else out(`${item.id} → ${label(column)}: ${item.title}${ask ? `\n  ask: ${ask.replace(/\n/g, "\n  ask: ")}` : ""}`)
         return 0
       }
       case "ls": {
@@ -3220,10 +4050,40 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "json": {
-        only(opts, [], command)
+        only(opts, ["archive"], command)
+        if (opts.archive !== undefined && !/^\d{4}-\d{2}$/.test(opts.archive)) throw usage("--archive takes a month, e.g. 2026-10")
+        const data = opts.archive !== undefined ? { version: 2, month: opts.archive, items: readArchive(file, opts.archive) } : readBoard(file)
         // JSON escapes C0 controls itself; escape C1 and bidirectional controls too.
-        const json = JSON.stringify(readBoard(file), null, 2)
-        raw(json.replace(/[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`))
+        const json = JSON.stringify(data, null, 2)
+        raw(json.replace(/[\u007f-\u009f؜‎‏‪-‮⁦-⁩]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`))
+        return 0
+      }
+      case "import": {
+        only(opts, ["dry-run", "keep-stale", "retag"], command)
+        const paths = rest.length ? rest : legacyBoards(process.cwd(), env)
+        for (const line of runImport(file, paths, opts, { env, now, me })) out(line)
+        return 0
+      }
+      case "export": {
+        only(opts, ["legacy", "project"], command)
+        if (!opts.legacy || rest.length) throw usage("usage: board.mjs export --legacy [--project P|all]   (a 0.4 board file on stdout)")
+        const state = readBoard(file)
+        const project = opts.project === "all" ? "all" : opts.project !== undefined ? projectRef(state, opts.project) : projectName(state.projects, me.id)
+        if (!project) throw usage(`no project "${opts.project}" on the board (board.mjs projects lists them)`)
+        raw(JSON.stringify(exportLegacy(state, project), null, 2))
+        return 0
+      }
+      case "restore": {
+        only(opts, [], command)
+        if (rest.length > 1) throw usage("usage: board.mjs restore [<backup>]")
+        if (!rest.length) {
+          const list = backupsOf(file)
+          out(list.length ? ["backups (newest first; board.mjs restore <file>):", ...list.map((f) => `  ${f}`)].join("\n") : `no backups yet (${join(sideDir(file), "backups")})`)
+          return 0
+        }
+        const r = restoreBackup(file, rest[0], now)
+        out(`restored ${r.path} (${r.cards} cards) to ${file}${r.saved ? `; the board before it is in ${r.saved}` : ""}`)
+        syncToken(file, env)
         return 0
       }
       case "token": {
@@ -3232,11 +4092,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "path": {
+        only(opts, [], command)
         out(file)
         return 0
       }
       default:
-        throw usage(`unknown command "${command}" (add, move, edit, done, rm, ls, json, job-start, job-report, open, restart, doctor, hooks, version, token, path)`)
+        throw usage(
+          `unknown command "${command}" (add, move, edit, done, rm, retag, adopt, front, ls, json, projects, project, job-start, job-report, import, export, restore, open, restart, doctor, hooks, version, token, path)`,
+        )
     }
   } catch (error) {
     err(`board: ${error.message}`)

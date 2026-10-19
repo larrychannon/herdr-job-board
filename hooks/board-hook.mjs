@@ -2,7 +2,7 @@
 // Claude Code hooks that keep the job board current. One script for two events; it reads the
 // hook's JSON on stdin and does nothing (exit 0, no output) unless all of these hold: it runs
 // inside Herdr (HERDR_ENV=1), for the coordinator (the role variable, JOB_AGENT_ROLE by default,
-// is unset or "coordinator"; never a subagent), and the repo has a board file.
+// is unset or "coordinator"; never a subagent), and the board file exists.
 //
 //   UserPromptSubmit  notes where the board stood when the turn began, and reminds the
 //                     coordinator of the cards waiting on the user (id and title, at most 8):
@@ -15,14 +15,15 @@
 //   node hooks/board-hook.mjs [--role-env NAME]     (the hook command, for both events)
 //   node hooks/board-hook.mjs --print-settings      (the settings.json "hooks" entries)
 //
-// Turn records live next to the board, in job-board.turns/<session id>.json, and are removed
-// after 7 days. Any error lets Claude Code carry on: a board hook never gets in the way.
+// Turn records live in the board's folder, in turns/<session id>.json (the store's
+// ~/.local/state/herdr-job-board/turns/), and are removed after 7 days. Any error lets Claude
+// Code carry on: a board hook never gets in the way.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { boardPath, readBoard } from "../board.mjs"
+import { boardPath, readBoard, sideDir } from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BOARD_CLI = resolve(HERE, "..", "board.mjs")
@@ -64,7 +65,7 @@ export function asksUser(text) {
 
 // --- turn records ------------------------------------------------------------------------------
 
-const turnsDir = (boardFile) => join(dirname(boardFile), "job-board.turns")
+const turnsDir = (boardFile) => join(sideDir(boardFile), "turns")
 const safeId = (id) => String(id ?? "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100) || "session"
 const turnFile = (boardFile, sessionId) => join(turnsDir(boardFile), `${safeId(sessionId)}.json`)
 

@@ -18,8 +18,12 @@ const PANE = join(SCRIPTS, "board-pane.mjs")
 const FAKE_HERDR = join(FIXTURES, "fake-herdr.mjs")
 chmodSync(FAKE_HERDR, 0o755)
 
+// Each test's store (JOB_BOARD_HOME): in its temp folder, never the user's.
+let STATE = ""
 function temp() {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "job-board-")))
+  STATE = join(base, "state")
+  mkdirSync(STATE)
   return { base, done: () => rmSync(base, { recursive: true, force: true }) }
 }
 
@@ -39,8 +43,8 @@ function repo(base, name = "app") {
 
 /** The env for a run: no real Herdr unless a fake state file is given. */
 function envFor({ herdr = null, now = "2026-10-13T10:30:00Z", extra = {} } = {}) {
-  const env = { ...process.env, TZ: "UTC", JOB_BOARD_NOW: now, NO_COLOR: "1", ...extra }
-  for (const key of ["JOB_BOARD_FILE", "HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT"]) if (!(key in extra)) delete env[key]
+  const env = { ...process.env, TZ: "UTC", JOB_BOARD_NOW: now, NO_COLOR: "1", JOB_BOARD_HOME: STATE, ...extra }
+  for (const key of ["JOB_BOARD_FILE", "HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT", "JOB_AGENT_ROLE"]) if (!(key in extra)) delete env[key]
   if (herdr) Object.assign(env, { HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1" }, extra)
   else Object.assign(env, { HERDR_ENV: "0", HERDR_WORKSPACE_ID: "", HERDR_PANE_ID: "" })
   return env
@@ -56,7 +60,8 @@ function ok(cwd, args, opts) {
   return r.stdout
 }
 
-const fileOf = (dir) => join(dir, ".git", "job-board.json")
+// One board for every repo: the store.
+const fileOf = () => join(STATE, "board.json")
 const items = (dir) => JSON.parse(readFileSync(fileOf(dir), "utf8")).items
 const fakeHerdr = (base, state) => {
   const path = join(base, "herdr.json")
@@ -94,12 +99,12 @@ test("board: add, move, edit, done and rm; one board per repo, shared by its wor
     assert.deepEqual(items(dir).map((i) => i.id), [2])
     assert.equal(ok(dir, ["add", "todo", "next"]).match(/added (\d+)/)[1], "3", "ids are never reused")
 
-    assert.equal(git(dir, "status", "--porcelain"), "", "the board lives in .git, not the work tree")
+    assert.equal(git(dir, "status", "--porcelain"), "", "the board lives in the store, not the work tree")
     assert.equal(board(dir, ["add", "later", "x"]).status, 2)
     assert.match(board(dir, ["move", "42", "done"]).stderr, /no item 42/)
     assert.equal(board(dir, ["move", "42", "done"]).status, 1)
     assert.equal(board(dir, ["add", "todo", "x", "--bogus", "y"]).status, 2)
-    assert.equal(board(base, ["ls"]).status, 1, "outside a repo, without JOB_BOARD_FILE")
+    assert.equal(board(base, ["ls"]).status, 0, "outside a repo too: one board for every project")
   } finally {
     done()
   }
@@ -126,7 +131,7 @@ test("board: concurrent writers lose nothing", async () => {
     assert.equal(all.length, writers * each)
     assert.deepEqual(all.map((i) => i.id).sort((a, b) => a - b), Array.from({ length: writers * each }, (_, i) => i + 1))
     assert.equal(new Set(all.map((i) => i.title)).size, writers * each)
-    assert.deepEqual(readdirSync(join(dir, ".git")).filter((f) => f.startsWith("job-board.json.")), [], "no lock or temp file left")
+    assert.deepEqual(readdirSync(STATE).filter((f) => f.startsWith("board.json.")), [], "no lock or temp file left")
   } finally {
     done()
   }
@@ -208,14 +213,17 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     // The inbox at 88 x 40: every card on one row, all of them in view; the selected one open
     // under its row (description, question, buttons), with the headline count on top.
     const inbox = frame(88, 40)
-    assert.match(inbox, /^Job board · my-app · 5 need you +10:30$/m)
+    assert.match(inbox, /^Job board · all projects · 5 need you +10:30$/m)
     assert.match(inbox, /^▸ 1 ! Login page redesign: approve +2 h 20 min\n {6}New sign-in screen/m)
     for (const id of [2, 3, 4, 5]) assert.match(inbox, new RegExp(`^ {2}${id} ! .+ (min|h)$`, "m"), `card ${id} on one row`)
     assert.doesNotMatch(inbox, /↓ \d+ more|↑ \d+ above/, "nothing out of view")
     // G: the last card is selected and open, with its buttons.
     assert.match(frame(88, 40, dir, "G"), /^▸ 5 ! Deploy v1\.4: go +30 min\n(?: {6}.*\n)* {6}\[ Go ✓ \]  \[ Not now \]  \[ Other… \]/m)
 
-    // With nothing waiting, Waiting is one line and the rest goes to the bottom.
+    // With nothing waiting, Waiting is one line and the rest goes to the bottom (another
+    // store, JOB_BOARD_HOME, so the board has only this card).
+    STATE = join(base, "calm-state")
+    mkdirSync(STATE)
     const calm = repo(base, "calm")
     ok(calm, ["add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV."])
     const quiet = frame(120, 30, calm).split("\n")
@@ -432,8 +440,8 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.ok(split.includes("--no-focus"))
     assert.deepEqual(log.find((a) => a[1] === "rename"), ["pane", "rename", "w9:p101", "board"])
     const run = log.find((a) => a[1] === "run")
-    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\.git\/job-board\.json' --origin 'w9:p1' --version '\d+\.\d+\.\d+'$/)
-    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": "w9:p101" })
+    assert.match(run[3], /^node '.*board-pane\.mjs' --board '.*\/state\/board\.json' --origin 'w9:p1' --version '\d+\.\d+\.\d+'$/)
+    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1" } })
 
     assert.match(ok(dir, ["open"], { herdr }), /already open in pane w9:p101/)
     const after = herdrLog(herdr)
@@ -490,7 +498,7 @@ test("board open: one split per tab, reused, restarted when it was quit, switche
     assert.equal(self.status, 0, self.stderr)
     assert.match(self.stdout, /pane w9:p101 is the board itself: nothing to open/)
     assert.deepEqual(herdrLog(herdr).slice(before).filter((a) => ["split", "run", "send-text", "rename"].includes(a[1])), [])
-    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": "w9:p101" }, "the remembered pane stays")
+    assert.deepEqual(JSON.parse(readFileSync(fileOf(dir), "utf8")).panes, { "w9:t1": { pane: "w9:p101", origin: "w9:p1" } }, "the remembered pane stays")
 
     assert.match(board(dir, ["open"]).stderr, /needs Herdr/)
   } finally {
@@ -590,7 +598,7 @@ test("board: the lock is taken back from a dead process, never from a live one",
     mkdirSync(lock)
     utimesSync(lock, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000))
     ok(dir, ["add", "todo", "after an old lock"])
-    assert.deepEqual(readdirSync(join(dir, ".git")).filter((f) => f.startsWith("job-board.json.")), [], "no lock, temp or stale file left")
+    assert.deepEqual(readdirSync(STATE).filter((f) => f.startsWith("board.json.")), [], "no lock, temp or stale file left")
     assert.equal((statSync(fileOf(dir)).mode & 0o777).toString(8), "600", "the board file is private to its owner")
   } finally {
     done()

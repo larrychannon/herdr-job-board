@@ -32,7 +32,7 @@ function setup(state = {}) {
   mkdirSync(join(home, ".config", "herdr"), { recursive: true })
   const herdr = join(base, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ panes: [{ pane_id: "w9:p1", tab_id: "w9:t1", workspace_id: "w9", cwd: repo }], ...state }))
-  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: "", HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1", NO_COLOR: "1" }
+  const env = { ...process.env, HOME: home, XDG_CONFIG_HOME: "", XDG_STATE_HOME: "", JOB_BOARD_HOME: "", HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", HERDR_PANE_ID: "w9:p1", NO_COLOR: "1" }
   for (const key of ["JOB_BOARD_FILE", "HERDR_PLUGIN_ID", "HERDR_PLUGIN_ROOT"]) delete env[key]
   const run = (args, extra = {}) => spawnSync(process.execPath, [join(plugin, "board.mjs"), ...args], { cwd: repo, env: { ...env, ...extra }, encoding: "utf8" })
   const herdrState = () => JSON.parse(readFileSync(herdr, "utf8"))
@@ -46,7 +46,9 @@ function setup(state = {}) {
     writeFileSync(toml, readFileSync(toml, "utf8").replace(/^version = "[^"]*"/m, `version = "${v}"`))
   }
   const installed = { plugin_id: "herdr-job-board", version: VERSION, plugin_root: plugin, enabled: true, source: { kind: "github", owner: "larrychannon", repo: "herdr-job-board", resolved_commit: "abc1234def" } }
-  return { base, plugin, repo, home, herdr, env, run, herdrState, setHerdr, setVersion, installed, done: () => rmSync(base, { recursive: true, force: true }) }
+  // The store: HOME is the temp home, so ~/.local/state/herdr-job-board is in the temp folder.
+  const store = join(home, ".local", "state", "herdr-job-board", "board.json")
+  return { base, plugin, repo, home, store, herdr, env, run, herdrState, setHerdr, setVersion, installed, done: () => rmSync(base, { recursive: true, force: true }) }
 }
 
 test("version and hooks: one command each, from the copy that runs them", () => {
@@ -79,7 +81,7 @@ test("doctor: says what works and the one command for what's missing; exit 1 onl
     r = t.run(["doctor"])
     assert.equal(r.status, 0, r.stdout)
     assert.match(r.stdout, /^ok {4}plugin installed: herdr-job-board [\d.]+ from larrychannon\/herdr-job-board @ abc1234$/m)
-    assert.match(r.stdout, /^ok {4}this repo's board: .*\/app\/\.git\/job-board\.json \(0 cards, created on the first add\)$/m)
+    assert.match(r.stdout, /^ok {4}the board: .*\/home\/\.local\/state\/herdr-job-board\/board\.json \(0 cards, 0 projects, created on the first add\)$/m)
     assert.match(r.stdout, new RegExp(`^add {3}no key binding: add this to ${join(t.home, ".config", "herdr", "config.toml").replace(/[/.]/g, "\\$&")}, then run \`herdr server reload-config\`\\n {6}\\[\\[keys\\.command\\]\\]`, "m"))
     assert.match(r.stdout, /command = "herdr-job-board\.open"/)
     assert.match(r.stdout, /^add {3}no "\$board" in the sidebar/m)
@@ -148,7 +150,7 @@ test("an update of the pane's own folder: the running pane restarts itself with 
   const pause = (ms) => new Promise((r) => setTimeout(r, ms))
   let child
   try {
-    const board = join(t.repo, ".git", "job-board.json")
+    const board = t.store
     assert.equal(t.run(["add", "todo", "Something"]).status, 0)
     t.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board" }))
     const cmd = `stty cols 100 rows 30; exec node '${t.plugin}/board-pane.mjs' --board '${board}' --origin 'w9:p1' --version '${VERSION}' --interval 1`
@@ -194,7 +196,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** The live pane of `t`'s plugin copy in a pty, as `open` starts it, in pane w9:p5. */
 function livePane(t, extra = {}) {
-  const board = join(t.repo, ".git", "job-board.json")
+  const board = t.store
   if (!existsSync(board)) assert.equal(t.run(["add", "todo", "Something"]).status, 0)
   t.setHerdr((s) => s.panes.some((p) => p.pane_id === "w9:p5") || s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board" }))
   const cmd = `stty cols 100 rows 30; exec node '${t.plugin}/board-pane.mjs' --board '${board}' --origin 'w9:p1' --version '${VERSION}' --interval 1`
@@ -294,7 +296,7 @@ test("pane-restart failures are logged and shown by the next board started in th
   const t = setup()
   let live
   const log = () => readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-  const restart = () => t.run(["pane-restart", "w9:p5", "--board", join(t.repo, ".git", "job-board.json"), "--origin", "w9:p1"])
+  const restart = () => t.run(["pane-restart", "w9:p5", "--board", t.store, "--origin", "w9:p1"])
   try {
     // The user's `restart` leaves a pane alone on purpose (an old board with no --board file):
     // nothing is typed into it, and it is logged as a skip.
@@ -311,7 +313,7 @@ test("pane-restart failures are logged and shown by the next board started in th
     live.kill()
     // pane-restart, and the pane never gets back to its prompt (vim runs there): a failure, shown.
     t.setHerdr((s) => (s.panes.find((x) => x.pane_id === "w9:p5").running = "vim notes.md"))
-    r = t.run(["pane-restart", "w9:p5", "--board", join(t.repo, ".git", "job-board.json"), "--origin", "w9:p1"], { JOB_BOARD_RESTART_WAIT_MS: "1000" })
+    r = t.run(["pane-restart", "w9:p5", "--board", t.store, "--origin", "w9:p1"], { JOB_BOARD_RESTART_WAIT_MS: "1000" })
     assert.match(r.stdout, /pane w9:p5: the pane didn't get back to its prompt within 1 s after the old board quit \(vim runs there\)/)
     assert.deepEqual(t.herdrState().log.filter((a) => a[1] === "send-text" || a[1] === "run"), [], "nothing typed into vim")
     assert.equal(log().at(-1).ok, false)
@@ -382,7 +384,7 @@ test("verifyCopy: a copy that parses but can't link (a bad import) doesn't start
   let live
   try {
     assert.equal(t.run(["add", "todo", "Something"]).status, 0)
-    const board = join(t.repo, ".git", "job-board.json")
+    const board = t.store
     assert.equal(await verifyCopy(t.plugin, VERSION, t.env, board), null, "the copy as it is starts")
     live = livePane(t)
     await pause(1500)
@@ -421,7 +423,7 @@ test("restart sends q only to a pane still stale just before; pane-restart says 
     try {
       // The new board doesn't show as running within 3 s: something slow (busy) or back to the shell.
       u.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board", run_becomes: becomes }))
-      const r = u.run(["pane-restart", "w9:p5", "--board", join(u.repo, ".git", "job-board.json"), "--origin", "w9:p1"])
+      const r = u.run(["pane-restart", "w9:p5", "--board", u.store, "--origin", "w9:p1"])
       assert.match(r.stdout, /didn't stay running in this pane/)
       const typed = runs(u).filter((a) => a[2] === "w9:p5" && /^printf /.test(a[3]))
       assert.equal(typed.length, printed ? 1 : 0, printed ? "said in the shell" : "never typed into a pane that isn't a shell")
@@ -434,7 +436,7 @@ test("restart sends q only to a pane still stale just before; pane-restart says 
 test("pane-restart waits out a briefly busy shell (a prompt hook) after the old board quits, and starts the board once", () => {
   const t = setup()
   try {
-    const board = join(t.repo, ".git", "job-board.json")
+    const board = t.store
     const old = `node '${t.plugin}/board-pane.mjs' --board '${board}' --origin 'w9:p1' --version '0.3.9'`
     const hook = "/Users/me/.ssh/agent-live /Users/me/.ssh/agent/forwarded"
     // The re-check's repro: the old board, then the zsh precmd probe twice, then the shell.
@@ -456,7 +458,7 @@ test("a new board that shows late (the pane busy for 3.5 s after pane run) is no
   let live
   try {
     assert.equal(t.run(["add", "todo", "Something"]).status, 0)
-    const board = join(t.repo, ".git", "job-board.json")
+    const board = t.store
     const hook = "/Users/me/.ssh/agent-live /Users/me/.ssh/agent/forwarded"
     const started = `node '${t.plugin}/board-pane.mjs' --board '${board}' --origin 'w9:p1' --version '${VERSION}'`
     t.setHerdr((s) => s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board", run_becomes: hook, run_then: [...Array(35).fill(hook), started] }))
