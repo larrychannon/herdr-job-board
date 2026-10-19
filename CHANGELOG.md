@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.5.0 · unreleased
+
+One board for every project on the machine.
+
+- **One store**: `${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/board.json`, not each repo's
+  `.git/job-board.json`. Every card has a project (its repo; worktrees count as their repo;
+  outside git, the folder, or `home`), an owner (the coordinator pane that wrote it) and a
+  workspace. Ids are global and never reused. `JOB_BOARD_HOME` / `JOB_BOARD_FILE` give a board of
+  its own.
+- **Migration from 0.4**, repo by repo: a read says the repo's 0.4 board isn't in yet; the first
+  write there brings it in (ids kept, stale test cards left out, the old file backed up and
+  renamed `job-board.migrated.json`), or stops with the `import` to run when an id would be
+  renumbered. The first write that creates the store brings in every 0.4 board on the machine.
+  `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…]` does it on purpose and, after an
+  automatic import, shows it and applies re-tags. `export --legacy` writes a project back as a
+  0.4 board (rollback).
+- **Archive and backups**: Done cards older than 7 days move to `archive/YYYY-MM.jsonl`
+  (`json --archive`, `ls --done 30d`); the first write each day keeps a backup (7 kept);
+  `restore` puts one back.
+- **Ownership**: changing another project's card that your pane doesn't own needs
+  `--project <its project>` (exit 2), so a remembered id can't change the wrong card. `retag`,
+  `adopt`, `front`, `projects`, `project set` are new.
+- **Answers go by card**: a button (and the new `answer <id> <text> [--from telegram]`) goes to
+  the card's owner while it runs, else its project's newest running coordinator, else the pane
+  that opened the board or the front coordinator: at once for an unowned card of that project,
+  after a second press (or `--front`) for another project's. The card notes where it went. The
+  text is `Board card <id> (<tag> · <title>): <label>`.
+- **Your cards**: `ls`, `json` and the Claude Code hooks show this project's cards and the ones
+  your pane owns (the front coordinator also those no running coordinator can take);
+  `--project P|all` for more. The reminder counts the others; the Stop check counts only yours
+  and any card your pane changed that turn.
+- **The pane with several projects**: each row carries its project's tag in the project's colour;
+  a strip under the title lists the projects with their need-you counts; `p` shows one project,
+  `P` all, a click on the strip shows that one; filtered views count what they hide; an open
+  card names its project and says where its answers go. A board of one project looks as in 0.4.
+- **Sidebar**: each workspace's `$board` counts its own cards; only changed workspaces are
+  reported, every one again after a Herdr restart.
+- **`setup`** writes the key binding and the `$board` sidebar row into Herdr's `config.toml`
+  (backup first, `herdr config check`, then `herdr server reload-config`; idempotent; only simple
+  shapes). Herdr itself binds `prefix+b` (toggle_sidebar), so `setup` names a free key
+  (`--key prefix+shift+b`). `doctor` points to it.
+- **`contract`** (what this copy offers, as JSON) and **`guide`** (the instructions for agents).
+- **Workers** are known by `JOB_AGENT_ROLE`, any `*_AGENT_ROLE` variable, or the repo's
+  `.claude/job.json` `role_env`: they never bring boards in, own cards or send answers.
+- **Safety**: only the installed plugin at 0.5.0 or later writes a board under your home; a
+  checkout or an older copy refuses. An empty `HOME` is refused. The tests insist on a scratch
+  home and never reach the real Herdr.
+
 ## 0.4.0 · 2026-10-18
 
 The board in a narrow pane, colour and emoji that read, and a shorter install and update.

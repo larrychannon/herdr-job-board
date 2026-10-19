@@ -1154,20 +1154,26 @@ export function reportToken(text, env = process.env, { wait = true, workspace = 
  * to Waiting, and a blocked named agent in this workspace that isn't on the board shows up there
  * too. `agents` null means Herdr couldn't be asked, so no live status at all.
  */
-export function buildView(state, agents, { now = new Date(), workspace = "" } = {}) {
+export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0 } = {}) {
   // A job's agent by name, in the card's workspace (where its job runs), else this one: another
   // workspace may run an agent with the same name. With neither known, any agent of that name.
   const agentFor = (name, ws) => (agents || []).findLast((a) => a.name === name && (!ws || a.workspace_id === ws))
   const view = { waiting: [], doing: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
+  // Done shows today's cards; with `doneDays` (ls --done 30d), those of the last N days, each
+  // with its date.
   const startOfDay = new Date(now)
   startOfDay.setHours(0, 0, 0, 0)
+  if (doneDays) {
+    startOfDay.setTime(now.getTime() - doneDays * 24 * 3600_000)
+    view.doneLabel = `in ${doneDays} day${doneDays === 1 ? "" : "s"}`
+  }
   const onBoard = new Set()
   const sorted = [...state.items].sort((a, b) => a.id - b.id)
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now) }
     if (item.column === "done") {
-      if (new Date(item.since) >= startOfDay) view.doneToday.push(entry)
+      if (new Date(item.since) >= startOfDay) view.doneToday.push(doneDays ? { ...entry, when: shortTime(item.since, now) } : entry)
       continue
     }
     if (item.job) onBoard.add(item.job)
@@ -1667,7 +1673,7 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const indent = { t: " ".repeat(lead) }
   const end =
     column === "done"
-      ? { t: clockOf(new Date(entry.since)), s: "dim" }
+      ? { t: entry.when || clockOf(new Date(entry.since)), s: "dim" }
       : entry.age == null
         ? null
         : { t: formatAge(entry.age), s: ageStyle(entry, column) }
@@ -1711,8 +1717,8 @@ function doneCard(entry, width, idWidth, ui = {}) {
   const titles = wrap(entry.title, inner, 2)
   const urls = urlsIn(entry.title)
   const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
-  const at = clockOf(new Date(entry.since))
-  const room = inner - textWidth(titles.at(-1) || "") - at.length
+  const at = entry.when || clockOf(new Date(entry.since))
+  const room = inner - textWidth(titles.at(-1) || "") - textWidth(at)
   if (room >= 2) lines.at(-1).push({ t: " ".repeat(room) }, { t: at, s: "dim" })
   else lines.push([indent, { t: at, s: "dim" }])
   return lines
@@ -1863,7 +1869,8 @@ function headerLine(view, section, selected, interactive, { emoji = false, rule 
   if (emoji) segs.push({ t: `${SECTION_EMOJI[section]} ` })
   // Done open in the pane: ▾, for "d or a click here folds it again".
   segs.push({ t: `${HEADINGS[section]} (${count}${hidden ? ` · +${hidden} other` : ""})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
-  if (!count && (section === "waiting" || fold)) segs.push({ t: `${EMPTY[section]}${hidden ? " here" : ""}`, s: "dim" })
+  const empty = section === "done" && view.doneLabel ? ` · nothing finished ${view.doneLabel}` : EMPTY[section]
+  if (!count && (section === "waiting" || fold)) segs.push({ t: `${empty}${hidden ? " here" : ""}`, s: "dim" })
   if (rule && width - segWidth(segs) > 2) segs.push({ t: " " }, { t: "─".repeat(width - segWidth(segs) - 1), s: `rule-${section}` })
   return segs
 }
@@ -1883,8 +1890,11 @@ const projectHint = (line, keys, filtered) => {
 }
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
-/** Done folded: one line, its count and ▸, for "d or a click here opens it". */
-const doneLine = (view, emoji = false) => [...(emoji ? [{ t: `${SECTION_EMOJI.done} ` }] : []), { t: `${HEADINGS.done} · ${view.doneToday.length} today ▸`, s: "done" }]
+/** Done folded: one line, its count (and in a view of one project, the others') and ▸, for "d or a click here opens it". */
+const doneLine = (view, emoji = false) => [
+  ...(emoji ? [{ t: `${SECTION_EMOJI.done} ` }] : []),
+  { t: `${HEADINGS.done} · ${view.doneToday.length} ${view.doneLabel || "today"}${view.hidden?.done ? ` · +${view.hidden.done} other` : ""} ▸`, s: "done" },
+]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
 // On a card with several links, the long lines say that c again copies the next one.
@@ -3085,9 +3095,10 @@ export function handleInput(scroll, event, drawn) {
     showProject(stripHit.project)
     next.lastClick = null
   } else if (name === "project" && event.type === "key") {
-    // p: the next project in the strip's order (after the last, the first again); P: all.
+    // p: the next project in the strip's order (after the last, the first again); P: all. With
+    // one project on the board there is nothing to choose between.
     const list = drawn.strip || []
-    if (list.length) showProject(list[(list.indexOf(next.project || "") + 1) % list.length])
+    if (list.length > 1 || next.project) showProject(list[(list.indexOf(next.project || "") + 1) % list.length] || "")
   } else if (name === "allProjects" && event.type === "key") showProject("")
   else if (event.type === "click" && fold && fold.y === event.y && event.x >= fold.x0 && event.x <= fold.x1) {
     toggleDone()
@@ -3286,7 +3297,7 @@ export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
     const fbProject = state.coordinators?.[fb]?.project
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
-  return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…` }
+  return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…${fb ? "" : " (no front coordinator: board.mjs front sets one)"}` }
 }
 
 /**
@@ -3858,6 +3869,306 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
   return lines
 }
 
+// --- setup: the key binding and the sidebar count in Herdr's config.toml -------------------------
+
+/**
+ * Herdr's config file, as Herdr looks it up (`herdr --help`: "Config: ~/.config/herdr/config.toml",
+ * "HERDR_CONFIG_PATH overrides config file path"; its default config says the same place on
+ * every platform).
+ */
+export function herdrConfigPath(env = process.env) {
+  return env.HERDR_CONFIG_PATH ? resolve(env.HERDR_CONFIG_PATH) : join(homeOf(env), ".config", "herdr", "config.toml")
+}
+
+export const DEFAULT_KEY = "prefix+b"
+// Keys to suggest when the one asked for is taken, in order.
+const SPARE_KEYS = ["prefix+shift+b", "prefix+alt+b", "prefix+ctrl+j"]
+// Herdr 0.9.5's default prefix bindings (`herdr --default-config`), for when that can't be asked.
+const HERDR_DEFAULT_KEYS = {
+  help: "prefix+?", settings: "prefix+s", detach: "prefix+q", reload_config: "prefix+shift+r", open_notification_target: "prefix+o",
+  workspace_picker: "prefix+w", goto: "prefix+g", new_workspace: "prefix+shift+n", new_worktree: "prefix+shift+g", rename_workspace: "prefix+shift+w",
+  close_workspace: "prefix+shift+d", new_tab: "prefix+c", rename_tab: "prefix+shift+t", previous_tab: "prefix+p", next_tab: "prefix+n",
+  switch_tab: "prefix+1..9", close_tab: "prefix+shift+x", rename_pane: "prefix+shift+p", edit_scrollback: "prefix+e", focus_pane_left: "prefix+h",
+  focus_pane_down: "prefix+j", focus_pane_up: "prefix+k", focus_pane_right: "prefix+l", cycle_pane_next: "prefix+tab", cycle_pane_previous: "prefix+shift+tab",
+  split_vertical: "prefix+v", split_horizontal: "prefix+minus", close_pane: "prefix+x", zoom: "prefix+z", resize_mode: "prefix+r", toggle_sidebar: "prefix+b",
+}
+const SIDEBAR_ROWS = [["state_icon", "workspace"], ["branch", "git_status"]]
+
+/** A TOML file as lines, each with the table it is in ("" before any; "keys.command#2" for the second [[keys.command]]). */
+function tomlLines(text) {
+  let table = ""
+  const seen = {}
+  return text.split("\n").map((line) => {
+    const array = /^\s*\[\[\s*([A-Za-z0-9_.-]+)\s*\]\]\s*(#.*)?$/.exec(line)
+    const plain = /^\s*\[\s*([A-Za-z0-9_.-]+)\s*\]\s*(#.*)?$/.exec(line)
+    if (array) table = `${array[1]}#${(seen[array[1]] = (seen[array[1]] || 0) + 1)}`
+    else if (plain) table = plain[1]
+    return { text: line, table, header: Boolean(array || plain) }
+  })
+}
+const tomlString = (line) => /^\s*([A-Za-z0-9_-]+)\s*=\s*"([^"\\]*)"\s*(#.*)?$/.exec(line)
+const normKey = (k) => String(k).trim().toLowerCase()
+// "prefix+1..9" binds prefix+1 to prefix+9.
+const keyCovers = (value, key) => {
+  const v = normKey(value)
+  const range = /^(.*?)(\d)\.\.(\d)$/.exec(v)
+  if (!range) return v === normKey(key)
+  const m = new RegExp(`^${range[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d)$`).exec(normKey(key))
+  return Boolean(m) && Number(m[1]) >= Number(range[2]) && Number(m[1]) <= Number(range[3])
+}
+
+/** Herdr's default bindings, { action: key }: from `herdr --default-config`, else the 0.9.5 list. */
+function herdrDefaultKeys(env) {
+  const r = spawnSync(herdrBin(env), ["--default-config"], { encoding: "utf8", env, timeout: 5000 })
+  if (r.status !== 0 || !r.stdout) return { keys: HERDR_DEFAULT_KEYS, from: "Herdr 0.9.5's defaults" }
+  const keys = {}
+  for (const { text, table } of tomlLines(r.stdout)) {
+    const m = /^#\s*([a-z_]+)\s*=\s*"([^"]*)"/.exec(text)
+    if (table === "keys" && m && !["prefix", "key", "type", "command", "width", "height"].includes(m[1]) && m[2]) keys[m[1]] = m[2]
+  }
+  return { keys, from: "herdr --default-config" }
+}
+
+/**
+ * What a config says about keys: the actions it binds ([keys]), its commands ([[keys.command]])
+ * and the key that already opens the board, if any.
+ */
+function configKeys(lines) {
+  const actions = {}
+  const commands = {}
+  for (const { text, table } of lines) {
+    const m = tomlString(text)
+    if (!m) continue
+    if (table === "keys") actions[m[1]] = m[2]
+    if (table.startsWith("keys.command#")) (commands[table] ||= {})[m[1]] = m[2]
+  }
+  const board = Object.values(commands).find((c) => c.command === `${PLUGIN_ID}.open`)
+  return { actions, commands: Object.values(commands), board: board?.key || "" }
+}
+
+/** What binds `key` already, in words, or "". */
+function keyTaken(key, info, defaults) {
+  for (const [action, value] of Object.entries(info.actions)) if (value && keyCovers(value, key)) return `your config's ${action}`
+  for (const c of info.commands) if (c.key && keyCovers(c.key, key) && c.command !== `${PLUGIN_ID}.open`) return `your config's command ${c.command || "(a [[keys.command]])"}`
+  for (const [action, value] of Object.entries(defaults.keys)) if (!(action in info.actions) && keyCovers(value, key)) return `Herdr's default ${action}`
+  return ""
+}
+
+/**
+ * The sidebar part: where "$board" goes. Returns { ok } when it is there, { lines } (the new
+ * file's lines) for a shape it can edit, or { paste } with the lines to add by hand.
+ */
+function sidebarEdit(lines) {
+  const live = lines.filter((l) => !/^\s*#/.test(l.text))
+  if (live.some((l) => /"\$board"/.test(l.text))) return { ok: true }
+  const row = `  ["$board"],`
+  const table = lines.findIndex((l) => l.header && l.table === "ui.sidebar.spaces")
+  const paste = [SIDEBAR_SNIPPET]
+  if (table < 0) {
+    // Defined some other way (a dotted key, an inline table): left to the user.
+    if (live.some((l) => /^\s*(ui\.)?sidebar\.spaces\b|^\s*spaces\s*=/.test(l.text) && l.table.startsWith("ui"))) return { paste }
+    const block = ["", "[ui.sidebar.spaces]", "rows = [", ...SIDEBAR_ROWS.map((r) => `  ${JSON.stringify(r).replace(/","/g, '", "')},`), row, "]"]
+    return { lines: [...lines.map((l) => l.text).filter((t, i, all) => i < all.length - 1 || t !== ""), ...block, ""] }
+  }
+  const out = lines.map((l) => l.text)
+  const inTable = (i) => lines[i].table === "ui.sidebar.spaces" && !lines[i].header
+  const at = lines.findIndex((l, i) => inTable(i) && /^\s*rows\s*=/.test(l.text))
+  if (at < 0) {
+    out.splice(table + 1, 0, "rows = [", ...SIDEBAR_ROWS.map((r) => `  ${JSON.stringify(r).replace(/","/g, '", "')},`), row, "]")
+    return { lines: out }
+  }
+  // rows on one line: an array of arrays of strings, rewritten with "$board" added.
+  const one = /^(\s*rows\s*=\s*)(\[.*\])(\s*(#.*)?)$/.exec(lines[at].text)
+  if (one) {
+    let rows = null
+    try {
+      rows = JSON.parse(one[2])
+    } catch {}
+    if (!Array.isArray(rows) || !rows.every((r) => Array.isArray(r) && r.every((x) => typeof x === "string"))) return { paste }
+    out[at] = `${one[1]}${JSON.stringify([...rows, ["$board"]]).replace(/","/g, '", "').replace(/\],\[/g, "], [")}${one[3]}`
+    return { lines: out }
+  }
+  // rows over several lines: "rows = [", one row per line, then "]".
+  if (!/^\s*rows\s*=\s*\[\s*(#.*)?$/.test(lines[at].text)) return { paste }
+  let end = at + 1
+  while (end < lines.length && inTable(end) && /^\s*(\[.*\]\s*,?\s*(#.*)?|#.*)?\s*$/.test(lines[end].text) && !/^\s*\]\s*(#.*)?$/.test(lines[end].text)) end++
+  if (end >= lines.length || !/^\s*\]\s*(#.*)?$/.test(lines[end].text)) return { paste }
+  const last = [...Array(end - at - 1).keys()].map((k) => at + 1 + k).filter((i) => /^\s*\[/.test(lines[i].text)).at(-1)
+  if (last !== undefined && !/,\s*(#.*)?$/.test(out[last])) out[last] = out[last].replace(/(\])(\s*(#.*)?)$/, "$1,$2")
+  out.splice(end, 0, row)
+  return { lines: out }
+}
+
+/**
+ * `setup`: the key binding (KEY → herdr-job-board.open) and "$board" in the sidebar's space rows,
+ * written into Herdr's config.toml. Only simple shapes are edited; anything else gets the lines
+ * to paste. A key bound already (in the file, or one of Herdr's defaults) stops it, with one to
+ * use instead. The file is copied to config.toml.bak-<time> before the first change; Herdr's
+ * `config check` must pass after it (else the copy is put back); then `herdr server
+ * reload-config`. A second run changes nothing. Returns { lines, code }.
+ */
+export function setup(env, opts, now = new Date()) {
+  const config = herdrConfigPath(env)
+  const dry = Boolean(opts["dry-run"])
+  const key = opts.key === undefined ? DEFAULT_KEY : normKey(opts.key)
+  if (!/^[a-z0-9+?._-]+$/.test(key)) throw usage(`--key ${clean(opts.key)}: a Herdr binding like prefix+shift+b`)
+  const text = existsSync(config) ? readFileSync(config, "utf8") : ""
+  let lines = tomlLines(text)
+  const out = [`config: ${config}${text ? "" : " (not there yet: created)"}`]
+  const adds = []
+  if (opts["no-key"]) out.push("key: skipped (--no-key)")
+  else {
+    const info = configKeys(lines)
+    if (info.board) out.push(`key: ok (${info.board} opens the board)`)
+    else {
+      const defaults = herdrDefaultKeys(env)
+      const taken = keyTaken(key, info, defaults)
+      if (taken) {
+        const spare = SPARE_KEYS.find((k) => !keyTaken(k, info, defaults))
+        out.push(`key: ${key} is taken (${taken}); nothing was changed. Pick another: board.mjs setup --key ${spare || "<key>"}`)
+        return { lines: out, code: 1 }
+      }
+      adds.push({ what: "key", text: ["", "[[keys.command]]", `key = "${key}"`, 'type = "plugin_action"', `command = "${PLUGIN_ID}.open"`, 'description = "open the job board"'] })
+    }
+  }
+  let next = lines.map((l) => l.text)
+  for (const a of adds) {
+    while (next.length && next.at(-1) === "") next.pop()
+    next = [...next, ...a.text, ""]
+    out.push(`key: ${dry ? "would add" : "added"} ${key} → ${PLUGIN_ID}.open`)
+  }
+  let pasted = false
+  if (opts["no-sidebar"]) out.push("sidebar: skipped (--no-sidebar)")
+  else {
+    const edit = sidebarEdit(tomlLines(next.join("\n")))
+    if (edit.ok) out.push('sidebar: ok ("$board" is in the space rows)')
+    else if (edit.paste) {
+      pasted = true
+      out.push(`sidebar: this config sets the sidebar's space rows in a way setup doesn't edit; add "$board" to them yourself, e.g.:`, ...edit.paste.join("\n").split("\n").map((l) => `  ${l}`))
+    } else {
+      next = edit.lines
+      out.push(`sidebar: ${dry ? "would add" : "added"} ["$board"] to [ui.sidebar.spaces] rows`)
+    }
+  }
+  const changed = next.join("\n") !== text && !(text === "" && next.every((l) => l === ""))
+  if (!changed) {
+    out.push(dry ? "dry run: nothing would change" : "nothing to change")
+    return { lines: out, code: 0 }
+  }
+  if (dry) {
+    out.push("dry run: nothing written; the file would end like this:", ...next.slice(-14).map((l) => `  | ${l}`))
+    return { lines: out, code: 0 }
+  }
+  sandboxed(config)
+  checkWrite(config, env)
+  privateDir(dirname(config))
+  let backup = ""
+  if (text) {
+    backup = `${config}.bak-${stampOf(now)}`
+    copyFileSync(config, backup)
+    out.push(`backup: ${backup}`)
+  }
+  const mode = text ? statSync(config).mode & 0o777 : 0o644
+  const tmp = `${config}.${process.pid}.tmp`
+  writeFileSync(tmp, next.join("\n"), { mode })
+  renameSync(tmp, config)
+  // Herdr checks the file; a config it can't read is put back as it was.
+  const check = spawnSync(herdrBin(env), ["config", "check"], { encoding: "utf8", env: { ...env, HERDR_CONFIG_PATH: config }, timeout: 10_000 })
+  if (check.error?.code === "ENOENT") out.push("check: skipped (herdr not found)")
+  else if (check.status !== 0) {
+    if (backup) copyFileSync(backup, config)
+    else rmSync(config, { force: true })
+    out.push(`check: herdr config check failed, so the config is back as it was: ${clean(check.stderr || check.stdout).slice(0, 300)}`)
+    return { lines: out, code: 1 }
+  } else out.push("check: ok (herdr config check)")
+  if (opts["no-reload"]) out.push("reload: skipped (--no-reload); run herdr server reload-config")
+  else {
+    const r = spawnSync(herdrBin(env), ["server", "reload-config"], { encoding: "utf8", env, timeout: 10_000 })
+    out.push(r.status === 0 ? "reload: done (herdr server reload-config)" : `reload: failed (${clean(r.stderr || r.error?.message || "").slice(0, 160)}); run herdr server reload-config`)
+  }
+  return { lines: out, code: pasted ? 1 : 0 }
+}
+
+// --- contract and guide: what callers (the job skill) and agents read --------------------------
+
+/**
+ * `contract`: what this copy offers, for callers that support more than one version (the job
+ * skill's shim). Contract 2: one store for every project, global ids, project/origin on cards,
+ * --project scopes, --worktree on job-start, answer, setup, guide. A copy without `contract`
+ * (exit 2) is 0.4, contract 1.
+ */
+export function contract(env = process.env) {
+  let path = ""
+  try {
+    path = boardPath(process.cwd(), env)
+  } catch {}
+  return {
+    version: VERSION,
+    contract: 2,
+    store: "global",
+    path,
+    commands: Object.keys(COMMAND_FLAGS),
+    flags: COMMAND_FLAGS,
+    hooks: ["UserPromptSubmit", "Stop"],
+    answer_text: "Board card <id> (<tag> · <title>): <label>",
+  }
+}
+
+// The agent instructions: the one text the job skill and the README point to.
+const GUIDE = `How to use the job board (herdr-job-board ${VERSION}), for agents
+
+Finding the CLI
+- The board is a Herdr plugin: node "<plugin root>/board.mjs" <command>, the plugin root from
+  \`herdr plugin list --json\`. The job skill's shim (job-board.mjs) finds it. \`board.mjs contract\`
+  says this copy's version and commands (a copy without it is 0.4).
+
+One board for every project
+- One store per machine: ~/.local/state/herdr-job-board/board.json (\`board.mjs path\`). Each card
+  has a project (its repo; a worktree counts as its repo; outside git, the folder, or "home"), an
+  owner (the coordinator pane that wrote it) and a workspace. Ids are global: check \`ls\` before
+  using an id you remember.
+- Your cards: \`ls\` and \`json\` show this project's cards and the ones your pane owns (the front
+  coordinator also gets cards no live coordinator can take); --project P or --project all for
+  more. The prompt hook reminds you of the same Waiting cards and counts the others.
+- Another project's card that your pane doesn't own needs --project <its project> to change
+  (exit 2 otherwise).
+
+Writing cards
+- add <todo|doing|waiting|done> "<thing>: <action>" --desc "<what it is and why it matters>";
+  a Waiting card also --ask "<exactly what the user should do>". move, edit, done, rm take an id
+  or a job slug.
+- Before you ask the user something, add or update a Waiting card (the Stop hook checks).
+
+Buttons
+- A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
+  A press reaches the card's coordinator as a prompt: "Board card <id> (<tag> · <title>):
+  <label>". Act on it, then update or close the card.
+- Workers (a job's pane: JOB_AGENT_ROLE, any *_AGENT_ROLE, or the repo's role_env, set to
+  anything but coordinator) never add buttons and never send answers.
+
+Answers and Telegram
+- answer <id> "<a button's label, its number, or text>" does what a press does: it goes to the
+  card's owner while it runs, else its project's newest live coordinator; to the front
+  coordinator only with --front.
+- Telegram: one bot, held by the front coordinator (board.mjs front makes your pane the front).
+  A reply such as "170 go" becomes: board.mjs answer 170 "go" --from telegram. When it exits 1
+  saying "add --front", ask the user before sending it to yourself with --front.
+
+Jobs
+- job-start <slug> --worktree <the job's worktree> --title "<title>" --report <report path>: the
+  card goes to the worktree's project, in Doing, owned by your pane.
+- job-report <slug> [report.json] [--if-final]: done → Done; done with needs_user, blocked or
+  failed → Waiting with the reason. A wait script calls it with --if-final; a repeat is a no-op.
+
+From 0.4
+- A repo's .git/job-board.json is brought in by the first write in that repo (a read says it
+  isn't in yet). To look first and re-tag: board.mjs import --dry-run, then
+  board.mjs import --retag <id>=<project>,…
+`
+
+/** `guide`: the agent instructions. */
+export const guide = () => GUIDE.trimEnd()
+
 // --- doctor -------------------------------------------------------------------------------------
 
 /** "0.9.3" ≥ "0.9.10"? Dotted numbers compared part by part. */
@@ -3876,14 +4187,8 @@ const readText = (path) => {
 }
 
 /** Herdr's config.toml: in its session folder (`herdr session list`), else $XDG_CONFIG_HOME/herdr or ~/.config/herdr. */
-function herdrConfig(env) {
-  const sessions = herdr(["session", "list", "--json"], env, { quiet: true })?.sessions
-  const dir = (Array.isArray(sessions) && (sessions.find((s) => s.default) || sessions[0])?.session_dir) || join(env.XDG_CONFIG_HOME || join(env.HOME || "", ".config"), "herdr")
-  return join(dir, "config.toml")
-}
-
 export const KEY_SNIPPET = `[[keys.command]]
-key = "prefix+b"            # any free key
+key = "prefix+shift+b"      # any free key (Herdr's own prefix+b toggles the sidebar)
 type = "plugin_action"
 command = "herdr-job-board.open"
 description = "open the job board"`
@@ -3953,13 +4258,14 @@ function doctor(env, out) {
     }
   }
 
-  const config = herdrConfig(env)
+  // The key binding and the sidebar count: `setup` writes both into Herdr's config.toml.
+  const config = herdrConfigPath(env)
   const text = readText(config) ?? ""
   const keyed = /command\s*=\s*"herdr-job-board\.open"/.test(text)
-  say(keyed ? "ok" : "add", keyed ? "key binding for the board (herdr-job-board.open)" : `no key binding: add this to ${config}, then run \`herdr server reload-config\``, ...(keyed ? [] : KEY_SNIPPET.split("\n")))
-  if (!keyed) say("", `(until then: ${cli} open)`)
   const sidebar = /"\$board"/.test(text)
-  say(sidebar ? "ok" : "add", sidebar ? "sidebar shows the board's counts ($board)" : `no "$board" in the sidebar: add it to the rows in ${config}, e.g.`, ...(sidebar ? [] : SIDEBAR_SNIPPET.split("\n")))
+  say(keyed ? "ok" : "add", keyed ? "key binding for the board (herdr-job-board.open)" : `no key binding for the board in ${config}`)
+  say(sidebar ? "ok" : "add", sidebar ? "sidebar shows the board's counts ($board)" : `no "$board" in the sidebar's space rows`)
+  if (!keyed || !sidebar) say("", `${cli} setup --dry-run   (to see the change), then: ${cli} setup${keyed ? " --no-key" : ""}${sidebar ? " --no-sidebar" : ""}`, ...(keyed ? [] : [`(until then: ${cli} open)`]))
   const repoRoot = projectAt(process.cwd(), env).root
   const settings = [join(env.HOME || "", ".claude", "settings.json"), ...[".claude/settings.json", ".claude/settings.local.json"].map((f) => join(repoRoot, f))]
   const hooked = settings.find((f) => /board-hook\.mjs|job-board\.mjs\\?"? hook/.test(readText(f) ?? ""))
@@ -4546,8 +4852,8 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from"])
-const SWITCHES = new Set(["clear-options", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front"])
+const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
+const SWITCHES = new Set(["clear-options", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -4577,7 +4883,41 @@ function parse(argv) {
   return { args, opts }
 }
 
-function only(opts, allowed, command) {
+// Each command and the flags it takes: what only() allows, and what `contract` tells callers.
+export const COMMAND_FLAGS = {
+  add: ["desc", "job", "ask", "option", "suggest", "project", "worktree"],
+  move: ["ask", "desc", "project"],
+  edit: ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project"],
+  done: ["project"],
+  rm: ["project"],
+  retag: ["project"],
+  adopt: ["project", "gone"],
+  answer: ["from", "front"],
+  front: [],
+  projects: [],
+  project: ["tag", "color", "name"],
+  "job-start": ["id", "title", "desc", "report", "project", "worktree"],
+  "job-report": ["if-final"],
+  ls: ["width", "project", "done"],
+  json: ["archive", "project"],
+  import: ["dry-run", "keep-stale", "retag"],
+  export: ["legacy", "project"],
+  restore: [],
+  token: [],
+  path: [],
+  open: ["share"],
+  restart: [],
+  "pane-restart": ["board", "origin"],
+  setup: ["dry-run", "key", "no-key", "no-sidebar", "no-reload"],
+  doctor: [],
+  hooks: [],
+  contract: [],
+  guide: [],
+  version: [],
+}
+
+function only(opts, command) {
+  const allowed = COMMAND_FLAGS[command] || []
   for (const key of Object.keys(opts)) if (!allowed.includes(key)) throw usage(`${command} does not take --${key}`)
 }
 
@@ -4602,7 +4942,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       return command ? 0 : 2
     }
     if (command === "open") {
-      only(opts, ["share"], command)
+      only(opts, command)
       const file = openPane(env.JOB_BOARD_FILE ? boardPath(process.cwd(), env) : null, opts, env, out)
       if (file) syncToken(file, env)
       return 0
@@ -4611,12 +4951,28 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       out(VERSION)
       return 0
     }
+    if (command === "setup") {
+      only(opts, command)
+      const r = setup(env, opts, now)
+      for (const line of r.lines) out(line)
+      return r.code
+    }
+    if (command === "contract") {
+      only(opts, command)
+      raw(JSON.stringify(contract(env), null, 2))
+      return 0
+    }
+    if (command === "guide") {
+      only(opts, command)
+      out(guide())
+      return 0
+    }
     if (command === "doctor") {
-      only(opts, [], command)
+      only(opts, command)
       return doctor(env, out)
     }
     if (command === "hooks") {
-      only(opts, [], command)
+      only(opts, command)
       const r = spawnSync(process.execPath, [join(SCRIPTS, "hooks", "board-hook.mjs"), "--print-settings"], { encoding: "utf8", env })
       raw(r.stdout.trimEnd())
       return r.status ?? 1
@@ -4625,12 +4981,12 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       // pane-restart <pane> --board F --origin O: a board pane's own restart after an update.
       if (!inHerdr(env)) throw new Error("restarting board panes needs Herdr (HERDR_ENV=1)")
       if (command === "pane-restart") {
-        only(opts, ["board", "origin"], command)
+        only(opts, command)
         if (rest.length !== 1 || !opts.board) throw usage("usage: board.mjs pane-restart <pane> --board <file> [--origin <pane>]")
         for (const line of restartPanes(env, { pane: rest[0], file: opts.board, origin: opts.origin ?? "" })) out(line)
         return 0
       }
-      only(opts, [], command)
+      only(opts, command)
       const lines = restartPanes(env)
       out(lines.length ? lines.join("\n") : `every board pane runs ${VERSION}: nothing to restart`)
       return 0
@@ -4695,7 +5051,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
 
     switch (command) {
       case "add": {
-        only(opts, ["desc", "job", "ask", "option", "suggest", "project", "worktree"], command)
+        only(opts, command)
         need(2, "<column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]")
         const column = columnOf(rest[0])
         const item = change((s) => addItem(s, column, rest[1], opts, now, who(s)))
@@ -4705,7 +5061,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       }
       case "move":
       case "done": {
-        only(opts, command === "move" ? ["ask", "desc", "project"] : ["project"], command)
+        only(opts, command)
         need(command === "move" ? 2 : 1, command === "move" ? "<id|job> <column> [--ask A] [--desc D] [--project P]" : "<id|job> [--project P]")
         const column = command === "done" ? "done" : columnOf(rest[1])
         const item = change((s) => {
@@ -4716,14 +5072,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "edit": {
-        only(opts, ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project"], command)
+        only(opts, command)
         need(1, "<id|job> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--project P]")
         const item = change((s) => editItem(owned(s, findItem(s, rest[0], me)), opts, now))
         out(`${item.id} edited: ${item.title}`)
         return 0
       }
       case "rm": {
-        only(opts, ["project"], command)
+        only(opts, command)
         need(1, "<id|job> [--project P]")
         const item = change((s) => {
           const it = owned(s, findItem(s, rest[0], me))
@@ -4734,7 +5090,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "retag": {
-        only(opts, ["project"], command)
+        only(opts, command)
         if (rest.length < 2) throw usage("usage: board.mjs retag <id>… <project>")
         const ids = rest.slice(0, -1)
         const moved = change((s) => {
@@ -4753,7 +5109,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "adopt": {
-        only(opts, ["project", "gone"], command)
+        only(opts, command)
         if (!me.coordinator) throw usage("adopt is for a coordinator's pane inside Herdr (HERDR_ENV=1, HERDR_PANE_ID set)")
         if (opts.gone ? rest.length : !rest.length) throw usage("usage: board.mjs adopt <id>…  or  board.mjs adopt --project P --gone")
         if (opts.gone && opts.project === undefined) throw usage("adopt --gone needs --project P (or --project all)")
@@ -4771,7 +5127,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "answer": {
-        only(opts, ["from", "front"], command)
+        only(opts, command)
         if (rest.length !== 2) throw usage('usage: board.mjs answer <id> "<a button\'s label, its number, or text>" [--from telegram] [--front]')
         if (me.role) throw usage(`answer is the coordinator's; a ${me.role} doesn't send answers`)
         if (opts.from !== undefined && opts.from !== "telegram") throw usage("--from takes telegram")
@@ -4779,7 +5135,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "front": {
-        only(opts, [], command)
+        only(opts, command)
         if (rest.length > 1 || (rest.length && rest[0] !== "show")) throw usage("usage: board.mjs front [show]")
         if (rest[0] === "show") {
           const state = readBoard(file)
@@ -4793,14 +5149,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "projects": {
-        only(opts, [], command)
+        only(opts, command)
         const state = readBoard(file)
         const live = agents()
         for (const line of projectLines(state, live)) out(line)
         return 0
       }
       case "project": {
-        only(opts, ["tag", "color", "name"], command)
+        only(opts, command)
         if (rest[0] !== "set" || rest.length !== 2) throw usage("usage: board.mjs project set <name> [--tag T] [--color C] [--name N]")
         if (opts.tag === undefined && opts.color === undefined && opts.name === undefined) throw usage("project set needs --tag, --color or --name")
         const name = change((s) => setProject(s, rest[1], opts))
@@ -4809,7 +5165,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "job-start": {
-        only(opts, ["id", "title", "desc", "report", "project", "worktree"], command)
+        only(opts, command)
         need(1, "<slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P]")
         const slug = rest[0]
         if (!SLUG.test(slug)) throw usage(`job slug "${slug}" must match ${SLUG}`)
@@ -4833,7 +5189,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "job-report": {
-        only(opts, ["if-final"], command)
+        only(opts, command)
         if (rest.length < 1 || rest.length > 2) throw usage("usage: board.mjs job-report <slug> [report.json] [--if-final]")
         const [slug, given] = rest
         const quiet = Boolean(opts["if-final"])
@@ -4906,8 +5262,12 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "ls": {
-        only(opts, ["width", "project"], command)
+        only(opts, command)
+        const doneDays = opts.done === undefined ? 0 : Number(/^(\d{1,4})d?$/.exec(opts.done)?.[1] || NaN)
+        if (!(doneDays >= 0) || (opts.done !== undefined && !doneDays)) throw usage("--done takes a number of days, e.g. 30d")
         const state = readBoard(file)
+        // Done of the last N days reads the archive too (cards older than 7 days are there).
+        if (doneDays) state.items = [...state.items, ...readArchive(file).filter((a) => !state.items.some((i) => i.id === a.id))]
         const notice = importNotice(state)
         if (notice) err(`board: ${notice}`)
         // --project P draws what the pane shows filtered to P (the other projects counted), all
@@ -4915,7 +5275,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const scope = opts.project === undefined ? scopeOf(state, opts.project, me, agents) : { items: state.items, label: "all projects", hidden: 0 }
         const shownProject = opts.project !== undefined && opts.project !== "all" ? projectRef(state, opts.project) : ""
         if (opts.project !== undefined && opts.project !== "all" && !shownProject) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them, or --project all)`)
-        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "" })
+        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined
@@ -4926,7 +5286,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "json": {
-        only(opts, ["archive", "project"], command)
+        only(opts, command)
         if (opts.archive !== undefined && !/^\d{4}-\d{2}$/.test(opts.archive)) throw usage("--archive takes a month, e.g. 2026-10")
         // Scope "mine" (this project's cards and this pane's) by default: { version, scope, items, projects };
         // --project all: the whole file.
@@ -4944,14 +5304,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "import": {
-        only(opts, ["dry-run", "keep-stale", "retag"], command)
+        only(opts, command)
         const paths = rest.length ? rest : legacyBoards(process.cwd(), env)
         for (const line of runImport(file, paths, opts, { env, now, me })) out(line)
         if (!opts["dry-run"] && existsSync(file)) syncToken(file, env)
         return 0
       }
       case "export": {
-        only(opts, ["legacy", "project"], command)
+        only(opts, command)
         if (!opts.legacy || rest.length) throw usage("usage: board.mjs export --legacy [--project P|all]   (a 0.4 board file on stdout)")
         const state = readBoard(file)
         const project = opts.project === "all" ? "all" : opts.project !== undefined ? projectRef(state, opts.project) : projectName(state.projects, me.id)
@@ -4960,7 +5320,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "restore": {
-        only(opts, [], command)
+        only(opts, command)
         if (rest.length > 1) throw usage("usage: board.mjs restore [<backup>]")
         if (!rest.length) {
           const list = backupsOf(file)
@@ -4973,18 +5333,18 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return 0
       }
       case "token": {
-        only(opts, [], command)
+        only(opts, command)
         out(syncToken(file, env, { all: true }) || "(nothing open: token cleared)")
         return 0
       }
       case "path": {
-        only(opts, [], command)
+        only(opts, command)
         out(file)
         return 0
       }
       default:
         throw usage(
-          `unknown command "${command}" (add, move, edit, done, rm, retag, adopt, front, ls, json, projects, project, job-start, job-report, import, export, restore, open, restart, doctor, hooks, version, token, path)`,
+          `unknown command "${command}" (${Object.keys(COMMAND_FLAGS).filter((c) => c !== "pane-restart").join(", ")})`,
         )
     }
   } catch (error) {

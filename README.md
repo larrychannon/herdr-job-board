@@ -8,6 +8,30 @@ It is made for a *coordinator*: the agent (or person) that starts jobs in other 
 asks you for decisions. The coordinator writes the board with a small CLI; you read it at a
 glance, without scrolling the chat to find what needs you.
 
+**One board for every project** on the machine (0.5): each card belongs to a project (its repo)
+and to the coordinator pane that wrote it, so several coordinators in several repos share one
+board, and a button's answer goes to the coordinator the card is about. With cards of more than
+one project on the board, each row carries a coloured tag and a strip under the title lets you
+look at one project at a time (`p`, `P`, or a click):
+
+```
+Job board · all projects · 4 need you                                                     11:57
+Projects: ▸all  sfc 3  ai 1  herdr  home                                       p filter · P all
+
+▸ WAITING ON YOU (4) ──────────────────────────────────────────────────────────────────────────
+▸108 ! sfc   UI consistency plan: answer 10 questions                                    3 days
+             sfc-integration · Fable plan (docs PR #143): audit of every page with screenshots,
+             one wording guide, shared components (CitySummaryRow, CountChip, DefaultVersion…)
+             Question: Accept all 10 suggested answers (then mockup M1 first), or go through
+               them?
+             [ Accept all suggested ✓ ]  [ Go through them ]  [ Later ]  [ Other… ]
+             answers go to: sfc coordinator (w4:p6)
+ 170 ! sfc   magicwan v343 fleet rollout: approve the waves                          2 h 52 min
+ 204 ! ai    Git access on the LXC: narrower tokens instead of Touch-ID: pick              16 h
+```
+
+A board with one project looks as below, exactly as in 0.4.
+
 The layout follows the pane's size. In a pane narrower than 120 columns (the usual case: a
 quarter of the screen) it is an **inbox**: one column, one row a card, the selected card open
 under its row with its description, question and buttons. This is 95 × 30:
@@ -113,6 +137,7 @@ itself out again at once.
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
 | `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
 | `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
+| `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
 | `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
@@ -235,10 +260,24 @@ shows as `< … >`, and the key line says `Enter to send`), then press `Enter`; 
 button itself. A click on the question never sends.
 
 - Click a button, or choose it and press Enter: the board hands
-  `Board card <id> (<title>): <label>` to the agent in the pane that opened the board, with
-  `herdr agent prompt`. Nothing else from the card is sent.
+  `Board card <id> (<tag> · <title>): <label>` (the tag when the card has a project) to the
+  card's coordinator, with `herdr agent prompt`. Nothing else from the card is sent.
+- **Which coordinator**: the card's owner (the coordinator pane that wrote it) while it runs;
+  else the newest running coordinator of the card's project; else the pane that opened the board
+  (or the front coordinator, `board.mjs front`). That last one gets a card nobody owns of its
+  own project at once, but another project's card only after a second press: the card first
+  says `no ai coordinator is running: press Go again to send it to the board's coordinator (sfc,
+  pane w4:p6)`. With no coordinator at all: `couldn't send: no ai coordinator is running; start
+  one there, or use Other…`. With several projects on the board, an open Waiting card says
+  where a press goes now (`answers go to: sfc coordinator (w4:p6)`). Only a coordinator's pane
+  counts: an agent Herdr names after a job on the board is a worker and never gets answers.
 - **Other…** (`o`) switches to that pane so you can type your answer; nothing is typed for you.
-- The card then shows `sent: Approve · 10:42`, under the buttons. Pressing a button again asks "send again?" first;
+- **From the command line, or Telegram**: `board.mjs answer <id> "<label, its number, or
+  text>" [--from telegram]` does what a press does (free text up to 300 characters); another
+  project's coordinator only with `--front`. Workers can't. A Telegram bot is held by one
+  coordinator, the front: it turns a reply such as `170 go` into `answer 170 go --from
+  telegram`, and the text then ends with `(from Telegram)`.
+- The card then shows `sent: Approve · 10:42 · to sfc coordinator (w4:p6)`, under the buttons. Pressing a button again asks "send again?" first;
   presses run one at a time, so a double click sends once. The coordinator moves or closes the
   card when it acts on your answer.
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
@@ -263,8 +302,8 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    herdr plugin install larrychannon/herdr-job-board
    ```
 
-2. Check it, from a Herdr pane in a repo: `doctor` says what works and, for anything missing,
-   the one command (or the lines to paste) that fixes it.
+2. Check it, from a Herdr pane: `doctor` says what works and, for anything missing, the one
+   command that fixes it.
 
    ```sh
    BOARD="$(herdr plugin list --json | jq -r '.result.plugins[] | select(.plugin_id == "herdr-job-board") | .plugin_root')/board.mjs"
@@ -272,15 +311,15 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    ```
 
    ```
-   herdr-job-board 0.4.0 at /home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876
+   herdr-job-board 0.5.0 at /home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876
    ok    Node.js 22.23.2
-   ok    Herdr 0.9.3
-   ok    plugin installed: herdr-job-board 0.4.0 from larrychannon/herdr-job-board @ 1a2b3c4
-   ok    this repo's board: /home/me/my-app/.git/job-board.json (12 cards)
-   add   no key binding: add this to /home/me/.config/herdr/config.toml, then run `herdr server reload-config`
-         [[keys.command]]
-         …
-   ok    sidebar shows the board's counts ($board)
+   ok    Herdr 0.9.5
+   ok    plugin installed: herdr-job-board 0.5.0 from larrychannon/herdr-job-board @ 1a2b3c4
+   ok    the board: /home/me/.local/state/herdr-job-board/board.json (12 cards, 3 projects)
+   add   no key binding for the board in /home/me/.config/herdr/config.toml
+   add   no "$board" in the sidebar's space rows
+         node '…/board.mjs' setup --dry-run   (to see the change), then: node '…/board.mjs' setup
+         (until then: node '…/board.mjs' open)
    opt   Claude Code hooks not set up (only for a Claude Code coordinator): print them with
          node '/home/me/.config/herdr/plugins/github/herdr-job-board-2d3b6201c876/board.mjs' hooks
    ok    1 board pane open
@@ -289,12 +328,20 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    It exits 1 only when something the board needs is missing (Node, Herdr, the plugin, or a
    board pane on an older version); the key binding, the sidebar and the hooks are optional.
 
-3. Open the board: the key binding (below), or `node "$BOARD" open` from the pane you work in.
+3. The key binding and the sidebar count: `setup` writes both into Herdr's `config.toml`
+   (below). Look first, then write:
+
+   ```sh
+   node "$BOARD" setup --dry-run --key prefix+shift+b
+   node "$BOARD" setup --key prefix+shift+b
+   ```
+
+4. Open the board: the key, or `node "$BOARD" open` from the pane you work in.
 
 `open` splits the calling pane to the right (30% wide), keeps your focus where it is and
 remembers the pane: a second `open` in the same tab reuses it, starts the board again if it
 was quit, and restarts it if another copy or an older version of the board runs there. The
-pane that runs `open` is the one answer buttons send to. Run from the board's own pane, it does
+pane that runs `open` is where answer buttons send a card nobody owns (see Answer buttons). Run from the board's own pane, it does
 nothing. Don't use `herdr plugin action invoke open` from a shell: Herdr runs a plugin action for
 the pane that has the focus in its window, not for the shell that asked, so it opens the board
 beside whatever pane is focused.
@@ -335,62 +382,130 @@ tab does the same for that tab's pane.
 The key binding, the sidebar token and the hooks don't change: the plugin's folder is the same
 after an update.
 
-### Key binding
+### Upgrading from 0.4
 
-In Herdr's `config.toml`:
+0.4 kept one board per repo, in `.git/job-board.json`; 0.5 keeps one for every project, in
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/board.json`. The old boards come in once:
 
-```toml
-[[keys.command]]
-key = "prefix+b"            # any free key
-type = "plugin_action"
-command = "herdr-job-board.open"
-description = "open the job board"
-```
+1. **Nothing to do for a repo you work in**: its 0.4 board is brought in by the first command
+   that writes in that repo (a coordinator's `add`, `job-start`, `open`, a wait script's
+   `job-report`), ids kept, and the old file is renamed `job-board.migrated.json` beside itself
+   (after a copy in the store's `backups/import-<time>/`). A read (`ls`, `json`, the pane, the
+   prompt hook) only says the board isn't in yet. The first write that creates the store brings
+   in every repo's 0.4 board (this repo's and those under `~/*` and `~/*/*`), the biggest first.
+   A board whose ids would clash with ones already in the store is never renumbered by itself:
+   the write stops with the `import` to run. A job's worker never brings a board in.
+2. **To look first, and re-tag cards that are about another project**:
 
-### Sidebar summary
+   ```sh
+   node "$BOARD" import --dry-run                          # what would happen; writes nothing
+   node "$BOARD" import --retag 200=home,204=ai-config     # bring them in, re-tag those cards
+   ```
 
-Every change, and the open board, report a workspace token `board` with the counts, such as
-`2 doing · 3 need you · 4 to do` (cleared when nothing is open). To show it, add `"$board"`
-to the Space rows in `config.toml`:
+   The dry run lists each board (ids kept, or renumbered with the map), the test leftovers it
+   leaves out (a Waiting card whose report was in `/tmp`, is gone, and is older than 3 days;
+   `--keep-stale` keeps them), and the re-tags it suggests from titles and running jobs. If a
+   write already brought the boards in, `import --dry-run` shows that import and its
+   suggestions, and `import --retag …` applies them; `ls`, the prompt hook and the pane say so
+   until you run `import`. Later, `retag <id> <project>` moves one card.
+3. **Back to 0.4** (rollback): `export --legacy --project <name> > <repo>/.git/job-board.json`
+   writes that project's cards as a 0.4 board (or `mv job-board.migrated.json job-board.json`
+   for the board as it was at the import); then put 0.4.0 back: Herdr's `plugin install` takes
+   no version, so link a checkout of 0.4.0 (commit `6f4047a`: `git clone …; git checkout
+   6f4047a`, then `herdr plugin link <that folder>`), and run `restart`. Cards written after the import are
+   only in the 0.5 store unless exported.
 
-```toml
-[ui.sidebar.spaces]
-rows = [
-  ["state_icon", "workspace"],
-  ["branch", "git_status"],
-  ["$board"],
-]
-```
+Run the board's commands from the installed plugin: a git checkout of it (and any copy before
+0.5.0) writes no board under your home. To try a checkout, give it a board of its own:
+`JOB_BOARD_HOME=/tmp/board-trial node board.mjs …` (no migration either).
+
+### Key binding and sidebar: `setup`
+
+`setup` writes into Herdr's `config.toml` (`HERDR_CONFIG_PATH`, else
+`~/.config/herdr/config.toml`, the place `herdr --help` names on every platform):
+
+- a key that opens the board:
+
+  ```toml
+  [[keys.command]]
+  key = "prefix+shift+b"
+  type = "plugin_action"
+  command = "herdr-job-board.open"
+  description = "open the job board"
+  ```
+
+  `--key K` picks it. The default is `prefix+b`, which Herdr itself uses for `toggle_sidebar`,
+  so `setup` stops there and names a free one (`prefix+shift+b`) unless you have moved
+  `toggle_sidebar`. Any key that your config or Herdr's defaults (`herdr --default-config`)
+  bind stops it the same way.
+- `"$board"` in the sidebar's space rows, so each workspace shows its own counts
+  (`2 need you · 1 doing · 4 to do`: the cards whose job runs there, and those of the project
+  whose workspace it is):
+
+  ```toml
+  [ui.sidebar.spaces]
+  rows = [
+    ["state_icon", "workspace"],
+    ["branch", "git_status"],
+    ["$board"],
+  ]
+  ```
+
+It edits only the simple shapes (no `[ui.sidebar.spaces]` yet; `rows` on one line, or one row a
+line); anything else gets the lines to paste. It copies the file to `config.toml.bak-<time>`
+first, asks `herdr config check` (a file Herdr can't read is put back as it was), then runs
+`herdr server reload-config` (`--no-reload` skips it). `--dry-run` shows the change and writes
+nothing; `--no-key` and `--no-sidebar` skip a part. A second run says `ok` for both and writes
+nothing.
 
 ## The CLI
 
-`node board.mjs <command>`, run from inside the repo whose board you want.
-`node board.mjs help` prints this list.
+`node board.mjs <command>`, from anywhere: one board for every project. A new card goes to the
+current folder's project (its repo; a worktree counts as its repo; outside git, the folder, or
+`home` for `~`), unless `--project` or `--worktree` says another. `node board.mjs help` prints
+this list.
 
 | Command | What it does |
 |---|---|
-| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. |
+| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. |
 | `move <ref> <column> [--ask A] [--desc D]` | Move a card. `<ref>` is its id or its job slug. |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]` | Change a card. New `--option`s replace the old ones. |
 | `done <ref>` | Same as `move <ref> done`. |
 | `rm <ref>` | Remove a card. |
-| `ls [--width N]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, but with Done open: today's finished cards and the time they finished. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json` | Print the board file. |
-| `job-start <slug> [--id N] [--title T] [--desc D] [--report path]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one). |
+| `retag <id>… <project>` | Move cards to another project. |
+| | `move`, `edit`, `done`, `rm` and `retag` change another project's card only with `--project <its project>`, unless your pane owns it (exit 2 otherwise): ids are global, and a remembered id may be another project's. |
+| `answer <id> <text> [--from telegram] [--front]` | What a button press does (see Answer buttons). |
+| `front [show]` | This coordinator pane gets the answers no other coordinator can take, and holds Telegram (default: the pane that last opened the board). |
+| `adopt <id>…` / `adopt --project P --gone` | This coordinator pane owns these cards (`--gone`: P's open cards whose owner pane is gone). |
+| `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
+| `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
+| `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. |
+| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one, in W's repo). |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
+| `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
+| `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
+| `restore [<backup>]` | List the board's backups, or put one back. |
 | `open [--share 0.3]` | Open the board pane right of this pane (or restart it there with this version). |
 | `restart` | Restart every board pane that runs an older version of this board, or a copy whose files are gone, in every workspace. |
+| `setup [--dry-run] [--key K] [--no-key] [--no-sidebar] [--no-reload]` | The key binding and the sidebar count in Herdr's `config.toml` (see above). |
 | `doctor` | Check the install and print the one fix for each thing missing; exit 1 when something required is. |
 | `hooks` | Print the Claude Code hooks to merge into `.claude/settings.json`. |
+| `contract` | What this copy offers, as JSON: version, contract 2, commands and their flags, hooks, store. |
+| `guide` | The instructions for agents (below). |
 | `version` | Print the board's version. |
-| `token` | Print the sidebar text and report it to Herdr. |
+| `token` | Print this workspace's sidebar text, and report every workspace's to Herdr. |
 | `path` | Print the board file's path. |
 
-Exit codes: 0 ok, 1 error (unknown card, unreadable board, Herdr failed), 2 bad usage.
+Exit codes: 0 ok, 1 error (unknown card, unreadable board, Herdr failed), 2 bad usage (and a
+change to another project's card without `--project`).
 
 ## For agents: running jobs with the board
 
-Any coordinator can use the board; it only needs a shell inside Herdr.
+**`board.mjs guide` (`node "$BOARD" guide`) prints the instructions for agents**: finding the CLI, which cards are
+yours, writing cards, buttons, `answer` and Telegram, `job-start --worktree` and `job-report`.
+It is the one text to give an agent (the job skill does); this section explains the same for
+people. Any coordinator can use the board; it only needs a shell inside Herdr.
 
 1. **Find the CLI**: `herdr plugin list --json` gives the plugin's `plugin_root`, and the CLI
    is `board.mjs` in it. If the plugin is not installed, skip the board and carry on.
@@ -399,12 +514,13 @@ Any coordinator can use the board; it only needs a shell inside Herdr.
    `add waiting "<title>: <action>" --desc "<what and why>" --ask "<exactly what to do>"`, and
    when the answers are clear, buttons for them, the suggested one first:
    `--option "Go" --option "Not now" --suggest "Go"`. A pressed button arrives in your chat as
-   `Board card <id> (<title>): <label>`, typed into your pane by Herdr; "Other…" means the
+   `Board card <id> (<tag> · <title>): <label>`, typed into your pane by Herdr; "Other…" means the
    user types the answer. When they have answered: `done <id>`, or `move`
    the card.
 4. **A job starts**: a job is an agent you started in another pane under a Herdr agent name
    (`herdr agent start <slug> …`) that ends by writing a JSON report.
-   `job-start <slug> --title "…" --desc "…" --report <report path>`. The pane then shows that
+   `job-start <slug> --worktree <its worktree> --title "…" --desc "…" --report <report path>`
+   (the card goes to the worktree's project). The pane then shows that
    agent's live state, and moves the card under Waiting while the agent is blocked.
 5. **Its report lands**: `job-report <slug>`. The report is JSON like:
 
@@ -430,13 +546,16 @@ A coordinator that asks you something in the chat but forgets the card leaves th
 `hooks/board-hook.mjs` is a pair of [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 that catch that:
 
-- **When you send a message** (UserPromptSubmit), the coordinator is reminded of the cards
-  waiting on you (id and title, up to 8) and asked to close or update any you just answered.
+- **When you send a message** (UserPromptSubmit), the coordinator is reminded of its cards
+  waiting on you (this project's, those its pane owns, and for the front coordinator those no
+  running coordinator can take; id and title, up to 8), with one count of the others
+  (`+3 waiting in other projects`), and asked to close or update any you just answered.
   Titles are cleaned, cut to 80 characters, quoted and marked as data written by agents, not
   instructions; a card's description and ask are never passed on. The hook also notes where
   the board stood, for the next check.
-- **When the coordinator finishes its reply** (Stop): if the reply asks you something and no
-  Waiting card was added, moved to Waiting or changed during that turn, the hook sends it back
+- **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
+  of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
+  changed during that turn, the hook sends it back
   once: "add or update a Waiting card first". It never does so twice in a row, nor more than
   once in a turn.
 
@@ -446,9 +565,10 @@ starts like a request for a decision: "Want me to …", "Should I …", "Shall I
 a question it misses goes unchecked, and when it fires without need, the coordinator says so
 in one line and stops.
 
-The hooks only act inside Herdr, for the coordinator (the role variable, `JOB_AGENT_ROLE` by
-default, unset or `coordinator`; `--role-env NAME` picks another), never for subagents, and only
-in a repo that has a board. Anywhere else they print nothing. To install them, print the
+The hooks only act inside Herdr, for the coordinator (no role variable set to anything but
+`coordinator`: `JOB_AGENT_ROLE`, any `*_AGENT_ROLE`, the repo's `.claude/job.json` `role_env`,
+or `--role-env NAME`), never for subagents, and only once there is a board. While the repo's
+0.4 board isn't brought in, the reminder says so. Anywhere else they print nothing. To install them, print the
 settings and merge them into `.claude/settings.json` (this project) or
 `~/.claude/settings.json` (everywhere):
 
@@ -459,8 +579,7 @@ node "$BOARD" hooks
 (`$BOARD` as under Install; `hooks/board-hook.mjs --print-settings` prints the same.) The path
 in them is the plugin's folder, which an update keeps, so they keep working after one.
 
-Each session's turn record is kept next to the board, in `.git/job-board.turns/`, and removed
-after 7 days.
+Each session's turn record is kept in the store's `turns/` folder and removed after 7 days.
 
 ### Writing cards
 
@@ -481,73 +600,90 @@ When `job-report` moves a job to Waiting, rewrite its title and ask for the user
 `edit <id> --title "…: approve" --ask "…"`. The CLI prints a tip when a card has no `--desc`,
 or a Waiting card no `--ask`.
 
-## The board file
+## The store
 
-One board per git repo, at `$(git rev-parse --git-common-dir)/job-board.json`: inside `.git`,
-so every worktree of the repo shares it and git never sees it. `JOB_BOARD_FILE=<path>` uses
-another file.
+One board for every project on the machine, at
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/board.json` (`board.mjs path`).
+`JOB_BOARD_HOME=<folder>` puts a board of its own there, `JOB_BOARD_FILE=<path>` another file
+(a 0.4 board file given there is read as it is and written back in the new shape); neither ever
+brings the repos' 0.4 boards in. Beside it:
+
+```
+board.json            the board (readable by you only)
+board.json.lock/      the write lock
+archive/2026-10.jsonl Done cards older than 7 days, one JSON line each (json --archive, ls --done)
+backups/              board-<date>.json (the first write of each day, 7 kept; restore puts one back),
+                      import-<time>/<repo>.json (each 0.4 board an import brought in)
+turns/                the Stop hook's turn records
+tokens.json           the sidebar text last reported for each workspace
+```
 
 ```json
 {
-  "version": 1,
-  "next_id": 3,
+  "version": 2,
+  "next_id": 212,
+  "front": "w4:p6",
+  "projects": {
+    "sfc-integration": { "tag": "sfc", "color": "magenta", "root": "/home/me/sfc-integration", "git": "/home/me/sfc-integration/.git", "workspace": "w4" }
+  },
+  "coordinators": { "w4:p6": { "workspace": "w4", "project": "sfc-integration", "seen": "2026-10-19T11:56:00.000Z" } },
   "items": [
     {
-      "id": 1,
-      "title": "Billing fix (PR #12): review",
-      "desc": "Invoices now round each line, not the total.",
+      "id": 170,
+      "project": "sfc-integration",
+      "origin": "w4:p6",
+      "workspace": "w4",
+      "title": "magicwan v343 fleet rollout: approve the waves",
+      "desc": "Pilot healthy since 16 Oct; 181 nodes in 40 cities.",
       "column": "waiting",
       "job": "",
-      "ask": "Try the invoice page on :3000, then say merge",
-      "since": "2026-10-13T09:40:00.000Z",
-      "updated": "2026-10-13T09:40:00.000Z",
-      "options": [{ "label": "Merge", "suggested": true }, { "label": "Not yet" }],
-      "sent": { "label": "Merge", "at": "2026-10-13T09:52:00.000Z" }
-    },
-    {
-      "id": 2,
-      "title": "Search filters: build",
-      "desc": "The filter panel from the approved mockup.",
-      "column": "doing",
-      "job": "search-ui",
-      "ask": "",
-      "since": "2026-10-13T10:05:00.000Z",
-      "updated": "2026-10-13T10:05:00.000Z",
-      "report": "/path/to/search-ui-report.json"
+      "ask": "Approve: wave 1 LON (5), then by region",
+      "since": "2026-10-19T09:05:00.000Z",
+      "updated": "2026-10-19T09:05:00.000Z",
+      "options": [{ "label": "Go", "suggested": true }, { "label": "LON only first" }],
+      "sent": { "label": "Go", "at": "2026-10-19T12:03:00.000Z", "pane": "w4:p6", "to": "sfc coordinator (w4:p6)" }
     }
   ],
-  "panes": { "w1:t1": "w1:p4" }
+  "panes": { "w4:t1": { "pane": "w4:p14", "origin": "w4:p6", "at": "2026-10-19T10:00:00.000Z" } },
+  "reports": { "6b722c47701fe0ea": { "id": 1, "at": "2026-10-19T08:00:00.000Z" } },
+  "imports": [{ "from": "/home/me/sfc-integration/.git/job-board.json", "project": "sfc-integration", "cards": 196 }]
 }
 ```
 
-- `column` is `todo`, `doing`, `waiting` or `done`; `since` is when the card entered it.
-  `ask` holds one line per thing to do. `report` is optional (set by `job-start --report`).
-- `options` (Waiting cards) are the answer buttons; `sent` is the last answer sent from the
-  board. Both go away when the card leaves Waiting.
-- `reported` marks which report outcome `job-report` already applied to the card, so a repeat
-  call changes nothing.
-- `panes` remembers the board pane of each Herdr tab.
-- Done cards are kept for 14 days (the Done column shows today's), then dropped.
+- Every card has a `project` (its repo, by git's common dir, so worktrees count as their repo),
+  an `origin` (the coordinator pane that owns it: where its answers go) and a `workspace` (where
+  its job runs, for the agent's live state and the sidebar count). Ids are global and never
+  reused.
+- A project's `tag` is its name's first part (`sfc` for sfc-integration), at most 7 characters,
+  made unique when two would clash; `project set` changes it and the colour.
+- `column` is `todo`, `doing`, `waiting` or `done`; `since` is when the card entered it. `ask`
+  holds one line per thing to do. `options` are the answer buttons; `sent` the last answer sent
+  (and to whom). `reported` and `reports` mark which job report already moved a card, so a repeat
+  changes nothing, even after the card is archived.
+- Done cards stay 7 days (the Done section shows today's), then move to `archive/`.
 - Only `board.mjs` writes the file (the pane, through it, writes `sent`). It takes a lock
   (`mkdir <file>.lock`, with the owner's process id in it), writes a temp file and renames it
-  over the board, so readers never see half a file and two writers at once don't lose each
-  other's cards. A lock is taken back only from a process that is gone, never from a slow one.
-  The file is created readable by you only.
+  over the board, so readers never see half a file and writers at once don't lose each other's
+  cards (tested with 4 writers × 200 cards). A lock is taken back only from a process that is
+  gone, never from a slow one.
 
 ## Safety
 
 - It runs only `git rev-parse` and the `herdr` CLI, with argument lists and no shell, except
   `herdr pane run` to start the board in its pane (paths are single-quoted). No network, no
   dependencies.
+- Only the installed plugin, at 0.5.0 or later, writes a board (or Herdr's `config.toml`) under
+  your home: a git checkout of it, or an older copy, refuses with one line, so trying a
+  development copy can't migrate or change your real boards.
 - Text is stored without control characters, escape sequences, bidirectional controls or other
   invisible format characters (zero-width spaces and joiners, word joiner, BOM, soft hyphen), and
   everything the board or the CLI prints is cleaned again (`json` writes such characters as
   `\u` escapes), so text an agent writes can't change your terminal.
 - It types into its own pane: `open` runs the board there only while the pane is at a shell
   prompt, and sends `q` only to a board it finds running there.
-- Answer buttons send exactly `Board card <id> (<title>): <label>` (the id a whole number,
-  title and label cleaned), only through `herdr agent prompt`, as one argument, to the pane
-  that opened the board. Herdr checks the agent's state itself and refuses one that is waiting
+- Answer buttons send exactly `Board card <id> (<tag> · <title>): <label>` (the id a whole
+  number, tag, title and label cleaned), only through `herdr agent prompt`, as one argument, to
+  the card's coordinator (see Answer buttons). Herdr checks the agent's state itself and refuses one that is waiting
   on a question, so a button never presses Enter on someone else's prompt. The board never
   types into another pane: Other… only switches to it.
 
@@ -556,8 +692,8 @@ another file.
 - **Who can add buttons.** A button puts text into the coordinator's chat, so only the
   coordinator should add them. Cards that come from a job (`job-start`, `job-report`) never get
   buttons, whatever the job's report says. Anything that can write the board file can add
-  buttons, though. The file is in `.git/` and readable only by you, so that means programs
-  running as you in that repo. If you run other agents as workers, a pre-tool hook that blocks
+  buttons, though. The file is in your home's state folder and readable only by
+  you, so that means programs running as you. If you run other agents as workers, a pre-tool hook that blocks
   `--option` and `--suggest` helps, but it matches command text, so it is best-effort: a worker
   that can run commands as you can also write the file directly, or type into any pane with
   `herdr pane send-text`. Even then, a button only sends its own label, with the card's id and
@@ -587,8 +723,11 @@ another file.
 
 ## Tests
 
+Run them with a scratch home, which they insist on (`tests/guard.mjs` refuses your real HOME,
+and the board refuses to touch anything outside the scratch folders while they run):
+
 ```sh
-node --test
+S=$(mktemp -d); HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp node --test
 ```
 
 Herdr is faked (`tests/fixtures/fake-herdr.mjs`); nothing touches your real Herdr session.

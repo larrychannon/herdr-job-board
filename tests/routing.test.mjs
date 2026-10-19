@@ -83,7 +83,7 @@ test("routeAnswer: the owner while it runs, else the project's newest live coord
   const viaFront = routeAnswer(state, ai, agents("w4:p6"), { fallback: "w4:p6" })
   assert.deepEqual(viaFront, { pane: "w4:p6", to: "sfc coordinator (w4:p6)", second: true })
   assert.equal(secondPressNote(state, ai, viaFront, "Go"), "no ai coordinator is running: press Go again to send it to the board's coordinator (sfc, pane w4:p6)")
-  assert.deepEqual(routeAnswer(state, ai, agents()), { error: "no ai coordinator is running; start one there, or use Other…" })
+  assert.deepEqual(routeAnswer(state, ai, agents()), { error: "no ai coordinator is running; start one there, or use Other… (no front coordinator: board.mjs front sets one)" })
   // A card nobody owns, with a fallback of its own project (or one that never wrote): straight away, as in 0.4.
   assert.equal(routeAnswer(state, { id: 1, project: "sfc-integration", origin: "" }, agents("w4:p6"), { fallback: "w4:p6" }).second, false)
   assert.equal(routeAnswer(state, { id: 1, project: "ai-config", origin: "" }, agents("w9:p1"), { fallback: "w9:p1" }).second, false)

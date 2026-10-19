@@ -83,9 +83,9 @@ test("doctor: says what works and the one command for what's missing; exit 1 onl
     assert.equal(r.status, 0, r.stdout)
     assert.match(r.stdout, /^ok {4}plugin installed: herdr-job-board [\d.]+ from larrychannon\/herdr-job-board @ abc1234$/m)
     assert.match(r.stdout, /^ok {4}the board: .*\/home\/\.local\/state\/herdr-job-board\/board\.json \(0 cards, 0 projects, created on the first add\)$/m)
-    assert.match(r.stdout, new RegExp(`^add {3}no key binding: add this to ${join(t.home, ".config", "herdr", "config.toml").replace(/[/.]/g, "\\$&")}, then run \`herdr server reload-config\`\\n {6}\\[\\[keys\\.command\\]\\]`, "m"))
-    assert.match(r.stdout, /command = "herdr-job-board\.open"/)
-    assert.match(r.stdout, /^add {3}no "\$board" in the sidebar/m)
+    assert.match(r.stdout, /^add {3}no key binding for the board in .*\/home\/\.config\/herdr\/config\.toml$/m)
+    assert.match(r.stdout, /^add {3}no "\$board" in the sidebar's space rows$/m)
+    assert.match(r.stdout, /^ {6}node '.*board\.mjs' setup --dry-run {3}\(to see the change\), then: node '.*board\.mjs' setup$/m)
     assert.match(r.stdout, /^opt {3}Claude Code hooks not set up .*\n {6}node '.*\/plugin\/board\.mjs' hooks$/m)
     assert.match(r.stdout, /^ok {4}no board pane open$/m)
     // All set up: every line ok.
@@ -389,15 +389,15 @@ test("verifyCopy: a copy that parses but can't link (a bad import) doesn't start
     assert.equal(await verifyCopy(t.plugin, VERSION, t.env, board), null, "the copy as it is starts")
     live = livePane(t)
     await pause(1500)
-    // The re-check's badlink: version 0.4.1, and board-pane.mjs imports what board.mjs doesn't export.
-    t.setVersion("0.4.1")
+    // The re-check's badlink: version 0.5.1, and board-pane.mjs imports what board.mjs doesn't export.
+    t.setVersion("0.5.1")
     const pane = join(t.plugin, "board-pane.mjs")
     writeFileSync(pane, readFileSync(pane, "utf8").replace("  WORKING_FRAMES,\n", "  WORKING_FRAMES,\n  NO_SUCH_EXPORT,\n"))
     assert.equal(spawnSync(process.execPath, ["--check", pane]).status, 0, "it parses")
-    assert.match(await verifyCopy(t.plugin, "0.4.1", t.env, board), /board-pane\.mjs doesn't start \(SyntaxError: .*NO_SUCH_EXPORT/)
+    assert.match(await verifyCopy(t.plugin, "0.5.1", t.env, board), /board-pane\.mjs doesn't start \(SyntaxError: .*NO_SUCH_EXPORT/)
     await pause(5000)
     assert.equal(live.exited, false, "the old pane is still running")
-    assert.match(words(live), /update to 0\.4\.1 failed to start: board-pane\.mjs doesn't start/)
+    assert.match(words(live), /update to 0\.5\.1 failed to start: board-pane\.mjs doesn't start/)
     assert.deepEqual(runs(t), [])
   } finally {
     live?.kill()
@@ -490,16 +490,16 @@ test("a new copy whose dry run hangs: a few tries with growing waits, then a fai
   try {
     live = livePane(t, { JOB_BOARD_VERIFY_TIMEOUT_MS: "400", JOB_BOARD_VERIFY_BACKOFF_MS: "300", JOB_BOARD_UPDATE_SETTLE_MS: "1000" })
     await pause(1500)
-    // 0.4.1, whose pane hangs in --once (it parses, links, and says its version): each start is counted.
+    // 0.5.1, whose pane hangs in --once (it parses, links, and says its version): each start is counted.
     const marker = join(t.base, "dry-runs")
-    t.setVersion("0.4.1")
+    t.setVersion("0.5.1")
     const pane = join(t.plugin, "board-pane.mjs")
     writeFileSync(
       pane,
       readFileSync(pane, "utf8").replace('import { osc52 } from "./links.mjs"\n', `import { osc52 } from "./links.mjs"\nimport { appendFileSync as markRun } from "node:fs"\nif (process.argv.includes("--once")) { markRun(${JSON.stringify(marker)}, "x"); await new Promise(() => setInterval(() => {}, 1000)) }\n`),
     )
     for (let i = 0; i < 150 && !/took too long to start/.test(words(live)); i++) await pause(100)
-    assert.match(words(live), /update to 0\.4\.1 failed to start: the new copy took too long to start \(a check ran over 400 ms, 3 times\); run herdr plugin install larrychannon\/herdr-job-board again/)
+    assert.match(words(live), /update to 0\.5\.1 failed to start: the new copy took too long to start \(a check ran over 400 ms, 3 times\); run herdr plugin install larrychannon\/herdr-job-board again/)
     const tries = readFileSync(marker, "utf8").length
     assert.equal(tries, 3, "three tries")
     await pause(2500)

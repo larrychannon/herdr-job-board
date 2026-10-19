@@ -59,7 +59,7 @@
 [1mTO DO (2 · +8 other)[0m [2m───────────────────────────────────────[0m
 [1m [0m[2m206[0m   [36mai[0m Job board 0.4.0 follow-ups in ai-config and … [2m13 h[0m
 [1m [0m[2m209[0m   [36mai[0m Coordinator auto-restart supervisor (parked) [2m9 min[0m
-[2;32mDONE · 0 today ▸[0m
+[2;32mDONE · 0 today · +2 other ▸[0m
 
 
 

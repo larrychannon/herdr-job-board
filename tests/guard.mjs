@@ -7,7 +7,7 @@
 //   HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp node --test
 import { mkdirSync, realpathSync } from "node:fs"
 import { tmpdir, userInfo } from "node:os"
-import { resolve, sep } from "node:path"
+import { join, resolve, sep } from "node:path"
 
 const real = (p) => {
   try {
@@ -34,4 +34,7 @@ if (state && (inside(state, account) || inside(state, "/root"))) refuse(`XDG_STA
 // Role-neutral, and blind to the live Herdr: the session running the tests may be a job's worker
 // (SFC_AGENT_ROLE=worker) in a Herdr pane (HERDR_PANE_ID, HERDR_ENV=1). A test sets what it needs.
 for (const key of Object.keys(process.env)) if (/_AGENT_ROLE$/.test(key) || key.startsWith("HERDR_")) delete process.env[key]
+// No test reaches the real `herdr` by forgetting the fake: without HERDR_BIN_PATH the board would
+// run the one on PATH (setup's `server reload-config` would reload the live server's config).
+process.env.HERDR_BIN_PATH = join(temp, "no-real-herdr-in-tests")
 process.env.JOB_BOARD_TEST_SANDBOX = [...new Set([temp, home, ...(state ? [state] : [])])].join(":")

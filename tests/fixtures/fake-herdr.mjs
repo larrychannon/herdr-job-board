@@ -43,6 +43,12 @@ const flag = (name) => {
 }
 const pane = (id) => state.panes.find((p) => p.pane_id === id)
 
+// `herdr --default-config`: an excerpt of Herdr 0.9.5's (its [keys] and the sidebar rows).
+if (args[0] === "--default-config") {
+  save()
+  process.stdout.write(readFileSync(new URL("./herdr-default-config.toml", import.meta.url), "utf8"))
+  process.exit(0)
+}
 if (args[0] === "--version") {
   save()
   process.stdout.write(`herdr ${state.version || "0.9.3"}\n`)
@@ -92,6 +98,19 @@ if (key === "agent prompt" || key === "agent focus" || key === "agent get") {
   ok({ type: "ok" })
 }
 if (key === "pane send-keys") ok({ type: "ok" })
+// config check: fails when the state says so (config_check_fails), or on a file that has
+// "!invalid!" in it (a stand-in for TOML Herdr can't read); server reload-config: ok.
+if (key === "config check") {
+  let text = ""
+  try {
+    text = readFileSync(process.env.HERDR_CONFIG_PATH || "", "utf8")
+  } catch {}
+  if (state.config_check_fails || text.includes("!invalid!")) fail("config parse error")
+  save()
+  process.stdout.write("config ok\n")
+  process.exit(0)
+}
+if (key === "server reload-config") ok({ type: "ok" })
 if (key === "workspace list") ok({ workspaces: [...new Set(state.panes.map((p) => p.workspace_id))].map((workspace_id) => ({ workspace_id })), type: "workspace_list" })
 if (key === "plugin list") ok({ plugins: state.plugins || [], type: "plugin_list" })
 if (key === "session list") {

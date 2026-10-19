@@ -66,7 +66,7 @@ TO DO (6 · +4 other) ───────────────────�
  183   sfc Redis / AC: parked until a real SFC node reports via AC                       2 days
  190   sfc Analytics: include archived/removed nodes in range totals (after #142)        2 days
 
-DONE · 1 today ▸
+DONE · 1 today · +1 other ▸
 
 
 
@@ -133,7 +133,7 @@ DOING (0 · +1 other) · nothing running here ───────────�
 TO DO (2 · +8 other) ───────────────────────────────────────
  206   ai Job board 0.4.0 follow-ups in ai-config and … 13 h
  209   ai Coordinator auto-restart supervisor (parked) 9 min
-DONE · 0 today ▸
+DONE · 0 today · +2 other ▸
 
 
 
@@ -237,6 +237,6 @@ DOING (1)                                                                       
 
 
 
-DONE · 1 today ▸
+DONE · 1 today · +1 other ▸
 Tab section · ↑↓ card · Enter details · c copy · p next project · P all · d done · m mouse: board · q quit
 

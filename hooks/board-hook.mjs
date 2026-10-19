@@ -74,9 +74,10 @@ const turnFile = (boardFile, sessionId) => join(turnsDir(boardFile), `${safeId(s
 
 /**
  * A card's state in a few characters: any change to it (not only `updated`, which two writes in
- * the same millisecond share) gives another.
+ * the same millisecond share) gives another. Not what the board pane writes on its own (`sent`
+ * after a button press) or who wrote last (`by`): a press is not the coordinator updating a card.
  */
-const sig = (item) => createHash("sha256").update(JSON.stringify(item)).digest("hex").slice(0, 16)
+const sig = ({ sent: _sent, by: _by, ...item }) => createHash("sha256").update(JSON.stringify(item)).digest("hex").slice(0, 16)
 
 /** Where the board stood at the start of a turn: each item's sig, by id. */
 export function snapshot(state, at = new Date()) {

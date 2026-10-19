@@ -11,7 +11,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { boardPath, projectAt, projectName, readBoard, storeDir, tagFor } from "../board.mjs"
+import { boardPath, projectAt, projectName, readBoard, storeDir, tagFor, VERSION } from "../board.mjs"
 
 const SCRIPTS = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(SCRIPTS, "board.mjs")
@@ -672,7 +672,7 @@ test("open and restart move a board pane started on a repo's 0.4 file to the one
     const app = h.repo("app")
     const file = legacy(app, [{ id: 3, title: "Old" }], 5)
     const fake = join(h.base, "herdr-open.json")
-    const running = `node '${PANE}' --board '${file}' --origin 'w4:p6' --version '0.4.0'`
+    const running = `node '${PANE}' --board '${file}' --origin 'w4:p6' --version '${VERSION}'`
     writeFileSync(
       fake,
       JSON.stringify({
@@ -954,7 +954,7 @@ test("write gate: a board under the real home is written only by the installed p
     for (const args of [["add", "todo", "x"], ["job-start", "build"]]) {
       const r = h.run(app, args, { JOB_BOARD_PROTECT: h.base })
       assert.equal(r.status, 1, args.join(" "))
-      assert.match(r.stderr, /older than 0\.5\.0: it writes no board under/)
+      assert.match(r.stderr, /isn't the installed plugin: it writes no board under/)
     }
     const fake = h.herdr([])
     const o = h.run(app, ["open"], { ...h.inHerdr(fake), JOB_BOARD_PROTECT: h.base })
@@ -1067,7 +1067,7 @@ test("write gate, end to end: the installed clone at 0.5.0 writes outside Herdr 
     r = run(BOARD, ["add", "todo", "from the checkout"])
     assert.equal(r.status, 1)
     assert.equal(r.stderr.trim().split("\n").length, 1)
-    assert.match(r.stderr, /^board: this copy of the board is 0\.4\.0 \(.*\), older than 0\.5\.0: it writes no board under /)
+    assert.match(r.stderr, /^board: this copy \(.*\) isn't the installed plugin: it writes no board under /)
     assert.equal(h.state().items.length, 2)
   } finally {
     h.done()
