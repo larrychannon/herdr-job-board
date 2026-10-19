@@ -1,0 +1,107 @@
+===== m (mouse capture off) · 160x45 =====
+Job board · all projects · 3 need you                                                                                                                      10:30
+
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1 ! Old question: pick a name                                                                                                                            2 days
+ 2 ! Billing fix (PR #12): review                                                                                                                         30 min
+▸7 ! A card whose title runs on well past the width of one row at one hundred and sixty columns, so it would be cut short with an ellipsis when it is     10 min
+     drawn as one row of the inbox
+     Invoices round per line now, not per total. Every line of this description has to be selectable in one drag. Every line of this description has to be
+     selectable in one drag. Every line of this description has to be selectable in one drag. Every line of this description has to be selectable in one drag.
+     Every line of this description has to be selectable in one drag. Every line of this description has to be selectable in one drag. Every line of this
+     description has to be selectable in one drag. The end of it.
+     Question: Read all of it, then say go
+     [ Go ]  [ Other… ]
+
+DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 3   Search filters: build                                                                                                          working, report done  25 min
+ 4   Docs: fix links                                                                                                                            no agent  24 min
+
+TO DO (1) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 5   Export to CSV                                                                                                                                        23 min
+
+DONE · 1 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
+===== m (mouse capture off) · 200x60 =====
+Job board · all projects · 3 need you                                                                                                                                                              10:30
+
+▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1 ! Old question: pick a name                                                                                                                                                                    2 days
+ 2 ! Billing fix (PR #12): review                                                                                                                                                                 30 min
+▸7 ! A card whose title runs on well past the width of one row at one hundred and sixty columns, so it would be cut short with an ellipsis when it is drawn as one row of the inbox               10 min
+     Invoices round per line now, not per total. Every line of this description has to be selectable in one drag. Every line of this description has to be selectable in one drag. Every line of this
+     description has to be selectable in one drag. Every line of this description has to be selectable in one drag. Every line of this description has to be selectable in one drag. Every line of this
+     description has to be selectable in one drag. Every line of this description has to be selectable in one drag. The end of it.
+     Question: Read all of it, then say go
+     [ Go ]  [ Other… ]
+
+DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 3   Search filters: build                                                                                                                                                  working, report done  25 min
+ 4   Docs: fix links                                                                                                                                                                    no agent  24 min
+
+TO DO (1) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 5   Export to CSV                                                                                                                                                                                23 min
+
+DONE · 1 today ▸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit

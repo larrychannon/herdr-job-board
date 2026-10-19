@@ -3,7 +3,7 @@
 // board file changes, the pane is resized or a key is pressed. It only reads the board;
 // board.mjs writes it.
 //
-//   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>]
+//   node board-pane.mjs [--board <file>] [--origin <pane>] [--interval <s>] [--version V] [--as-plugin]
 //   node board-pane.mjs --once [--width N] [--height N] [--layout wide|inbox|compact] [--color] [--emoji] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
 // `board.mjs open` starts it in a split right of the calling pane. The layout follows the
@@ -16,7 +16,8 @@
 // `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour
 // palette (NO_COLOR turns them off), emoji only in the section headers (BOARD_EMOJI=0 turns them
 // off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also keeps
-// the sidebar's $board token current, and restarts itself when an update rewrites its folder.
+// the sidebar's $board token current, and restarts itself with the installed copy when an update
+// rewrites its folder or Herdr installs a newer one elsewhere.
 //
 // A Doing card whose agent is working shows a small ASCII bar bouncing beside "working"; every
 // other card stands still, so the motion says what is running. It ticks about 6 times a second,
@@ -41,7 +42,8 @@
 //   d, click on Done's line open Done (a third column); d or a click on its header folds it.
 //                           Folded, Tab skips it. The choice holds while the pane runs
 //   t                       go to the job's tab (herdr agent focus)
-//   m                       mouse capture off and on (off: the terminal selects text)
+//   m                       mouse capture off and on (off: the terminal selects text; the board
+//                           draws one column, the inbox, at any width, the open card whole)
 //   p, P, click on the strip with several projects on the board: p shows the next project's
 //                           cards only (the strip's order), P every project again; a click on a
 //                           project in the strip shows it, on "all" every one
@@ -110,7 +112,10 @@ import {
   versionOf,
   followImport,
   importNotice,
+  installedPluginAsync,
   LEGACY_FILE,
+  newerRoot,
+  selfIsBoard,
   migrates,
   projectAt,
   WORKING_FRAMES,
@@ -121,7 +126,7 @@ const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
 
 function parse(argv) {
-  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "" }
+  const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "", asPlugin: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--once") opts.once = true
@@ -130,6 +135,8 @@ function parse(argv) {
     else if (a === "--no-color") opts.color = false
     else if (a === "--emoji") opts.emoji = true
     else if (a === "--no-emoji") opts.emoji = false
+    // Started as Herdr's plugin (board.mjs open from a plugin action or an install).
+    else if (a === "--as-plugin") opts.asPlugin = true
     else if (["--board", "--interval", "--width", "--height", "--keys", "--origin", "--frame", "--layout", "--version"].includes(a) && i + 1 < argv.length) opts[a.slice(2)] = argv[++i]
     else throw new Error(`unknown argument ${a}`)
   }
@@ -192,7 +199,8 @@ async function perform(action, ctx) {
   if (action.type === "mouse") {
     ctx.mouse = !ctx.mouse
     ctx.write(ctx.mouse ? MOUSE_ON : MOUSE_OFF)
-    return ctx.mouse ? "mouse: board" : "mouse: select · drag to select text, m gives the mouse back"
+    // Selecting: the key line says it already, and how to get back; a message would push it aside.
+    return ctx.mouse ? "mouse: board" : null
   }
   const entry = ctx.drawn?.entries?.[action.key]
   if (!entry) return null
@@ -218,6 +226,8 @@ async function perform(action, ctx) {
 // a monotonic clock: a step of the wall clock (NTP) can't make a button look just drawn, or an
 // update look older or newer than it is.
 const clock = () => performance.now()
+// How often the pane asks Herdr where the plugin is installed (`herdr plugin list`).
+const ROOT_CHECK_MS = 30_000
 // Timed-out checks of a new copy: wait this much longer before each new try; give up after VERIFY_TRIES.
 const VERIFY_BACKOFF_MS = 60_000
 const VERIFY_TRIES = 3
@@ -359,8 +369,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     // Tick while a working bar is on screen; no timer otherwise.
     ticker.sync(animate && drawn.animated > 0)
   }
-  // An update rewrites the plugin's folder in place: this pane still runs the code it started
-  // with. Each refresh reads the folder's version and the size and time of its files. Once a new
+  // An update rewrites the plugin's folder in place (Herdr 0.9.3), or puts the new copy in a new
+  // folder (0.9.5: plugins/github-installations/<id>/<n>/checkout, a new <n> each time): this
+  // pane still runs the code it started with. It asks Herdr where the plugin is installed
+  // (`herdr plugin list`, every ROOT_CHECK_MS, never waiting for it); when that is an install
+  // Herdr made (never a linked checkout) in another folder with a newer version, and this pane
+  // runs this board as Herdr installed it (or was started as the plugin: --as-plugin), that copy
+  // is the new one, else this folder. Each refresh reads its version and the size and time of
+  // its files. Once a new
   // version has stood still for UPDATE_SETTLE_MS (a half-written update keeps changing), the new
   // copy is checked (verifyCopy: its files parse, and its `board.mjs version` says that
   // version); only then does the pane hand over to it in the same pane (board.mjs pane-restart
@@ -372,17 +388,40 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const here = dirname(fileURLToPath(import.meta.url))
   const settleMs = Number(env.JOB_BOARD_UPDATE_SETTLE_MS) || UPDATE_SETTLE_MS
   const backoffMs = Number(env.JOB_BOARD_VERIFY_BACKOFF_MS) || VERIFY_BACKOFF_MS
-  const filesOf = () =>
+  const filesOf = (dir) =>
     ["herdr-plugin.toml", ...COPY_FILES]
       .map((f) => {
         try {
-          const s = statSync(join(here, f))
+          const s = statSync(join(dir, f))
           return `${s.size}:${s.mtimeMs}`
         } catch {
           return "-"
         }
       })
       .join(" ")
+  // Herdr's installed copy, as last asked (null: not asked yet, not installed, or no answer).
+  let installed = null
+  let rootAt = -Infinity
+  let asking = false
+  const rootEvery = Number(env.JOB_BOARD_ROOT_CHECK_MS) || ROOT_CHECK_MS
+  // Only a board Herdr installed, or one started as the plugin (from a checkout linked then).
+  // Settled once, now: Herdr may remove this folder later (an update writes a new <n>), and the
+  // pane must still know it is the board's and follow the new root.
+  const self = selfIsBoard(here, env, { asPlugin: opts.asPlugin })
+  const watchRoot = env.HERDR_ENV === "1" && self
+  const askRoot = () => {
+    if (!watchRoot || asking || clock() - rootAt < rootEvery) return
+    asking = true
+    rootAt = clock()
+    installedPluginAsync(env).then(
+      (found) => {
+        installed = found
+        asking = false
+      },
+      () => (asking = false),
+    )
+  }
+  askRoot()
   let update = null
   let failed = null
   let checking = false
@@ -394,12 +433,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const startNotice = last?.ok === false && !late ? `the last restart in this pane failed: ${last.error}` : ""
   if (startNotice) logRestart(env, { pane: env.HERDR_PANE_ID, ok: true, version: VERSION, note: "failure shown" })
   const checkUpdate = () => {
-    const now = versionOf(here)
+    askRoot()
+    const dir = newerRoot(installed, here, VERSION, env, { self })?.root || here
+    const now = versionOf(dir)
     if (!now || now === VERSION) {
       update = null
       return startNotice
     }
-    const sig = `${now} ${filesOf()}`
+    const sig = `${dir} ${now} ${filesOf(dir)}`
     if (failed?.sig === sig) return failed.notice
     if (update?.sig !== sig) update = { sig, since: clock(), timeouts: 0, retryAt: 0 }
     const busy = scroll.detail || (scroll.button ?? -1) >= 0
@@ -408,10 +449,10 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     if (clock() - update.since >= settleMs && clock() >= update.retryAt && !busy && !checking && !restarting) {
       checking = true
       const mine = update
-      verifyCopy(here, now, env, file).then((reason) => {
+      verifyCopy(dir, now, env, file).then((reason) => {
         checking = false
         // The folder changed while it was checked: check again once it is still.
-        if (`${versionOf(here)} ${filesOf()}` !== sig) return
+        if (`${dir} ${versionOf(dir)} ${filesOf(dir)}` !== sig) return
         // A step ran out of time: try again later, a little later each time (a copy that hangs
         // would otherwise keep a CPU busy), and after VERIFY_TRIES timeouts in a row give up.
         if (reason === VERIFY_AGAIN) {
@@ -430,7 +471,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
           return
         }
         restarting = true
-        const args = [join(here, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
+        // The new copy's own pane-restart: it starts that copy's board in this pane.
+        const args = [join(dir, "board.mjs"), "pane-restart", env.HERDR_PANE_ID, "--board", file, "--origin", opts.origin || ""]
         spawn(process.execPath, args, { detached: true, stdio: "ignore", env }).unref()
         quit(0)
       }, crash)

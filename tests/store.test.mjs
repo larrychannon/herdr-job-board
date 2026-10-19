@@ -937,6 +937,13 @@ test("write gate: a board under the real home is written only by the installed p
     assert.equal(writeRefusal(store, { ...env, HERDR_PLUGIN_ROOT: checkout }, { version: "0.5.0", scripts: checkout }), "", "the copy Herdr runs")
     assert.equal(writeRefusal(store, env, { version: "0.5.0", scripts: installed }), "", "the installed clone, outside Herdr")
     assert.equal(writeRefusal(store, { ...env, XDG_CONFIG_HOME: join(h.base, "elsewhere") }, { version: "0.5.0", scripts: installed }), "", "HOME's config folder counts too")
+    // Herdr 0.9.5 installs (and updates) to github-installations/<id>-<hash>/<n>/checkout, a new <n> each time.
+    for (const n of ["3898869-0", "4100000-0", "12-3"]) {
+      const checkout = join(h.base, ".config", "herdr", "plugins", "github-installations", "herdr-job-board-2d3b6201c876", n, "checkout")
+      mkdirSync(checkout, { recursive: true })
+      assert.equal(writeRefusal(store, env, { version: "0.5.1", scripts: checkout }), "", `the 0.9.5 layout, <n> = ${n}`)
+      assert.match(writeRefusal(store, env, { version: "0.4.0", scripts: checkout }), /older than 0\.5\.0/, "still at 0.5.0 or later only")
+    }
     const plain = join(h.base, "copies", "herdr-job-board")
     mkdirSync(plain, { recursive: true })
     assert.match(writeRefusal(store, env, { version: "0.5.0", scripts: plain }), /isn't the installed plugin/, "a folder outside Herdr's plugins is a development copy")
@@ -962,6 +969,42 @@ test("write gate: a board under the real home is written only by the installed p
     assert.ok(existsSync(file) && !existsSync(h.store), "nothing imported, nothing renamed")
     assert.equal(JSON.parse(readFileSync(fake, "utf8")).log.filter((a) => a[1] === "split").length, 0, "no pane opened")
     assert.equal(h.run(app, ["ls"], { JOB_BOARD_PROTECT: h.base }).status, 0)
+  } finally {
+    h.done()
+  }
+})
+
+test("managedCopy and newerRoot: an older install folder follows a newer installed root; the root itself, a checkout and an older root don't", async () => {
+  const { managedCopy, newerRoot } = await import("../board.mjs")
+  const h = home()
+  try {
+    const env = { HOME: h.base }
+    const plugins = join(h.base, ".config", "herdr", "plugins")
+    const old = join(plugins, "github", "herdr-job-board-2d3b6201c876")
+    const at = (n) => join(plugins, "github-installations", "herdr-job-board-2d3b6201c876", n, "checkout")
+    const toml = (d, id = "herdr-job-board") => {
+      mkdirSync(d, { recursive: true })
+      writeFileSync(join(d, "herdr-plugin.toml"), `id = "${id}"\nversion = "0.5.2"\n`)
+    }
+    for (const d of [old, at("1-0"), at("2-0")]) toml(d)
+    assert.ok(managedCopy(old, env) && managedCopy(at("1-0"), env), "both layouts are copies Herdr installed")
+    assert.ok(!managedCopy(plugins, env), "the plugins folder itself isn't")
+    assert.ok(!managedCopy(SCRIPTS, env), "a checkout isn't")
+    const root = { root: at("2-0"), version: "0.5.2", kind: "github" }
+    assert.equal(newerRoot(root, old, "0.5.1", env), root)
+    assert.equal(newerRoot(root, at("1-0"), "0.5.1", env), root, "a new <n>")
+    assert.equal(newerRoot(root, at("2-0"), "0.5.1", env), null, "the root itself")
+    assert.equal(newerRoot(root, old, "0.5.2", env), null, "same version")
+    assert.equal(newerRoot(root, old, "0.6.0", env), null, "older root")
+    assert.equal(newerRoot(root, SCRIPTS, "0.5.1", env), null, "a development copy")
+    assert.equal(newerRoot(null, old, "0.5.1", env), null, "Herdr didn't say")
+    // Review of b461f74: a linked checkout as the root is never followed; a sibling plugin's copy never follows.
+    assert.equal(newerRoot({ ...root, kind: "local" }, old, "0.5.1", env), null, "a root linked with herdr plugin link")
+    assert.equal(newerRoot({ root: SCRIPTS, version: "9.9.9", kind: "" }, old, "0.5.1", env), null, "a root outside Herdr's plugins folder")
+    const sibling = join(plugins, "github-installations", "herdr-job-board-qa-0123456789ab", "1-0", "checkout")
+    toml(sibling, "herdr-job-board-qa")
+    assert.equal(newerRoot(root, sibling, "0.5.1", env), null, "another plugin's install folder")
+    assert.equal(newerRoot(root, SCRIPTS, "0.5.1", env, { asPlugin: true }), root, "a checkout started as the plugin (--as-plugin) follows")
   } finally {
     h.done()
   }
