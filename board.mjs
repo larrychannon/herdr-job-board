@@ -29,12 +29,13 @@
 //                           (by default: the pane that last opened the board)
 //   projects                every project: tag, colour, open cards, folder, coordinators
 //   project set <name> [--tag T] [--color C] [--name N]
-//   ls [--width N] [--project P|all]
+//   ls [--width N] [--project P|all] [--done 30d]
 //                           this project's cards and the ones this pane owns (--project: P's, or
 //                           every card) as text: the pane's view at that width with every Waiting
-//                           card open and Done open (today's finished cards), with live agent
-//                           status; piped with no --width (or --width 120 or more), the wide
-//                           layout, every card whole
+//                           card open and Done open (today's finished cards; --done 30d: those of
+//                           the last 30 days, the archive's too), with live agent status; piped
+//                           with no --width (or --width 120 or more), the wide layout, every card
+//                           whole
 //   json [--archive YYYY-MM] [--project P|all]
 //                           { version, scope, items, projects } for this project's cards and this
 //                           pane's (--project P: P's; --project all: the board file as it is), or
@@ -61,6 +62,13 @@
 //                           version of the board is restarted with this one
 //   restart                 restart every board pane that runs an older version of this board,
 //                           or a copy whose files are gone (after `herdr plugin install` updated it)
+//   setup [--dry-run] [--key K] [--no-key] [--no-sidebar] [--no-reload]
+//                           write the board's key binding (default prefix+shift+b; Herdr's own
+//                           prefix+b toggles the sidebar) and "$board" in the sidebar's space rows
+//                           into Herdr's config.toml (HERDR_CONFIG_PATH, else ~/.config/herdr):
+//                           a backup first, `herdr config check` after, then reload-config
+//   contract                what this copy offers, as JSON (version, contract 2, commands, flags)
+//   guide                   the instructions for agents
 //   doctor                  check the install (Node, Herdr, the plugin, the board, the key
 //                           binding, the sidebar, the hooks, open panes) and print the one
 //                           command that fixes each thing missing
@@ -3659,8 +3667,12 @@ function quitBoard(pane, env, stillStale = () => true) {
 
 // --- restarts, logged -------------------------------------------------------------------------
 
-/** The board's own state folder: $HERDR_PLUGIN_STATE_DIR, else ${XDG_STATE_HOME:-~/.local/state}/herdr-job-board. */
+/**
+ * The board's own state folder (restart.log): JOB_BOARD_HOME (a board of its own keeps its log
+ * beside it), else $HERDR_PLUGIN_STATE_DIR, else ${XDG_STATE_HOME:-~/.local/state}/herdr-job-board.
+ */
 export function stateDir(env = process.env) {
+  if (env.JOB_BOARD_HOME) return resolve(env.JOB_BOARD_HOME)
   return env.HERDR_PLUGIN_STATE_DIR || join(env.XDG_STATE_HOME || join(env.HOME || "", ".local", "state"), PLUGIN_ID)
 }
 const RESTART_LOG = "restart.log"
@@ -3880,7 +3892,8 @@ export function herdrConfigPath(env = process.env) {
   return env.HERDR_CONFIG_PATH ? resolve(env.HERDR_CONFIG_PATH) : join(homeOf(env), ".config", "herdr", "config.toml")
 }
 
-export const DEFAULT_KEY = "prefix+b"
+// Not prefix+b: Herdr itself binds it to toggle_sidebar.
+export const DEFAULT_KEY = "prefix+shift+b"
 // Keys to suggest when the one asked for is taken, in order.
 const SPARE_KEYS = ["prefix+shift+b", "prefix+alt+b", "prefix+ctrl+j"]
 // Herdr 0.9.5's default prefix bindings (`herdr --default-config`), for when that can't be asked.
@@ -3898,7 +3911,12 @@ const SIDEBAR_ROWS = [["state_icon", "workspace"], ["branch", "git_status"]]
 function tomlLines(text) {
   let table = ""
   const seen = {}
+  // Inside a multi-line string ("""…""" or '''…'''), a line that looks like a header is text.
+  let quote = ""
   return text.split("\n").map((line) => {
+    const inString = Boolean(quote)
+    for (const m of line.matchAll(/"""|'''/g)) quote = !quote ? m[0] : quote === m[0] ? "" : quote
+    if (inString || quote) return { text: line, table, header: false, inString: true }
     const array = /^\s*\[\[\s*([A-Za-z0-9_.-]+)\s*\]\]\s*(#.*)?$/.exec(line)
     const plain = /^\s*\[\s*([A-Za-z0-9_.-]+)\s*\]\s*(#.*)?$/.exec(line)
     if (array) table = `${array[1]}#${(seen[array[1]] = (seen[array[1]] || 0) + 1)}`
@@ -4008,13 +4026,15 @@ function sidebarEdit(lines) {
  * reload-config`. A second run changes nothing. Returns { lines, code }.
  */
 export function setup(env, opts, now = new Date()) {
-  const config = herdrConfigPath(env)
+  // A config.toml that is a link (a dotfiles repo) is edited where it points, so the link stays.
+  const named = herdrConfigPath(env)
+  const config = realOr(named)
   const dry = Boolean(opts["dry-run"])
   const key = opts.key === undefined ? DEFAULT_KEY : normKey(opts.key)
   if (!/^[a-z0-9+?._-]+$/.test(key)) throw usage(`--key ${clean(opts.key)}: a Herdr binding like prefix+shift+b`)
   const text = existsSync(config) ? readFileSync(config, "utf8") : ""
   let lines = tomlLines(text)
-  const out = [`config: ${config}${text ? "" : " (not there yet: created)"}`]
+  const out = [`config: ${named}${config !== named ? ` (a link to ${config}: edited there)` : ""}${text ? "" : " (not there yet: created)"}`]
   const adds = []
   if (opts["no-key"]) out.push("key: skipped (--no-key)")
   else {
@@ -4074,7 +4094,9 @@ export function setup(env, opts, now = new Date()) {
   renameSync(tmp, config)
   // Herdr checks the file; a config it can't read is put back as it was.
   const check = spawnSync(herdrBin(env), ["config", "check"], { encoding: "utf8", env: { ...env, HERDR_CONFIG_PATH: config }, timeout: 10_000 })
+  const noCheck = /unrecognized subcommand|unknown (sub)?command|unexpected argument 'check'|invalid subcommand/i.test(`${check.stderr}${check.stdout}`)
   if (check.error?.code === "ENOENT") out.push("check: skipped (herdr not found)")
+  else if (check.status !== 0 && noCheck) out.push("check: skipped (this Herdr has no `config check`; Herdr 0.9.5 has)")
   else if (check.status !== 0) {
     if (backup) copyFileSync(backup, config)
     else rmSync(config, { force: true })
@@ -4568,12 +4590,16 @@ function workspacesByLabel(env) {
   return new Map(spaces.filter((w) => w.label).map((w) => [clean(w.label), clean(w.workspace_id)]))
 }
 
-/** Move an imported 0.4 board aside, beside itself: job-board.migrated.json (or with a time when one is there). "" when it is gone already. */
-function retire(file, now) {
+/** Where retire moves a 0.4 board: job-board.migrated.json beside it, or with a time when that is there. */
+function retiredName(file, now) {
+  const to = join(dirname(file), MIGRATED_FILE)
+  return existsSync(to) ? join(dirname(file), `job-board.migrated-${stampOf(now)}.json`) : to
+}
+
+/** Move an imported 0.4 board aside, to `to` (retiredName). "" when it is gone already. */
+function retire(file, now, to = retiredName(file, now)) {
   sandboxed(file)
   checkWrite(file)
-  let to = join(dirname(file), MIGRATED_FILE)
-  if (existsSync(to)) to = join(dirname(file), `job-board.migrated-${stampOf(now)}.json`)
   try {
     renameSync(file, to)
     return to
@@ -4657,7 +4683,9 @@ export function runImport(file, paths, opts, ctx) {
         names.add(name)
         copyFileSync(src.file, join(backup, `${name}.json`))
         const entry = s.imports.findLast((e) => e.from === src.file)
+        // Where the backup is, and the exact name the 0.4 file gets (a rollback puts back that one).
         if (entry) entry.backup = join(backup, `${name}.json`)
+        if (entry && basename(src.file) === LEGACY_FILE) entry.renamed = src.renamed = retiredName(src.file, now)
       }
       noteCoordinator(s, me, now)
       return { result, fresh, sums: totals(s), state: s }
@@ -4668,7 +4696,7 @@ export function runImport(file, paths, opts, ctx) {
   const lines = show(outcome.result, outcome.state, outcome.sums)
   for (const src of outcome.fresh) {
     if (basename(src.file) !== LEGACY_FILE) continue
-    const to = retire(src.file, now)
+    const to = retire(src.file, now, src.renamed)
     if (to) lines.push(`  ${src.file} → ${to}`)
   }
   return lines

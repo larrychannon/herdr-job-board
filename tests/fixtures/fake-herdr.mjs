@@ -105,6 +105,8 @@ if (key === "config check") {
   try {
     text = readFileSync(process.env.HERDR_CONFIG_PATH || "", "utf8")
   } catch {}
+  // An older Herdr without the subcommand (no_config_check).
+  if (state.no_config_check) fail("error: unrecognized subcommand 'check'")
   if (state.config_check_fails || text.includes("!invalid!")) fail("config parse error")
   save()
   process.stdout.write("config ok\n")

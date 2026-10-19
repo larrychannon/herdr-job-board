@@ -332,11 +332,11 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    (below). Look first, then write:
 
    ```sh
-   node "$BOARD" setup --dry-run --key prefix+shift+b
-   node "$BOARD" setup --key prefix+shift+b
+   node "$BOARD" setup --dry-run
+   node "$BOARD" setup
    ```
 
-4. Open the board: the key, or `node "$BOARD" open` from the pane you work in.
+4. Open the board: `prefix+shift+b`, or `node "$BOARD" open` from the pane you work in.
 
 `open` splits the calling pane to the right (30% wide), keeps your focus where it is and
 remembers the pane: a second `open` in the same tab reuses it, starts the board again if it
@@ -368,7 +368,8 @@ still; after 3 timeouts in a row the pane says "the new copy took too long to st
 old board has quit, the restart waits up to 10 seconds for the shell to get back to its prompt (a
 prompt hook such as a zsh `precmd`, a git prompt or direnv shows as busy for a moment) and for the
 new board to show; a pane that stays busy is logged as a failed restart. Restarts are logged to
-`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log`; a board started in a pane within a
+`${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log` (beside the board when
+`JOB_BOARD_HOME` gives it a folder of its own); a board started in a pane within a
 few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
 skips, not failures. A pane from before 0.4.0 can't:
 `node "$BOARD" restart` restarts every board pane, in every workspace, that runs an older version
@@ -408,12 +409,21 @@ after an update.
    write already brought the boards in, `import --dry-run` shows that import and its
    suggestions, and `import --retag …` applies them; `ls`, the prompt hook and the pane say so
    until you run `import`. Later, `retag <id> <project>` moves one card.
-3. **Back to 0.4** (rollback): `export --legacy --project <name> > <repo>/.git/job-board.json`
-   writes that project's cards as a 0.4 board (or `mv job-board.migrated.json job-board.json`
-   for the board as it was at the import); then put 0.4.0 back: Herdr's `plugin install` takes
-   no version, so link a checkout of 0.4.0 (commit `6f4047a`: `git clone …; git checkout
-   6f4047a`, then `herdr plugin link <that folder>`), and run `restart`. Cards written after the import are
-   only in the 0.5 store unless exported.
+3. **Back to 0.4** (rollback):
+   - the boards: `export --legacy --project <name> > <repo>/.git/job-board.json` writes that
+     project's cards as they are now as a 0.4 board. For the board as it was at the import, put
+     back the exact file the import renamed: its output names it, and the store keeps it in
+     `imports[].renamed` (`node "$BOARD" json --project all | jq -r '.imports[].renamed'`). It
+     is `job-board.migrated.json`, or `job-board.migrated-<time>.json` when that name was taken,
+     so never assume the plain name.
+   - the plugin: Herdr's `plugin install` takes no version, so `herdr plugin uninstall
+     herdr-job-board`, then link a checkout of 0.4.0 (commit `6f4047a`: `git clone …; git
+     checkout 6f4047a`, then `herdr plugin link <that folder>`).
+   - the board panes: 0.4.0's `restart` doesn't move a 0.5 pane (another copy). In each tab with
+     a board, run the 0.4.0 copy's `open` from the pane you work in: it switches the board pane
+     to that copy, on the repo's file.
+
+   Cards written after the import are only in the 0.5 store unless exported.
 
 Run the board's commands from the installed plugin: a git checkout of it (and any copy before
 0.5.0) writes no board under your home. To try a checkout, give it a board of its own:
@@ -434,10 +444,9 @@ Run the board's commands from the installed plugin: a git checkout of it (and an
   description = "open the job board"
   ```
 
-  `--key K` picks it. The default is `prefix+b`, which Herdr itself uses for `toggle_sidebar`,
-  so `setup` stops there and names a free one (`prefix+shift+b`) unless you have moved
-  `toggle_sidebar`. Any key that your config or Herdr's defaults (`herdr --default-config`)
-  bind stops it the same way.
+  The default is `prefix+shift+b` (Herdr itself uses `prefix+b` for `toggle_sidebar`); `--key K`
+  picks another. A key that your config or Herdr's defaults (`herdr --default-config`) bind
+  stops it, and it names a free one.
 - `"$board"` in the sidebar's space rows, so each workspace shows its own counts
   (`2 need you · 1 doing · 4 to do`: the cards whose job runs there, and those of the project
   whose workspace it is):

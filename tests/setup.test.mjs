@@ -5,13 +5,13 @@
 import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { COMMAND_FLAGS, VERSION } from "../board.mjs"
+import { COMMAND_FLAGS, stateDir, VERSION } from "../board.mjs"
 import { snapshot, waitingTouched } from "../hooks/board-hook.mjs"
 
 const SCRIPTS = fileURLToPath(new URL("../", import.meta.url))
@@ -36,10 +36,11 @@ function scratch(config = null) {
   return { base, dir, file, herdr, env, run, calls, text, backups, done: () => rmSync(base, { recursive: true, force: true }) }
 }
 
-test("setup: prefix+b is Herdr's own toggle_sidebar, so it stops and names a free key; nothing is written", () => {
+test("setup: the default key is prefix+shift+b; prefix+b, Herdr's own toggle_sidebar, stops it with a free key; nothing is written", () => {
   const t = scratch("")
   try {
-    const r = t.run([])
+    assert.match(t.run(["--dry-run"]).stdout, /^key: would add prefix\+shift\+b → herdr-job-board\.open$/m, "the default")
+    const r = t.run(["--key", "prefix+b"])
     assert.equal(r.status, 1)
     assert.match(r.stdout, /^key: prefix\+b is taken \(Herdr's default toggle_sidebar\); nothing was changed\. Pick another: board\.mjs setup --key prefix\+shift\+b$/m)
     assert.equal(t.text(), "")
@@ -47,7 +48,7 @@ test("setup: prefix+b is Herdr's own toggle_sidebar, so it stops and names a fre
     assert.ok(!t.calls().includes("server reload-config"))
     // A user who moved toggle_sidebar elsewhere frees prefix+b.
     writeFileSync(t.file, '[keys]\ntoggle_sidebar = "prefix+shift+s"\n')
-    assert.equal(t.run(["--no-reload"]).status, 0)
+    assert.equal(t.run(["--key", "prefix+b", "--no-reload"]).status, 0)
     assert.match(t.text(), /key = "prefix\+b"/)
   } finally {
     t.done()
@@ -238,9 +239,54 @@ test("ls --done 30d: Done cards of the last 30 days, the archive's too, each wit
   }
 })
 
+test("restart.log: beside a board of its own (JOB_BOARD_HOME), so a scratch store keeps a scratch log", () => {
+  assert.equal(stateDir({ HOME: "/home/u", JOB_BOARD_HOME: "/tmp/qa/store", HERDR_PLUGIN_STATE_DIR: "/p" }), "/tmp/qa/store")
+  assert.equal(stateDir({ HOME: "/home/u", HERDR_PLUGIN_STATE_DIR: "/p" }), "/p")
+  assert.equal(stateDir({ HOME: "/home/u", XDG_STATE_HOME: "/st" }), "/st/herdr-job-board")
+})
+
 test("Stop: the pane's own sent note (a button press) is not the coordinator updating a card", () => {
   const card = { id: 1, project: "a", column: "waiting", title: "Go?", updated: "x" }
   const turn = snapshot({ items: [card] })
   assert.equal(waitingTouched({ items: [{ ...card, sent: { label: "Go", at: "y" }, by: "w9:p5" }] }, turn), false)
   assert.equal(waitingTouched({ items: [{ ...card, ask: "now?" }] }, turn), true)
+})
+
+test("setup's edges: a symlinked config is edited where it points; a header inside a multi-line string is text; an older Herdr without config check", () => {
+  // A dotfiles link: the managed file changes, the link stays.
+  let t = scratch(null)
+  try {
+    const managed = join(t.base, "dotfiles", "herdr.toml")
+    mkdirSync(join(t.base, "dotfiles"))
+    writeFileSync(managed, "[ui]\n")
+    symlinkSync(managed, t.file)
+    const r = t.run(["--no-reload"])
+    assert.equal(r.status, 0, r.stdout)
+    assert.match(r.stdout, /^config: .*config\.toml \(a link to .*dotfiles\/herdr\.toml: edited there\)$/m)
+    assert.ok(lstatSync(t.file).isSymbolicLink(), "still a link")
+    assert.match(readFileSync(managed, "utf8"), /herdr-job-board\.open/)
+    assert.deepEqual(readdirSync(join(t.base, "dotfiles")).filter((f) => f.includes(".bak-")).length, 1, "the backup beside the real file")
+  } finally {
+    t.done()
+  }
+  // "[ui.sidebar.spaces]" inside a multi-line string is not the table.
+  t = scratch('[theme]\nnote = """\n[ui.sidebar.spaces]\nrows = [["x"]]\n"""\n')
+  try {
+    assert.equal(t.run(["--no-key", "--no-reload"]).status, 0)
+    assert.match(t.text(), /\nnote = """\n\[ui\.sidebar\.spaces\]\nrows = \[\["x"\]\]\n"""\n/, "the string as it was")
+    assert.match(t.text(), /\n\[ui\.sidebar\.spaces\]\nrows = \[\n {2}\["state_icon", "workspace"\],/, "a real table after it")
+  } finally {
+    t.done()
+  }
+  // An older Herdr whose CLI has no `config check`: skipped, the file kept.
+  t = scratch("[ui]\n")
+  try {
+    writeFileSync(t.herdr, JSON.stringify({ log: [], no_config_check: true }))
+    const r = t.run(["--no-reload"])
+    assert.equal(r.status, 0, r.stdout)
+    assert.match(r.stdout, /^check: skipped \(this Herdr has no `config check`; Herdr 0\.9\.5 has\)$/m)
+    assert.match(t.text(), /herdr-job-board\.open/)
+  } finally {
+    t.done()
+  }
 })

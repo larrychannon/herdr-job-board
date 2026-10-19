@@ -5,7 +5,7 @@
 import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -1110,6 +1110,31 @@ test("cross-repo workers: SFC_AGENT_ROLE=worker in a repo whose job.json names a
     } finally {
       h2.done()
     }
+  } finally {
+    h.done()
+  }
+})
+
+test("rollback: the import records the exact name it gave the 0.4 file (a leftover job-board.migrated.json is never mistaken for it); moving that back restores the board as it was", () => {
+  const h = home()
+  try {
+    const sfc = h.repo("sfc-integration")
+    const leftover = join(sfc, ".git", "job-board.migrated.json")
+    writeFileSync(leftover, JSON.stringify({ version: 1, next_id: 2, items: [{ id: 1, title: "an old copy", column: "todo" }] }))
+    const file = legacy(sfc, [{ id: 1, title: "one" }, { id: 7, title: "seven" }], 9)
+    const original = readFileSync(file, "utf8")
+    const out = h.ok(sfc, ["import"])
+    const renamed = h.state().imports[0].renamed
+    assert.match(renamed, /\/job-board\.migrated-\d{8}-\d{6}\.json$/, "not the leftover's name")
+    assert.match(out, new RegExp(`→ ${renamed.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}$`, "m"), "the name printed")
+    assert.equal(readFileSync(renamed, "utf8"), original)
+    assert.match(readFileSync(leftover, "utf8"), /an old copy/, "the leftover untouched")
+    // The runbook's rollback: the recorded file back in place, as it was at the import.
+    renameSync(renamed, file)
+    assert.equal(readFileSync(file, "utf8"), original)
+    // Or the cards as they are now, as a 0.4 board.
+    const exported = JSON.parse(h.ok(sfc, ["export", "--legacy"]))
+    assert.deepEqual(exported.items.map((i) => [i.id, i.title]), [[1, "one"], [7, "seven"]])
   } finally {
     h.done()
   }

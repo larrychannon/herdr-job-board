@@ -14,7 +14,8 @@ One board for every project on the machine.
   renamed `job-board.migrated.json`), or stops with the `import` to run when an id would be
   renumbered. The first write that creates the store brings in every 0.4 board on the machine.
   `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…]` does it on purpose and, after an
-  automatic import, shows it and applies re-tags. `export --legacy` writes a project back as a
+  automatic import, shows it and applies re-tags. Each import records the exact name it gave the
+  old file (`imports[].renamed`), the one a rollback puts back. `export --legacy` writes a project back as a
   0.4 board (rollback).
 - **Archive and backups**: Done cards older than 7 days move to `archive/YYYY-MM.jsonl`
   (`json --archive`, `ls --done 30d`); the first write each day keeps a backup (7 kept);
@@ -39,8 +40,9 @@ One board for every project on the machine.
   reported, every one again after a Herdr restart.
 - **`setup`** writes the key binding and the `$board` sidebar row into Herdr's `config.toml`
   (backup first, `herdr config check`, then `herdr server reload-config`; idempotent; only simple
-  shapes). Herdr itself binds `prefix+b` (toggle_sidebar), so `setup` names a free key
-  (`--key prefix+shift+b`). `doctor` points to it.
+  shapes; a linked config is edited where it points). The default key is `prefix+shift+b`
+  (Herdr itself binds `prefix+b` to toggle_sidebar); a taken key stops it with a free one.
+  `doctor` points to it.
 - **`contract`** (what this copy offers, as JSON) and **`guide`** (the instructions for agents).
 - **Workers** are known by `JOB_AGENT_ROLE`, any `*_AGENT_ROLE` variable, or the repo's
   `.claude/job.json` `role_env`: they never bring boards in, own cards or send answers.

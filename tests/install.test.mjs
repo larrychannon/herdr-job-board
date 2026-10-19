@@ -49,7 +49,7 @@ function setup(state = {}) {
   const installed = { plugin_id: "herdr-job-board", version: VERSION, plugin_root: plugin, enabled: true, source: { kind: "github", owner: "larrychannon", repo: "herdr-job-board", resolved_commit: "abc1234def" } }
   // The store: HOME is the temp home, so ~/.local/state/herdr-job-board is in the temp folder.
   const store = join(home, ".local", "state", "herdr-job-board", "board.json")
-  return { base, plugin, repo, home, store, herdr, env, run, herdrState, setHerdr, setVersion, installed, done: () => rmSync(base, { recursive: true, force: true }) }
+  return { base, plugin, repo, home, store, herdr, env, run, herdrState, setHerdr, setVersion, installed, done: () => rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) }
 }
 
 test("version and hooks: one command each, from the copy that runs them", () => {
