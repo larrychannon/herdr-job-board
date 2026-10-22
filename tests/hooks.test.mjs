@@ -255,7 +255,8 @@ test("the hook script: stdin JSON in, Claude Code's JSON out; settings snippet; 
     assert.equal(w.stdout, "")
 
     const settings = JSON.parse(run("", ["--print-settings"]).stdout)
-    assert.deepEqual(Object.keys(settings.hooks), ["UserPromptSubmit", "Stop"])
+    assert.deepEqual(Object.keys(settings.hooks), ["UserPromptSubmit", "Stop", "Notification"])
+    assert.equal(settings.hooks.Notification[0].matcher, "permission_prompt")
     assert.equal(settings.hooks.Stop[0].hooks[0].command, `node "${HOOK}"`)
     assert.deepEqual(settings, settingsSnippet(HOOK))
     assert.equal(reminder({ items: [] }), "")

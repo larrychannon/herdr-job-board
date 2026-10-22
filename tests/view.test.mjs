@@ -10,7 +10,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { animates, animationTimer, asText, barTick, buildView, copyLinks, copyPayload, copyPlace, detailLines, handleInput, markSent, nextCopy, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES } from "../board.mjs"
+import { animates, animationTimer, asText, barTick, buildView, copyLinks, copyPayload, copyPlace, detailLines, handleInput, markSent, nextCopy, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES, writeStop } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -976,6 +976,9 @@ function seedMotion(t) {
   seed(t)
   t.board("2026-10-13T10:10:00Z", "job-start", "api-client", "--title", "API client: regenerate", "--desc", "From the new OpenAPI file.")
   t.board("2026-10-13T10:12:00Z", "job-start", "release-notes", "--title", "Release notes: draft")
+  // docs-links stopped on a question: idle, not finished, so its card shows "idle" (a finished
+  // job, untouched for 10 minutes, would show "job finished — not reviewed yet" instead: 0.7.2).
+  writeStop(t.file, "docs-links", { state: "waiting", at: NOW, key: "k" })
 }
 const BAR = /\[[ =]{4}\]/g
 const barsOf = (text) => text.match(BAR) ?? []
