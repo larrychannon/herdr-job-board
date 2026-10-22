@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.8.0 · unreleased
+
+A job's messages go to an inbox file that its coordinator reads, instead of being typed into the
+coordinator's pane.
+
+- **Why**: since 0.7.2 a job's stop (`[job finished] …`, `[job waiting] …`, `[job note] …`) was
+  typed into the coordinator's input box with `herdr agent prompt`. That broke into whatever was
+  being typed there (the two got glued together) and cut the line at 300 characters.
+- **The inbox**: the hooks (Stop, Notification) and `tell` append one JSON line per message to
+  `inbox.jsonl` in the board's folder: `{ id, at, slug, kind, card, project, workspace, owner,
+  pane, key, text }`, with the whole line (up to 4000 characters). Nothing types into a pane for a
+  job any more; that path is gone, with no switch to bring it back.
+- **Whose it is**: a message belongs to a Herdr workspace: the one the card's owner pane wrote
+  from, else the card's, the project's or the job's own. A coordinator restarted in a new pane
+  keeps its workspace, so it gets what was written while it was down.
+- **Never lost**: messages stay until acked. The write takes the inbox's own lock, and a failed
+  write (lock busy, I/O error) is tried again with a growing pause for up to 60 s
+  (`JOB_BOARD_INBOX_RETRY_MS`); then it is kept as `pending` in `jobs/<slug>.json` and the job's
+  next hook (or `tell`) writes it first. A message is written once per id, and the same stop once
+  (as before). Hooks still exit 0 and never block the job. `JOB_BOARD_NOTIFY_RETRY_MS` and the 10
+  tries are gone (they were for a coordinator that couldn't take a prompt).
+- **New commands**: `inbox wait [--timeout S]` (blocks until there are messages not acked yet,
+  prints them one a line ending in `#<id>`, exit 0; at once when some are there already; 124 on
+  timeout; watches the folder, with a 5 s look as a fallback), `inbox ls [--all]`, `inbox ack
+  <id>… | --all`. A running `inbox wait` notes itself in `inbox-watch/<pid>.json`.
+- **The coordinator's turn-start reminder** lists the messages not acked yet (up to 8, quoted, as
+  data), and, alongside them, says when no `inbox wait` runs for its workspace: `No inbox watcher
+  is running; start: node "…/board.mjs" inbox wait, in the background.` With no messages it says
+  nothing about the inbox.
+- `tell` prints `in the inbox for workspace <w>'s coordinator: …`; when the inbox can't be written
+  for 60 s it keeps the note pending, says so on stderr and exits 0.
+- **A follow-up report doesn't add a card**: `job-report` for a job whose card is already Done
+  (briefed again without `job-start`), or read by a restarted coordinator (a new pane, a project
+  such as `work` that isn't the job's), added a new Waiting card titled with the bare slug. Now
+  it uses the job's most recent card (one this pane owns or in this workspace, else a Done one):
+  a report that needs nothing from the user leaves it Done (`<id> stays done`), one that does
+  reopens it, in its own project. A job never on the board still gets a card, as before.
+- Unchanged: button presses and `answer` still reach the coordinator with `herdr agent prompt`;
+  "job finished — not reviewed yet"; `json`.
+
 ## 0.7.5 · unreleased
 
 The section a card shows in says what it needs from you: a sub-task is drawn under its parent
