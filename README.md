@@ -91,6 +91,27 @@ itself out again at once.
   the command line (a coordinator, when you ask it to). One rule stays above your order: in
   Waiting, a **blocked** job shows first, since it is stuck until you answer it. Done is newest
   first. A board from before 0.6.0 starts newest first (the highest id on top) in each section.
+- **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
+  doing B you find C) has a **parent**: `add … --parent <A>`. The child says `for #1 Node
+  health` under its title (dim), and its row starts with `↳`; the parent says `waiting on #2,
+  #3` (bold, every open card anywhere under it) and so never looks finished. When the last of
+  them is done, the parent says **ready to resume** (amber, bold) with what it waited on, goes on
+  top of its section, and the coordinator's turn-start reminder names it. Moving, editing,
+  ordering or starting the parent clears the mark. In a 60-column pane:
+
+  ```
+  DOING (3) ──────────────────────────────────────────────────
+   3   ↳ ~/work backup: let the coordinator commit a… just now
+   2   ↳ AI agents' AWS switch: appro… waiting on #3  just now
+   1   Node health: review found … waiting on #2, #3  just now
+  ```
+
+  and after `done 3` and `done 2`:
+
+  ```
+  DOING (1) ──────────────────────────────────────────────────
+   1   Node health: review found on… ready to resume  just now
+  ```
 - **DONE** is folded to one line, `DONE · 3 today ▸`, so it takes no room. `d` or a click on
   that line opens it (today's finished cards, newest first, with the time they finished, under
   `DONE (3) ▾`; a third column in the wide layout); `d` or a click on its header folds it
@@ -527,10 +548,10 @@ this list.
 
 | Command | What it does |
 |---|---|
-| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. |
+| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D]` | Move a card. `<ref>` is its id or its job slug. |
-| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]` | Change a card. New `--option`s replace the old ones. |
-| `done <ref>` | Same as `move <ref> done`. |
+| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #1 … (done)`. |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |
@@ -541,8 +562,8 @@ this list.
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. |
-| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one, in W's repo). |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, and `waiting_on` (the open ids under it) when it has any. |
+| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one, in W's repo). `--parent` as for `add`. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
 | `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
@@ -571,6 +592,9 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
 1. **Find the CLI**: `herdr plugin list --json` gives the plugin's `plugin_root`, and the CLI
    is `board.mjs` in it. If the plugin is not installed, skip the board and carry on.
 2. **Work for later**: `add todo "<title>" --desc "<what and why>"`.
+   Work found while doing another card (you need B before A can go on): add B with
+   `--parent <A's id>` (`job-start` takes it too), so A waits on B and comes back as ready to
+   resume when B is done.
 3. **You need the user** (a question, an approval, a merge):
    `add waiting "<title>: <action>" --desc "<what and why>" --ask "<exactly what to do>"`, and
    when the answers are clear, buttons for them, the suggested one first:
@@ -613,7 +637,9 @@ that catch that:
   (`+3 waiting in other projects`), and asked to close or update any you just answered.
   Titles are cleaned, cut to 80 characters, quoted and marked as data written by agents, not
   instructions; a card's description and ask are never passed on. The hook also notes where
-  the board stood, for the next check.
+  the board stood, for the next check. A second line names its cards **ready to resume** (every
+  card made for them is done; id, title and what it waited on, up to 8, `+N ready in other
+  projects`), until the coordinator moves, edits, orders or job-starts them.
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
   of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
   changed during that turn, the hook sends it back
