@@ -84,6 +84,13 @@ itself out again at once.
   idle, no agent) and its age. A card whose agent is **working** shows a small ASCII bar
   bouncing beside the word (`working [=   ]`); idle, done, blocked and gone agents stand still,
   so the motion itself says what is running.
+- **Order**: To do, Doing and Waiting on you are in your order, so the cards that matter most
+  can sit on top. A new card goes on top of its section, and so does a card that moves into
+  another section (To do → Doing, Doing → Waiting, back to To do). `Shift+↑` `Shift+↓` move the
+  selected card one place up or down in the pane; `order <ref> top|up|down|bottom` does it from
+  the command line (a coordinator, when you ask it to). One rule stays above your order: in
+  Waiting, a **blocked** job shows first, since it is stuck until you answer it. Done is newest
+  first. A board from before 0.6.0 starts newest first (the highest id on top) in each section.
 - **DONE** is folded to one line, `DONE · 3 today ▸`, so it takes no room. `d` or a click on
   that line opens it (today's finished cards, newest first, with the time they finished, under
   `DONE (3) ▾`; a third column in the wide layout); `d` or a click on its header folds it
@@ -130,6 +137,7 @@ itself out again at once.
 |---|---|
 | `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows. In the inbox the selected card is open under its row |
+| `Shift+↑` `Shift+↓` | move the selected card one place up or down in its section, and save it (To do, Doing, Waiting; not Done). In a view of one project (`p`) it steps over that project's cards; the key line says `card 3 moved up`, or that it can't go further |
 | `Space` | in the inbox and compact layouts: open or close the selected card under its row (the inbox opens it by itself, compact doesn't) |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
@@ -525,7 +533,8 @@ this list.
 | `done <ref>` | Same as `move <ref> done`. |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
-| | `move`, `edit`, `done`, `rm` and `retag` change another project's card only with `--project <its project>`, unless your pane owns it (exit 2 otherwise): ids are global, and a remembered id may be another project's. |
+| `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |
+| | `move`, `edit`, `done`, `rm`, `order` and `retag` change another project's card only with `--project <its project>`, unless your pane owns it (exit 2 otherwise): ids are global, and a remembered id may be another project's. |
 | `answer <id> <text> [--from telegram] [--front]` | What a button press does (see Answer buttons). |
 | `front [show]` | This coordinator pane gets the answers no other coordinator can take, and holds Telegram (default: the pane that last opened the board). |
 | `adopt <id>…` / `adopt --project P --gone` | This coordinator pane owns these cards (`--gone`: P's open cards whose owner pane is gone). |

@@ -1,6 +1,7 @@
 // Run: node --test (from the repo root)
 // Colours, the card details panel, links (OSC 8), copying (OSC 52) and the mouse toggle.
 import "./guard.mjs"
+import { idOrder } from "./id-order.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -35,6 +36,7 @@ function setup({ agents = [], tabs = [] } = {}) {
   const board = (now, ...args) => {
     const r = spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: { ...env, HERDR_ENV: "0", JOB_BOARD_NOW: now }, encoding: "utf8" })
     assert.equal(r.status, 0, r.stderr)
+    idOrder(join(root, "store", "board.json"))
     return r
   }
   const pane = (args = [], keys = "") =>

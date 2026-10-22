@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0 · unreleased
+
+Cards stay in the order you put them: the ones that matter most on top.
+
+- **Manual order** in To do, Doing and Waiting on you. Each card has a place in its section (a
+  new `order` number in the board file, lower is higher up). The board used to show every
+  section oldest first (by id) and nothing could change that.
+- **New cards go on top** of their section, and so does a card that moves into another section
+  (`move`, `job-start`, `job-report`, a card back to To do). An edit keeps its place.
+- **`Shift+↑` `Shift+↓`** in the pane move the selected card one place up or down and save it at
+  once; the key line says `card 3 moved up`, or that it can't go further. In a view of one
+  project (`p`) they step over that project's cards. Other modifiers (`Ctrl+↑`, `Alt+↑`) are
+  plain `↑` `↓` as before.
+- **`order <ref> top|up|down|bottom [--project P]`**: the same from the command line, so a
+  coordinator can move a card when you ask; another project's card needs `--project`, as for
+  `move`. With `--project`, `up` and `down` step over that project's cards only. A Done card is
+  refused (exit 2): Done stays newest first.
+- **Waiting**: a blocked job still shows first, then the cards in your order.
+- **Upgrading**: a board from before 0.6.0 has no order; it starts **newest first** (the highest
+  id on top) in each section, so it matches "new cards on top". Nothing else in the file
+  changes, and the order is saved with the next write. A card added to the file by hand, or
+  brought in by `import`, goes below the cards that have a place, newest first. An older copy
+  of the board reading a 0.6.0 file ignores `order` and shows id order.
+- The age on a card is unchanged: the time it has been in its section.
+
 ## 0.5.1 · unreleased
 
 Panes follow the installed copy (Herdr 0.9.5's install folders), and text selection works in

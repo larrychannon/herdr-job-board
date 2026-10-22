@@ -3,6 +3,7 @@
 // it: in the inbox, the first click of a double click opens a card and moves the rows, so the
 // second can land on a button that wasn't there (0.4.0 review). Both mouse modes.
 import "./guard.mjs"
+import { inIdOrder } from "./id-order.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -81,7 +82,7 @@ function pane() {
   // The store (JOB_BOARD_HOME) in the temp folder, with a 0.4-shaped board in it: read as v2.
   const store = join(root, "store")
   mkdirSync(store)
-  writeFileSync(join(store, "board.json"), JSON.stringify({ version: 1, next_id: 4, items, panes: {} }))
+  writeFileSync(join(store, "board.json"), JSON.stringify({ version: 1, next_id: 4, items: inIdOrder(items), panes: {} }))
   const herdr = join(root, "herdr.json")
   writeFileSync(herdr, JSON.stringify({ agents: [{ name: "coord", agent_status: "idle", workspace_id: "w9", pane_id: "w9:p1", interactive_ready: true }], panes: [] }))
   const env = { ...process.env, HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w9", JOB_BOARD_NOW: NOW, TZ: "UTC", NO_COLOR: "1", JOB_BOARD_HOME: store, HOME: root }
