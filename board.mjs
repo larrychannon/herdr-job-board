@@ -1608,45 +1608,46 @@ export function filterView(view, project) {
 }
 
 /**
- * A sub-task in the same section as its parent drawn once (0.7.3): its own row (or card) moves to
- * straight under the parent's, in its order, with `nest` (the parent's id) and `depth`; the
- * parent's `nested` lists those ids, so its short lines under it leave them out. A sub-task in
- * another section keeps its place there, and its short line under the parent.
+ * Each sub-task drawn once, under its parent (0.7.3, 0.7.4): its own row (or card) moves to
+ * straight under the parent's, with `nest` (the parent's id) and `depth`, whatever its section; one
+ * from another section carries `home` (its own section: its state, buttons and ordering), and is
+ * neither drawn nor counted there. Its siblings in the parent's section come first, then the ones
+ * from other sections (Waiting, Doing, To do). A sub-task whose parent isn't open on this view (done,
+ * or another project's) keeps its own row in its section. The parent's `nested` lists them all.
  */
 export function nestView(view) {
   const out = { ...view }
-  for (const s of ["waiting", "doing", "todo"]) {
-    const list = view[s] || []
-    const here = new Map(list.filter((e) => e.id != null).map((e) => [e.id, e]))
-    // Each open card is in the `under` of one card at most: the nearest open one above it.
-    const nestOf = new Map()
-    for (const e of list) for (const c of e.under || []) if (here.has(c.id) && c.id !== e.id) nestOf.set(c.id, e.id)
-    const kids = new Map()
-    for (const e of list) if (nestOf.has(e.id)) kids.set(nestOf.get(e.id), [...(kids.get(nestOf.get(e.id)) || []), e])
-    const placed = new Set()
+  const open = ["waiting", "doing", "todo"]
+  const homeOf = new Map(open.flatMap((s) => (view[s] || []).filter((e) => e.id != null).map((e) => [e.id, s])))
+  const byId = new Map(open.flatMap((s) => (view[s] || []).filter((e) => e.id != null).map((e) => [e.id, e])))
+  // Each open card is in the `under` of one card at most: the nearest open one above it.
+  const nestOf = new Map()
+  for (const s of open) for (const e of view[s] || []) for (const c of e.under || []) if (byId.has(c.id) && c.id !== e.id) nestOf.set(c.id, e.id)
+  const kids = new Map()
+  for (const s of open) for (const e of view[s] || []) if (nestOf.has(e.id)) kids.set(nestOf.get(e.id), [...(kids.get(nestOf.get(e.id)) || []), e])
+  const placed = new Set()
+  for (const s of open) {
     const sorted = []
     const put = (e, depth, nest) => {
       if (placed.has(keyOf(e))) return
       placed.add(keyOf(e))
-      const mine = (kids.get(e.id) || []).filter((c) => !placed.has(keyOf(c)))
-      const me = { ...e, ...(depth ? { nest, depth } : {}), ...(mine.length ? { nested: mine.map((c) => c.id) } : {}) }
+      const all = (kids.get(e.id) || []).filter((c) => !placed.has(keyOf(c)))
+      const mine = [...all.filter((c) => homeOf.get(c.id) === s), ...all.filter((c) => homeOf.get(c.id) !== s)]
+      const home = e.id != null && homeOf.get(e.id) !== s ? homeOf.get(e.id) : null
+      const me = { ...e, ...(depth ? { nest, depth } : {}), ...(home ? { home } : {}), ...(mine.length ? { nested: mine.map((c) => c.id) } : {}) }
       sorted.push(me)
       for (const c of mine) put(c, depth + 1, e.id)
-      // Its short lines (the cards under it in other sections) come after its sub-tasks' rows:
-      // the last of them draws them (`trailers`), indented as under the parent.
-      if (mine.length && (me.under || []).some((c) => !me.nested.includes(c.id))) {
-        me.underLater = true
-        const last = sorted.at(-1)
-        last.trailers = [...(last.trailers || []), me]
-      }
     }
-    for (const e of list) if (!nestOf.has(e.id)) put(e, 0, null)
-    // A loop of parents (never made by the board) leaves its cards where they were.
-    for (const e of list) put(e, 0, null)
+    for (const e of view[s] || []) if (!nestOf.has(e.id)) put(e, 0, null)
     out[s] = sorted
   }
+  // A loop of parents (never made by the board) leaves its cards where they were.
+  for (const s of open) for (const e of view[s] || []) if (!placed.has(keyOf(e))) out[s].push(e)
   return out
 }
+
+/** The section a card's state, buttons and count go by: its own (`home`, nestView), else where it is drawn. */
+const homeIn = (entry, section) => entry.home ?? section
 
 /**
  * The projects with open cards, for the pane's strip and `p`: each with its tag, colour and how
@@ -2024,10 +2025,10 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     // never cut to make room for it).
     if (bar && textWidth(text + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
     lines.push(line)
-  }
+  } else if (status && entry.home) lines.push([indent, homeState(entry)])
   lines.push(...linkLines(entry, inner, indent, status))
   // The cards under it, on a card; a row draws them under its own line, open or not.
-  if (status && column !== "done" && !entry.underLater) lines.push(...underLines(entry, width, indent))
+  if (status && column !== "done") lines.push(...underLines(entry, width, indent))
   // With several projects on the board, an open card names its project in full first:
   // "sfc-integration · <description>".
   const head = ui.projectName ? `${ui.projectName} · ` : ""
@@ -2075,6 +2076,8 @@ const afterText = (entry) => {
 }
 // A card under a parent: its agent's state, else its section's.
 const UNDER_PLACE = { waiting: "waiting on you", doing: "doing", todo: "to do", done: "done" }
+// A sub-task under its parent from another section (nestView): that section, where its state goes.
+const homeState = (entry) => ({ t: UNDER_PLACE[entry.home], s: entry.home === "waiting" ? "waiting" : "dim" })
 const underState = (c) => (c.live ? { t: c.live, s: STATUS_STYLE[c.live] || "gone" } : { t: UNDER_PLACE[c.column] || c.column, s: c.column === "waiting" ? "waiting" : "dim" })
 
 /**
@@ -2155,7 +2158,6 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     if (line) line.push({ t: " ".repeat(room(line)) }, { t: age, s: style })
     else lines.push([indent, { t: age, s: style }])
   }
-  lines.push(...trailerLines(entry, column, width, base))
   return lines
 }
 const ageStyle = (entry, column) => (column === "waiting" && entry.age > 24 * 3600_000 ? "old" : "dim")
@@ -2180,7 +2182,8 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   // A sub-task under its parent (nestView): its id moves in, after a ↳ two cells right of where
   // its parent's title starts (deeper ones two more), so it reads as inside the parent.
   const sub = subSegs(entry, ui)
-  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: sub.length ? " ".repeat(idWidth) : mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
+  // Selected, only its id is highlighted where it is drawn: a sub-task's empty id column stays plain.
+  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, sub.length ? { t: " ".repeat(idWidth) } : { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
   const base = 1 + idWidth + 3 + segWidth(tag)
   const lead = base + segWidth(sub)
   const indent = { t: " ".repeat(lead) }
@@ -2200,10 +2203,10 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
     status = [{ t: statusText(entry), s: statusStyle(entry) }]
     const bar = barOf(entry, ui)
     if (bar) status.push({ t: bar, s: "working", anim: true })
-  }
-  // A child's row in another section than its parent's starts with ↳ (one cell in every terminal:
-  // Unicode width neutral) and whose it is.
-  const title = `${!entry.depth && entry.parentOf ? `↳ ${entry.parentOf.title ? `for ${entry.parentOf.title}: ` : ""}` : ""}${printable(entry.title)}`
+  } else if (entry.home) status = [homeState(entry)]
+  // A child's row away from its parent (done, or another project's) starts with ↳ (one cell in
+  // every terminal: Unicode width neutral) and whose it is; a parent done says so.
+  const title = `${!entry.depth && entry.parentOf ? `↳ ${entry.parentOf.title ? `for ${entry.parentOf.title}${entry.parentOf.done ? " (done)" : ""}: ` : ""}` : ""}${printable(entry.title)}`
   const right = () => [...status, ...(status.length && end ? [{ t: "  " }] : []), ...(end ? [end] : [])]
   const roomFor = () => width - lead - segWidth(right()) - 1
   const want = Math.min(12, textWidth(title))
@@ -2220,20 +2223,15 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const lines = [line]
   for (const t of titleLines.slice(1)) lines.push([indent, ...linkify(t, style, urlsIn(entry.title))])
   // The cards under it, straight under its line, whatever their section.
-  if (column !== "done" && !entry.underLater) lines.push(...underLines(entry, width, indent))
+  if (column !== "done") lines.push(...underLines(entry, width, indent))
   if (opened) lines.push(...cardBody(entry, column, width, indent, ui.full ? Infinity : DESC_LINES, ui, { status: false }))
   else if (ui.note) for (const t of wrap(ui.note.t, width - lead, 2)) lines.push([indent, { t, s: ui.note.s }])
-  lines.push(...trailerLines(entry, column, width, base))
   return lines
 }
 
 // A sub-task's lead-in under its parent (nestView): "  ↳ 279  ", deeper ones two cells further.
 const subSegs = (entry, ui = {}) =>
   entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: entry.id == null ? "•" : String(entry.id), s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
-// After a parent's last sub-task, the parent's short lines (`trailers`, nestView), indented from
-// where that parent's title starts (`base` + its own lead-in).
-const trailerLines = (entry, column, width, base) =>
-  column === "done" ? [] : (entry.trailers || []).flatMap((p) => underLines(p, width, { t: " ".repeat(base + segWidth(subSegs(p))) }))
 
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
@@ -2270,7 +2268,8 @@ export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}
   // Every segment of a card knows its card, so a click can find it. `form` "row": one line a
   // card (the inbox and compact layouts), the open one with its body.
   const draw = (e, w) =>
-    (form === "row" ? cardRow(e, section, w, idWidth, uiOf(e)) : section === "done" ? doneCard(e, w, idWidth, uiOf(e)) : card(e, section, w, idWidth, DESC_LINES, uiOf(e))).map((l) =>
+    // A sub-task under its parent from another section is drawn as a card of its own (`home`).
+    (form === "row" ? cardRow(e, homeIn(e, section), w, idWidth, uiOf(e)) : section === "done" ? doneCard(e, w, idWidth, uiOf(e)) : card(e, homeIn(e, section), w, idWidth, DESC_LINES, uiOf(e))).map((l) =>
       l.map((seg) => ({ ...seg, card: keyOf(e) })),
     )
   // Rows follow each other with no blank line between them; cards have one.
@@ -2278,10 +2277,13 @@ export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}
   if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width), ...(form === "row" || e.depth ? { gap: 0 } : {}) }))
   const gap = 3
   const cw = Math.floor((width - gap * (perRow - 1)) / perRow)
+  // A card and its sub-tasks (nestView) stay together in one column: its cards one after another.
+  const families = []
+  for (const e of entries) (e.depth && families.length ? families.at(-1) : families[families.push([]) - 1]).push(e)
   const blocks = []
-  for (let i = 0; i < entries.length; i += perRow) {
-    const row = entries.slice(i, i + perRow)
-    const cards = row.map((e) => draw(e, cw))
+  for (let i = 0; i < families.length; i += perRow) {
+    const row = families.slice(i, i + perRow)
+    const cards = row.map((f) => f.flatMap((e) => draw(e, cw)))
     const height = Math.max(...cards.map((c) => c.length))
     const lines = Array.from({ length: height }, (_, r) =>
       cards.flatMap((c, j) => {
@@ -2289,7 +2291,7 @@ export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}
         return j < cards.length - 1 ? [...segs, { t: " ".repeat(Math.max(0, cw - segWidth(segs)) + gap) }] : segs
       }),
     )
-    blocks.push({ keys: row.map(keyOf), lines })
+    blocks.push({ keys: row.flat().map(keyOf), lines })
   }
   return blocks
 }
@@ -2378,6 +2380,9 @@ function share(wants, total, first = -1) {
 }
 
 // An empty section folds to its header, which says so.
+// A section whose only cards are drawn under their parents elsewhere (nestView) says so instead.
+const movedOut = (view, section) => ["waiting", "doing", "todo"].reduce((n, s) => n + (view[s] || []).filter((e) => e.home === section).length, 0)
+const awayText = (section, n) => `${section === "waiting" ? `  ${n} need${n === 1 ? "s" : ""} you,` : ` · ${n}`} under ${n === 1 ? "its parent" : "their parents"}`
 const EMPTY = { waiting: "  Nothing needs you", doing: " · nothing running", todo: " · nothing to do", done: " · nothing finished today" }
 // With emoji on (emojiOn), each section's header starts with its own: one code point each, Wide
 // in Unicode's East Asian Width and drawn with emoji presentation by default, so two cells in
@@ -2399,7 +2404,9 @@ export function emojiOn(env = process.env) {
  * `rule` (the inbox and compact layouts) a line in the section's colour to `width` cells.
  */
 function headerLine(view, section, selected, interactive, { emoji = false, rule = false, width = 0, fold = false } = {}) {
-  const count = entriesOf(view, section).length
+  // A sub-task drawn under its parent in another section (nestView) is counted in neither.
+  const count = entriesOf(view, section).filter((e) => !e.home).length
+  const away = section === "done" ? 0 : movedOut(view, section)
   // A view of one project counts what it hides: "TO DO (6 · +4 other)".
   const hidden = view.hidden?.[section] || 0
   const segs = []
@@ -2407,8 +2414,8 @@ function headerLine(view, section, selected, interactive, { emoji = false, rule 
   if (emoji) segs.push({ t: `${SECTION_EMOJI[section]} ` })
   // Done open in the pane: ▾, for "d or a click here folds it again".
   segs.push({ t: `${HEADINGS[section]} (${count}${hidden ? ` · +${hidden} other` : ""})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
-  const empty = section === "done" && view.doneLabel ? ` · nothing finished ${view.doneLabel}` : EMPTY[section]
-  if (!count && (section === "waiting" || fold)) segs.push({ t: `${empty}${hidden ? " here" : ""}`, s: "dim" })
+  const empty = away ? awayText(section, away) : section === "done" && view.doneLabel ? ` · nothing finished ${view.doneLabel}` : EMPTY[section]
+  if (!count && (section === "waiting" || fold || away)) segs.push({ t: `${empty}${hidden ? " here" : ""}`, s: "dim" })
   if (rule && width - segWidth(segs) > 2) segs.push({ t: " " }, { t: "─".repeat(width - segWidth(segs) - 1), s: `rule-${section}` })
   return segs
 }
@@ -2966,7 +2973,8 @@ export function renderBoard(view, opts = {}) {
   const clock = clockOf(now)
   // The inbox and compact layouts say first how many cards need you; a view of one project says
   // how many more need you elsewhere.
-  const need = view.waiting.length
+  // A Waiting sub-task drawn under its parent in another section (nestView) still needs you.
+  const need = view.waiting.filter((e) => !e.home).length + movedOut(view, "waiting")
   const label = view.filter || repo
   const name = [{ t: layout === "compact" ? (label === "all projects" ? "all" : label) || "Job board" : `Job board${label ? ` · ${label}` : ""}`, s: "title" }]
   if (form === "row" && need) name.push({ t: " · ", s: "dim" }, { t: `${need} need${need === 1 ? "s" : ""} you`, s: "waiting" })
@@ -3067,7 +3075,7 @@ export function renderBoard(view, opts = {}) {
     const v = viewport(plain, h, at)
     let current = list.find((e) => keyOf(e) === scroll.card)
     if (!current) current = list.find((e) => keyOf(e) === plain[v.offset]?.keys[0]) || list[0]
-    const shown = shownOptions(current, section)
+    const shown = shownOptions(current, homeIn(current, section))
     const count = shown.length ? shown.length + 1 : 0
     if (scroll.card !== keyOf(current) || !(scroll.button >= 0 && scroll.button < count)) scroll.button = -1
     scroll.card = keyOf(current)
@@ -3111,12 +3119,14 @@ export function renderBoard(view, opts = {}) {
         id: e.id,
         // Its parent's id when drawn under it (nestView): Shift+↑ ↓ moves it among its siblings.
         group: e.nest ?? null,
+        // Its own section (nestView): Shift+↑ ↓ moves it among its siblings there.
+        home: homeIn(e, section),
         // Only buttons on screen count: a card whose buttons are hidden has none to choose or press.
-        buttons: shownOptions(e, section).length ? shownOptions(e, section).length + 1 : 0,
+        buttons: shownOptions(e, homeIn(e, section)).length ? shownOptions(e, homeIn(e, section)).length + 1 : 0,
         // A closed row (inbox and compact) shows no buttons: ← → there move between sections.
         closed: form === "row" && !(interactive && section === scroll.selected && keyOf(e) === scroll.card && open),
-        labels: shownOptions(e, section).map((o) => o.label),
-        suggested: Math.max(0, shownOptions(e, section).findIndex((o) => o.suggested)),
+        labels: shownOptions(e, homeIn(e, section)).map((o) => o.label),
+        suggested: Math.max(0, shownOptions(e, homeIn(e, section)).findIndex((o) => o.suggested)),
         block: Math.max(0, blockCards.findIndex((keys) => keys.includes(keyOf(e)))),
       })),
     }
@@ -3306,7 +3316,8 @@ export function renderBoard(view, opts = {}) {
     // A button chosen (← →, or a click on the question) and on screen: the key line starts with
     // what Enter does. One that isn't on screen (a card cut short, a panel scrolled away) is never
     // pressed, so the line doesn't offer it.
-    const key = detailEntry ? scroll.detail.key : scroll.selected === "waiting" ? scroll.card : null
+    // A Waiting card may be drawn under its parent in another section (nestView): any section's.
+    const key = detailEntry ? scroll.detail.key : scroll.card || null
     const count = key && scroll.card === key && entries[key] ? shownOptions(entries[key]).length : 0
     const chosen = count ? (scroll.button ?? -1) : -1
     const seen = chosen >= 0 && shownButtons.some((b) => b.key === key && b.index === chosen && !b.panel === !detailEntry)
@@ -3554,6 +3565,10 @@ export function handleInput(scroll, event, drawn) {
     const label = index < card.labels.length ? card.labels[index] : null
     return label === null ? { type: "other", id: card.id, key: card.key } : { type: "send", id: card.id, key: card.key, label }
   }
+  // A card with buttons, wherever it is drawn (a Waiting sub-task may be under its parent in
+  // another section, nestView), and that section.
+  const cardWithButtons = (key) => SECTIONS.flatMap((x) => drawn.sections[x]?.cards || []).find((c) => c.key === key && c.buttons) || null
+  const sectionWith = (key) => SECTIONS.find((x) => (drawn.sections[x]?.cards || []).some((c) => c.key === key)) || "waiting"
   const selectSection = (section) => {
     if (section !== next.selected) {
       next.selected = section
@@ -3577,7 +3592,7 @@ export function handleInput(scroll, event, drawn) {
   }
   const detail = next.detail ? { ...next.detail } : null
   // The card shown in the details, as a Waiting card with buttons (else null), and its chosen button.
-  const shownCard = detail ? (drawn.sections.waiting?.cards || []).find((c) => c.key === detail.key && c.buttons) || null : null
+  const shownCard = detail ? cardWithButtons(detail.key) : null
   const chosen = detail && next.card === detail.key ? (next.button ?? -1) : -1
   const toggleMore = () => {
     if (detail.hasMore) next.detail = { ...detail, more: !detail.more }
@@ -3585,7 +3600,7 @@ export function handleInput(scroll, event, drawn) {
   // Choose a button in the details, scrolling the panel to it when it is off screen: the
   // question and every button when they fit, else the chosen button's line.
   const choose = (index) => {
-    selectSection("waiting")
+    selectSection(sectionWith(detail.key))
     next.card = detail.key
     next.button = index
     const row = detail.buttonRows?.[index]
@@ -3677,15 +3692,15 @@ export function handleInput(scroll, event, drawn) {
     const moved = Boolean(hit && justMoved(scroll, hit, event.at))
     const doubleOnButton = Boolean(hit && last && !last.panel && last.key === hit.key && since <= DOUBLE_CLICK_MS)
     if (hit && (doubleOnButton || moved)) {
-      selectSection("waiting")
+      selectSection(sectionWith(hit.key))
       next.card = hit.key
       next.button = -1
       if (since <= DOUBLE_CLICK_MS && last.key === hit.key) next.detail = { key: hit.key, offset: 0 }
     } else if (hit) {
-      selectSection("waiting")
+      selectSection(sectionWith(hit.key))
       next.card = hit.key
       next.button = hit.index
-      action = press((drawn.sections.waiting?.cards || []).find((c) => c.key === hit.key), hit.index)
+      action = press(cardWithButtons(hit.key), hit.index)
     } else if (onCard && section) {
       selectSection(section)
       const double = next.lastClick && next.lastClick.key === onCard.key && (event.at ?? 0) - (next.lastClick.at ?? 0) <= DOUBLE_CLICK_MS
@@ -3714,7 +3729,7 @@ export function handleInput(scroll, event, drawn) {
     // Shift+↑ ↓: the selected card one place up or down among the cards this section shows (the
     // pane's project filter); the selection stays on it.
     // A sub-task under its parent moves among its siblings; a top card among the top cards.
-    if (current && current.id != null) action = { type: "order", id: current.id, key: current.key, where: name === "moveUp" ? "up" : "down", among: cards.filter((c) => (c.group ?? null) === (current.group ?? null)).map((c) => c.id).filter((id) => id != null) }
+    if (current && current.id != null) action = { type: "order", id: current.id, key: current.key, where: name === "moveUp" ? "up" : "down", among: cards.filter((c) => (c.group ?? null) === (current.group ?? null) && c.home === current.home).map((c) => c.id).filter((id) => id != null) }
   } else if (current && (name === "up" || name === "down")) {
     // The view follows the selection (renderBoard keeps the selected card in view).
     const i = Math.max(0, Math.min(cards.indexOf(current) + (name === "up" ? -1 : 1), cards.length - 1))

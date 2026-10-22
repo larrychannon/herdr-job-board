@@ -95,12 +95,14 @@ itself out again at once.
   doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
   where its state goes (bold) and so never looks finished, and the cards under it are drawn
   **straight under it**, in every layout, further in than its title (0.7.3): `↳`, the id, then
-  the card. One in the parent's own section is drawn once, as its own row (or card) right there,
-  with its own state, buttons and selection; Shift+↑ ↓ moves it among the parent's sub-tasks. One
-  in another section keeps its row there, marked `for Node health` (`↳ for Node health: …`), and
-  shows under the parent as a short line: the id, the short name (its title up to the first `:`
-  or `—`) and its own state on the right (its agent's, else its section: to do, waiting on you,
-  doing). An open card
+  the card. Each is drawn **once, only there** (0.7.4), as its own row (or card) with its own
+  buttons and selection, whatever its section: one from another section says that section where
+  its state goes (`to do`, `waiting on you` in amber, or its agent's state), and is neither drawn
+  nor counted in its own section (`TO DO (0) · 1 under its parent`); a Waiting one still counts in
+  `N need you` and the sidebar. Shift+↑ ↓ moves it among the parent's sub-tasks of its section.
+  When its parent is done, or another project's in a view of one project, it is its own row in its
+  section again, marked whose it is (`↳ for Node health (done): …`). The coordinator's turn-start
+  reminder lists a Waiting one after its parent (`↳ #286 …`), or with it (`under #231 …`). An open card
   and the details say `Waiting on: Badge and chart fixes, Phone alerts move`. One level: a card's
   own cards are drawn under that card. When the last of them is done, the parent says **ready to
   resume** (amber, bold) with what it waited on, goes on top of its section, and the
@@ -111,9 +113,8 @@ itself out again at once.
   DOING (2) ──────────────────────────────────────────────────
    1   Node health: goes live after it… waiting on 2  just now
        ↳ 3  Badge and chart fixes before going liv… just now
-       ↳ 2  Phone alerts move                          to do
-  TO DO (1) ──────────────────────────────────────────────────
-   2   ↳ for Node health: Phone alerts move: then me… just now
+       ↳ 2  Phone alerts move: then merge it  to do  just now
+  TO DO (0) · 1 under its parent ─────────────────────────────
   ```
 
   and after `done 2` and `done 3`:

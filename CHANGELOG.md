@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.4 · unreleased
+
+A sub-task shows only under its parent, wherever its parent is.
+
+- **A sub-task in another section than its parent's** is no longer drawn twice (its own row there,
+  `↳ for Node health: …`, and a short line under the parent). Its row (or card) moves to under the
+  parent, after the parent's sub-tasks of its own section, with its section where its state goes
+  (`to do`, `waiting on you` in amber, or its agent's state), and its own buttons and selection:
+  ↑ ↓ reach it, Enter opens its details, ← → and Enter answer a Waiting one, Shift+↑ ↓ order it
+  among its siblings of its section.
+- **Its own section** neither draws nor counts it: `TO DO (0) · 1 under its parent`. A Waiting one
+  still counts in `N need you` (and `WAITING ON YOU (0)  1 needs you, under its parent`) and in
+  the sidebar.
+- **Its parent done**, or another project's in a view of one project: its own row in its section
+  again, marked `↳ for Node health (done): …`.
+- **The coordinator's turn-start reminder** lists a Waiting sub-task after its parent
+  (`↳ #286 …`), or names its open parent (`#290 … (under #231 …)`). `json` is unchanged.
+- **A selected sub-task row** highlights only its id, after the `↳`: its empty id column is no
+  longer a blank highlighted block.
+- **Wide layout, two cards a row** (Waiting at 110+ columns): a sub-task's card stays under its
+  parent's, never beside it.
+
 ## 0.7.3 · unreleased
 
 Each sub-task is drawn once, and visibly inside its parent.
