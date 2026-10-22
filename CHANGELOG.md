@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.3 · unreleased
+
+Each sub-task is drawn once, and visibly inside its parent.
+
+- **A sub-task in its parent's section is drawn once**: its own row (or card, in the wide
+  layout) moves to straight under the parent's, with its own state, buttons and selection, and
+  the parent's short line for it goes. Parent first, then its sub-tasks in their order, then the
+  next card. A sub-task's own sub-tasks follow it, two cells further in.
+- **Inside the parent**: a sub-task's `↳` starts two cells right of where its parent's title
+  starts, with its id after it (`↳ 279  Node health fixes … working`), so it never reads as a
+  card of its own. The same for the short lines of sub-tasks in other sections.
+- **A sub-task in another section** keeps its own row there, marked `↳ for Node health: …`, and
+  its short line with its state (`to do`, `waiting on you`, …) under the parent, after the
+  parent's own sub-task rows.
+- **Shift+↑ ↓** on a sub-task moves it among its parent's sub-tasks; on a top card, among the top
+  cards (its sub-tasks go with it). ↑ ↓ step through parent, sub-tasks, next card.
+- When the project filter hides a parent, its sub-tasks are top cards again (`↳ for …`).
+
 ## 0.7.2 · unreleased
 
 A coordinator hears at once when one of its jobs stops, instead of finding out later from the board.

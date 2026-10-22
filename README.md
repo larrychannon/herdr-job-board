@@ -94,10 +94,13 @@ itself out again at once.
 - **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
   doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
   where its state goes (bold) and so never looks finished, and the cards under it are drawn
-  **straight under it**, in every layout and whatever their section: `↳`, the id, the short name
-  (its title up to the first `:` or `—`) and its own state on the right (its agent's, else its
-  section: to do, waiting on you, doing). Each keeps its own card in its own section too, for its
-  buttons and details, marked `for Node health` (its row: `↳ for Node health: …`). An open card
+  **straight under it**, in every layout, further in than its title (0.7.3): `↳`, the id, then
+  the card. One in the parent's own section is drawn once, as its own row (or card) right there,
+  with its own state, buttons and selection; Shift+↑ ↓ moves it among the parent's sub-tasks. One
+  in another section keeps its row there, marked `for Node health` (`↳ for Node health: …`), and
+  shows under the parent as a short line: the id, the short name (its title up to the first `:`
+  or `—`) and its own state on the right (its agent's, else its section: to do, waiting on you,
+  doing). An open card
   and the details say `Waiting on: Badge and chart fixes, Phone alerts move`. One level: a card's
   own cards are drawn under that card. When the last of them is done, the parent says **ready to
   resume** (amber, bold) with what it waited on, goes on top of its section, and the
@@ -106,10 +109,9 @@ itself out again at once.
 
   ```
   DOING (2) ──────────────────────────────────────────────────
-   3   ↳ for Node health: Badge and chart fixes befo… just now
    1   Node health: goes live after it… waiting on 2  just now
-     ↳ 3  Badge and chart fixes before going live        doing
-     ↳ 2  Phone alerts move                              to do
+       ↳ 3  Badge and chart fixes before going liv… just now
+       ↳ 2  Phone alerts move                          to do
   TO DO (1) ──────────────────────────────────────────────────
    2   ↳ for Node health: Phone alerts move: then me… just now
   ```

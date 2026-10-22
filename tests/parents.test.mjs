@@ -214,7 +214,8 @@ test("done on a parent with open cards: allowed with a warning; they keep their 
     assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: true })
     const details = detailLines({ ...t.entry(3), column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((seg) => seg.t).join("")).join("\n")
     assert.match(details, /For AI agents' AWS switch \(app, done\)/)
-    assert.match(t.ls(120), /for AI agents' AWS switch \(app,…/, "cut to the column, never wrapped")
+    // Drawn under 1 now (0.7.3), it still says whose it is: cut to the column, never wrapped.
+    assert.match(t.ls(120), /\n  ops   ↳ 3  [^\n]*\n[^\n]*\n {13}for AI agents' AWS switc…\n/, "cut to the column, never wrapped")
     // #1 still waits on #3 (under its Done child), and wakes when #3 is done.
     assert.deepEqual(t.entry(1).waitingOn, [3])
     assert.equal(t.item(1).ready, undefined)
@@ -327,11 +328,13 @@ test("ls at 120 columns: 'for …' (dim), 'Waiting on: …' (bold) and the cards
     chain(t)
     const wide = t.ls(120)
     const card = (id) => wide.split("\n\n").find((b) => new RegExp(`(^|\\n)${id} `).test(b)) || ""
-    // One level: 1 shows 2, and 2 shows 3; names, never ids, in the waiting lines.
-    assert.match(card(1), /\n\s+Waiting on: AI agents' AWS swit…\n\s+↳ 2  AI agents' AWS switch\s+doing\n/)
-    assert.doesNotMatch(card(1), /↳ 3/)
-    assert.match(card(2), /\n\s+for Node health\n\s+Waiting on: ~\/work backup\n\s+↳ 3  ~\/work backup\s+doing\n/)
-    assert.match(card(3), /\n\s+for AI agents' AWS switch \(app\)\n/)
+    // All three in Doing (0.7.3): 2's card straight under 1's, 3's under 2's, each further in, its
+    // id after the ↳; names, never ids, in the waiting lines; no "for …" inside the family.
+    assert.match(card(1), /\n\s+Waiting on: AI agents' AWS swit…\n/)
+    assert.match(card(1), /\n  app   ↳ 2  AI agents' AWS switch:\n {13}approve the 4 steps\n {13}Waiting on: ~\/work backup\n/)
+    assert.match(card(1), /\n  ops     ↳ 3  ~\/work backup: let the\n/)
+    assert.doesNotMatch(card(1), /\n\s+↳ \d  [^\n]*(doing|to do)\n/, "no short line for a card drawn whole")
+    assert.doesNotMatch(card(1), /for Node health|for AI agents/)
     assert.doesNotMatch(wide, /waiting on #|Waiting on: #/)
     t.ok(["done", "3"], t.ops)
     t.ok(["done", "2"])
@@ -356,10 +359,12 @@ test("ls at 60 columns: a child's row starts with ↳ and its parent's name, a w
   try {
     chain(t)
     const narrow = t.ls(60)
-    const row = (text, id) => text.split("\n").find((l) => new RegExp(`^.\\s*${id} `).test(l)) || ""
-    assert.match(row(narrow, 3), /^ 3   ops ↳ for AI agents' AWS switch: ~\/work/)
-    assert.match(row(narrow, 2), /^ 2   app ↳ for Node health: AI.* waiting on 1  just now$/)
+    const row = (text, id) => text.split("\n").find((l) => new RegExp(`^.\\s*${id} |↳ ${id}  `).test(l)) || ""
+    // All in Doing (0.7.3): each straight under its parent, further in, its id after the ↳.
+    assert.match(row(narrow, 3), /^     ops     ↳ 3  ~\/work/)
+    assert.match(row(narrow, 2), /^     app   ↳ 2  AI.* waiting on 1  just now$/)
     assert.match(row(narrow, 1), /^ 1   app Node health.* waiting on 1  just now$/)
+    assert.deepEqual(narrow.split("\n").filter((l) => /↳/.test(l)).map((l) => l.match(/↳ (\d)/)[1]), ["2", "3"], "each drawn once")
     assert.doesNotMatch(narrow, /#\d/)
     for (const line of narrow.split("\n")) assert.ok([...line].length <= 60, `fits 60: ${line}`)
     t.ok(["done", "3"], t.ops)
@@ -429,12 +434,14 @@ test("grouped (0.7.1): at 60 columns the cards under a parent are drawn straight
     const lines = t.ls(60).split("\n")
     const at = lines.findIndex((l) => /^ 1 /.test(l))
     assert.match(lines[at], /^ 1   Node health: goes live after .* waiting on 2  just now$/)
-    // The card in Doing, then the one in To do (by section), with their state on the right.
-    assert.match(lines[at + 1], /^\s+↳ 3  Badge and chart fixes before going live\s+doing$/)
-    assert.match(lines[at + 2], /^\s+↳ 2  Phone alerts move\s+to do$/)
-    // Each keeps its own row in its own section, marked whose it is.
+    // The one in Doing too (0.7.3): its own row, once, straight under it and further in than its
+    // title, its id after the ↳; then the one in To do as a short line with its state.
+    assert.match(lines[at + 1], /^ {7}↳ 3  Badge and chart fixes before going liv… just now$/)
+    assert.match(lines[at + 2], /^ {7}↳ 2  Phone alerts move\s+to do$/)
     const doing = lines.slice(lines.findIndex((l) => /^DOING/.test(l)), lines.findIndex((l) => /^TO DO/.test(l)))
-    assert.match(doing.join("\n"), /^ 3   ↳ for Node health: Badge and chart fixes/m)
+    assert.equal(doing.filter((l) => /\b3\b/.test(l)).length, 1, "3 drawn once")
+    assert.doesNotMatch(doing.join("\n"), /for Node health/)
+    // The one in To do keeps its own row there, marked whose it is.
     const todo = lines.slice(lines.findIndex((l) => /^TO DO/.test(l)))
     assert.match(todo.join("\n"), /^ 2   ↳ for Node health: Phone alerts move/m)
     // No ids in the waiting lines; nothing wider than the pane.
@@ -452,8 +459,10 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <names
     const wide = t.ls(120)
     const card = wide.split("\n\n").find((b) => /(^|\n)1 Node health/.test(b)) || ""
     // A column of a third of the pane: the names are cut, the ids and states never.
-    assert.match(card, /\n\s+Waiting on: Badge and chart fixes b…\n/)
-    assert.match(card, /\n  ↳ 3  Badge and chart fixes be… doing\n  ↳ 2  Phone alerts move\s+to do\n/)
+    assert.match(card, /\n\s+Waiting on: Badge and chart fixes b…\s/)
+    // 3 (Doing too) is its own card straight under it, further in; 2 (To do) a short line after it.
+    assert.match(card, /\n    ↳ 3  Badge and chart fixes before\n {9}going live — build   just now\n {9}Honest Offline badge.\n    ↳ 2  Phone alerts move\s+to do(\n|$)/)
+    assert.equal(wide.match(/↳ 3 /g).length, 1, "3 drawn once")
     assert.doesNotMatch(wide, /waiting on #|Waiting on: #/)
     // The same through the view, with agents: a working one says so; a blocked one is first (it waits on you).
     t.ok(["job-start", "fixes", "--id", "3"])
@@ -465,7 +474,8 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <names
     const parent = view.doing.find((e) => e.id === 1)
     assert.deepEqual(parent.under.map((c) => [c.id, c.title, c.live]), [[2, "Phone alerts move", "blocked"], [3, "Badge and chart fixes before going live", "working"]])
     const text = render(view, { width: 60, now: new Date(NOW), layout: "compact", scroll: { doneOpen: true } })
-    assert.match(text, /↳ 2  Phone alerts move\s+blocked\n\s+↳ 3  Badge and chart fixes before going live\s+working\n/)
+    // 3 (working, in Doing with it) its own row under it; 2 (blocked: under Waiting on you) a short line.
+    assert.match(text, /\n 1   Node health[^\n]*\n {7}↳ 3  Badge and chart fixes[^\n]* working  just now\n {7}↳ 2  Phone alerts move\s+blocked\n/)
     // The details name them too.
     const details = detailLines({ ...parent, column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
     assert.match(details, /\n  Waiting on: Phone alerts move, Badge and chart fixes before going live\n/)
@@ -489,7 +499,7 @@ test("grouped (0.7.1): one level under each card; a Done card's open cards show 
     assert.deepEqual(v.doing.find((e) => e.id === 1).under.map((c) => c.id), [3])
     assert.equal(v.doneToday.find((e) => e.id === 2).under, undefined)
     const narrow = t.ls(60)
-    assert.match(narrow, /\n\s+↳ 3  ~\/work backup\s+doing\n/)
+    assert.match(narrow, /\n 1 [^\n]*\n {5}ops   ↳ 3  ~\/work backup[^\n]*just now\n/)
     assert.equal(narrow.match(/↳ 3 /g).length, 1, "drawn once, under 1")
   } finally {
     t.done()
