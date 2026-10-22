@@ -4210,8 +4210,9 @@ export function unacked(file, scope = {}) {
 
 /** Append `records` to the inbox under its lock, once each (by id). Throws when it can't. */
 export function appendInbox(file, records) {
+  const path = sandboxed(inboxPath(file))
+  checkWrite(file)
   mkdirSync(sideDir(file), { recursive: true, mode: 0o700 })
-  const path = inboxPath(file)
   withLock(path, () => {
     const have = new Set(readInbox(file).messages.map((m) => m.id))
     const fresh = records.filter((r) => !have.has(r.id))
@@ -4257,8 +4258,9 @@ export async function appendInboxRetryAsync(file, records, { env = process.env, 
  * A large file is compacted first: acked messages older than a week go.
  */
 export function ackInbox(file, { ids = [], all = false, scope = {}, by = "", now = new Date() } = {}) {
+  const path = sandboxed(inboxPath(file))
+  checkWrite(file)
   mkdirSync(sideDir(file), { recursive: true, mode: 0o700 })
-  const path = inboxPath(file)
   return withLock(path, () => {
     const { messages, acked } = readInbox(file)
     const known = new Set(messages.map((m) => m.id))
@@ -4321,7 +4323,8 @@ export function inboxWatchers(file, scope = {}) {
 
 /** Note this process as an inbox watcher; returns the function that removes the note. */
 export function noteWatcher(file, { pane = "", workspace = "", now = new Date() } = {}) {
-  const dir = watchDir(file)
+  const dir = sandboxed(watchDir(file))
+  checkWrite(file)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, `${process.pid}.json`)
   writeFileSync(path, JSON.stringify({ pid: process.pid, host: hostname(), at: now.toISOString(), pane, workspace }), { mode: 0o600 })
@@ -4381,6 +4384,7 @@ export function waitInbox(file, { scope = {}, timeoutMs = Infinity, pollMs = 500
 /** Change job `slug`'s stop record under its own lock (jobs/<slug>.json.lock). */
 export function updateStop(file, slug, change) {
   if (!SLUG.test(slug)) return null
+  sandboxed(stopFile(file, slug))
   mkdirSync(jobsDir(file), { recursive: true, mode: 0o700 })
   return withLock(stopFile(file, slug), () => {
     const stop = readStop(file, slug) || {}
@@ -6541,9 +6545,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // its slug. One this pane owns or in this workspace first, in any column; else a Done one
         // anywhere. A Done card stays Done for a report that needs nothing; else it is reopened.
         const lastCard = (list) => {
-          const all = list.filter((i) => i.job === slug && ((me.pane && i.origin === me.pane) || (me.workspace && i.workspace === me.workspace) || i.column === "done"))
+          const jobs = list.filter((i) => i.job === slug)
           const newest = (l) => l.sort((a, b) => String(a.updated || "").localeCompare(String(b.updated || ""))).at(-1)
-          return newest(all.filter((i) => me.pane && i.origin === me.pane)) || newest(all.filter((i) => me.workspace && i.workspace === me.workspace)) || newest(all)
+          // Done cards of the slug in several projects: another project's job, maybe; no guess.
+          const done = jobs.filter((i) => i.column === "done")
+          return newest(jobs.filter((i) => me.pane && i.origin === me.pane)) || newest(jobs.filter((i) => me.workspace && i.workspace === me.workspace)) || (new Set(done.map((i) => i.project)).size === 1 ? newest(done) : null)
         }
         const settled = (it) => it && it.reported === reported
         const before = cardFor(board.items)
