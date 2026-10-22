@@ -90,6 +90,7 @@ import {
   listTabsAsync,
   parseInput,
   readBoard,
+  readStops,
   renderBoard,
   repoName,
   reportToken,
@@ -165,9 +166,9 @@ const legacyNotice = (legacy) => (legacy && existsSync(legacy) ? `this repo's 0.
 async function load(file, env) {
   const [agents, tabs] = await Promise.all([listAgentsAsync(env), listTabsAsync(env)])
   try {
-    return { state: readBoard(file), agents, tabs, error: "" }
+    return { state: readBoard(file), agents, tabs, stops: readStops(file), error: "" }
   } catch (e) {
-    return { state: emptyBoard(), agents, tabs, error: e.message }
+    return { state: emptyBoard(), agents, tabs, stops: {}, error: e.message }
   }
 }
 
@@ -177,7 +178,7 @@ function compose(data, file, env, layout, origin = "") {
   layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
-  const view = buildView(data.state, data.agents, { now, workspace })
+  const view = buildView(data.state, data.agents, { now, workspace, stops: data.stops })
   // A Waiting card with buttons says where a press goes (the card's coordinator, or this pane's).
   const route = (e) => routeNote(data.state, e, data.agents, origin)
   const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace, route })

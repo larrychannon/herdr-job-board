@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.2 · unreleased
+
+A coordinator hears at once when one of its jobs stops, instead of finding out later from the board.
+
+- **A job's stop is a message**: when a job's pane (a worker) ends its turn, its Stop hook sends
+  one prompt to its coordinator, where a button press on its card would go (the card's owner,
+  else the project's live coordinator, else the front one):
+  `[job finished] search-ui — done — <the report's summary>` (no final report yet: `no report
+  yet` and the last line the job wrote), or, when it asks something,
+  `[job waiting] search-ui — needs: <its question>`. A permission prompt in the job's tab sends
+  `[job waiting] … — needs: approval: <what it asks>` (the Notification hook). Once per stop: the
+  same line again is not sent, and a job that is working again by the time the line would go
+  (Herdr's status, looked at for a few seconds) sends nothing. When the coordinator can't take a
+  prompt, the line is tried again every 30 s, 10 times at most. Sending happens in the
+  background; the hook itself returns at once.
+- **`tell "<line>"`**: a job may send a line of its own, `[job note] <slug> — <line>`. Its own job
+  only: the slug is its pane's Herdr agent name. Not for a coordinator (exit 2).
+- **Job finished, not reviewed yet**: a Doing card whose job finished (a final report, or its
+  agent idle or done after a finishing stop) and that nobody has changed for 10 minutes since
+  shows `job finished — not reviewed yet` in amber, and the coordinator's turn-start reminder
+  lists such cards (`Jobs finished, cards not updated: …`), until it job-reports, moves or edits
+  the card. A job that stopped on a question doesn't count.
+- Each job's last stop is kept in the board's folder (`jobs/<slug>.json`); the board file itself
+  is still written by the coordinator only.
+- `hooks` now prints a Notification entry too; `contract` lists it.
+
 ## 0.7.1 · unreleased
 
 A parent and the cards made for it now read as one group, in words.

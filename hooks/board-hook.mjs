@@ -1,33 +1,74 @@
 #!/usr/bin/env node
-// Claude Code hooks that keep the job board current. One script for two events; it reads the
-// hook's JSON on stdin and does nothing (exit 0, no output) unless all of these hold: it runs
-// inside Herdr (HERDR_ENV=1), for the coordinator (no role variable, JOB_AGENT_ROLE by default,
-// any *_AGENT_ROLE or the repo's job.json role_env, set to anything but "coordinator"; never a
-// subagent), and the board file exists.
+// Claude Code hooks that keep the job board current. One script for three events; it reads the
+// hook's JSON on stdin and does nothing (exit 0, no output) unless it runs inside Herdr
+// (HERDR_ENV=1), for a main session (never a subagent), and the board file exists.
 //
+// For the coordinator (no role variable, JOB_AGENT_ROLE by default, any *_AGENT_ROLE or the
+// repo's job.json role_env, set to anything but "coordinator"):
 //   UserPromptSubmit  notes where the board stood when the turn began, and reminds the
 //                     coordinator of its cards waiting on the user (this project's and those
 //                     its pane owns; id and title, at most 8), with one count of the others:
-//                     close or update any the user just answered; and of its cards ready to
-//                     resume (every card made for them is done).
+//                     close or update any the user just answered; of its cards ready to
+//                     resume (every card made for them is done); and of its Doing cards whose
+//                     job finished, not reviewed yet (0.7.2).
 //   Stop              when the reply asks the user something but none of its Waiting cards was
 //                     added or changed during the turn (another coordinator's don't count),
 //                     blocks the stop once with a reason: add or update a Waiting card first.
 //                     Never twice in a row (stop_hook_active), and at most once per turn.
 //
-//   node hooks/board-hook.mjs [--role-env NAME]     (the hook command, for both events)
+// For a job's pane (a worker: a role set to anything else) whose Herdr agent has a name, the
+// job's slug (0.7.2):
+//   Stop              its turn ended: one line to its coordinator (board.mjs sendJobMessage):
+//                     "[job finished] <slug> — <report status, or no report yet> — <summary, or
+//                     its last line>", or, when it asks something and has no final report,
+//                     "[job waiting] <slug> — needs: <the question>".
+//   Notification      a permission prompt: "[job waiting] <slug> — needs: approval: <what>".
+//   A stop is sent once (the same line again is not sent), by a sender started in the
+//   background: it waits a moment (JOB_BOARD_NOTIFY_DELAY_MS, 3 s) and sends only while the job
+//   is still stopped (its agent isn't working), trying again every 30 s (JOB_BOARD_NOTIFY_RETRY_MS)
+//   while the coordinator can't take it, 10 times at most. The stop is kept in the board's
+//   folder (jobs/<slug>.json) for "job finished — not reviewed yet".
+//
+//   node hooks/board-hook.mjs [--role-env NAME]     (the hook command, for every event)
 //   node hooks/board-hook.mjs --print-settings      (the settings.json "hooks" entries)
+//   node hooks/board-hook.mjs --deliver <stop>      (the background sender; the hook starts it)
 //
 // Turn records live in the board's folder, in turns/<session id>.json (the store's
 // ~/.local/state/herdr-job-board/turns/), and are removed after 7 days. Any error lets Claude
 // Code carry on: a board hook never gets in the way.
 
+import { spawn, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { boardPath, idList, importNotice, isReady, LEGACY_FILE, listAgents, migrates, mineFor, projectAt, projectName, readBoard, roleOf, sideDir } from "../board.mjs"
+import {
+  boardPath,
+  claimStop,
+  idList,
+  importNotice,
+  isReady,
+  jobCard,
+  jobOf,
+  LEGACY_FILE,
+  listAgents,
+  migrates,
+  mineFor,
+  oneLine,
+  projectAt,
+  projectName,
+  readBoard,
+  readStop,
+  readStops,
+  releaseStop,
+  reportNow,
+  roleOf,
+  sendJobMessage,
+  sideDir,
+  unreviewedReminder,
+  writeStop,
+} from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BOARD_CLI = resolve(HERE, "..", "board.mjs")
@@ -202,6 +243,149 @@ export function blockReason(cli = BOARD_CLI) {
   )
 }
 
+// --- a job's stop: one line to its coordinator (0.7.2) ------------------------------------------
+
+/** A reply's prose: code, block quotes and URLs dropped (as asksUser reads it), by paragraph. */
+const paragraphsOf = (text) =>
+  String(text ?? "")
+    .replace(/```[\s\S]*?(?:```|$)/g, "\n")
+    .replace(/~~~[\s\S]*?(?:~~~|$)/g, "\n")
+    .replace(/^[ \t]*>.*$/gm, "")
+    .split(/\n[ \t]*\n/)
+    .map((p) => p.replace(/[*_`#]+/g, "").replace(/^[\s-]*(?:\d+[.)]\s*)?/gm, "").trim())
+    .filter(Boolean)
+
+/** The last line a reply wrote, without markdown marks; "" for none. */
+export function lastLine(text) {
+  const lines = (paragraphsOf(text).at(-1) || "").split(/\n/).map((l) => l.trim()).filter(Boolean)
+  return oneLine(lines.at(-1) || "")
+}
+
+/** What a reply asks: the last of its last two paragraphs with a "?" in it, else its last paragraph. */
+export function questionOf(text) {
+  const paragraphs = paragraphsOf(text).slice(-2)
+  return oneLine(paragraphs.findLast((p) => p.includes("?")) || paragraphs.at(-1) || "")
+}
+
+export const FINAL = ["done", "blocked", "failed"]
+
+/**
+ * The line a job's stop sends its coordinator, or null for none. `input`: the hook's (Stop, or
+ * a Notification for a permission prompt); `report`: the job's report, parsed (null: none yet).
+ * { state: "finished" | "waiting", key (the same line has the same key), text }.
+ */
+export function stopMessage(slug, input, report = null) {
+  const make = (state, text) => ({ state, text, key: createHash("sha256").update(`${state}\n${text}`).digest("hex").slice(0, 16) })
+  if (input?.hook_event_name === "Notification") {
+    if (input.notification_type !== "permission_prompt") return null
+    return make("waiting", `[job waiting] ${slug} — needs: approval: ${oneLine(input.message) || "a permission prompt in its tab"}`)
+  }
+  if (input?.hook_event_name !== "Stop") return null
+  const said = input.last_assistant_message
+  if (FINAL.includes(report?.status)) {
+    return make("finished", `[job finished] ${slug} — ${report.status} — ${oneLine(report.summary) || lastLine(said) || "no summary"}`)
+  }
+  if (asksUser(said)) return make("waiting", `[job waiting] ${slug} — needs: ${questionOf(said) || "an answer in its tab"}`)
+  return make("finished", `[job finished] ${slug} — no report yet — ${lastLine(said) || "it wrote nothing"}`)
+}
+
+/** Whether this session is a job's (a worker): its role variable, or any *_AGENT_ROLE, says so. */
+export function isWorker(input, env, roleEnv = "JOB_AGENT_ROLE") {
+  if (env.HERDR_ENV !== "1" || input?.agent_type) return false
+  const role = String(env[roleEnv] ?? "").trim()
+  if (role !== "" && role !== "coordinator") return true
+  return Boolean(roleOf(env, [input?.cwd || process.cwd()]))
+}
+
+/**
+ * A worker's Stop or Notification: the stop to send, or null (not a job's, nothing to say, or
+ * the same line as its last stop). { file, slug, pane, workspace, state, key, text, at }.
+ */
+export function workerStop(input, env, { roleEnv = "JOB_AGENT_ROLE", now = new Date() } = {}) {
+  if (!["Stop", "Notification"].includes(input?.hook_event_name) || !isWorker(input, env, roleEnv)) return null
+  const file = boardPath(input.cwd || process.cwd(), env)
+  if (!file || !existsSync(file)) return null
+  const slug = jobOf(env)
+  if (!slug) return null
+  const workspace = String(env.HERDR_WORKSPACE_ID || "")
+  const card = jobCard(readBoard(file), slug, workspace)
+  const message = stopMessage(slug, input, card?.report ? reportNow(card.report).report : null)
+  if (!message || readStop(file, slug)?.key === message.key) return null
+  return { file, slug, pane: String(env.HERDR_PANE_ID || ""), workspace, ...message, at: now.toISOString() }
+}
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
+const delayOf = (value, fallback) => (Number.isFinite(Number(value)) && String(value ?? "").trim() !== "" ? Math.max(0, Number(value)) : fallback)
+
+/** The job's agent's status from Herdr (`herdr agent get <pane>`): "working", "idle", …; "" unknown. */
+function statusOf(pane, env) {
+  const r = spawnSync(env.HERDR_BIN_PATH || "herdr", ["agent", "get", pane], { env, encoding: "utf8", timeout: 5000 })
+  try {
+    return r.status === 0 ? String(JSON.parse(r.stdout)?.result?.agent?.agent_status ?? "") : ""
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Whether the job went on working after its stop: Herdr says "working" at each of `checks` looks,
+ * `every` ms apart (Herdr reads the agent's state off its screen, so it may lag a moment behind
+ * the stop: one look that isn't "working" is enough).
+ */
+async function wentOn(pane, env, { checks = 4, every = 2000 } = {}) {
+  if (!pane) return false
+  for (let i = 0; i < checks; i++) {
+    if (i) await sleep(every)
+    if (statusOf(pane, env) !== "working") return false
+  }
+  return true
+}
+
+/**
+ * The background sender: after a moment, while the job is still stopped (its agent isn't working
+ * again), send the stop's line to the coordinator, trying again while it can't take it. Keeps the
+ * stop (jobs/<slug>.json; `key` only once sent) and lets go of its claim. Resolves to "sent",
+ * "working" (the job went on: nothing sent) or "failed".
+ */
+export async function deliver(stop, env = process.env, { delayMs, retryMs, tries = 10, checkMs } = {}) {
+  delayMs ??= delayOf(env.JOB_BOARD_NOTIFY_DELAY_MS, 3000)
+  retryMs ??= delayOf(env.JOB_BOARD_NOTIFY_RETRY_MS, 30_000)
+  checkMs ??= Math.min(2000, delayMs)
+  const keep = (extra) => writeStop(stop.file, stop.slug, { state: stop.state, at: stop.at, pane: stop.pane, workspace: stop.workspace, key: "", ...extra })
+  try {
+    await sleep(delayMs)
+    let error = ""
+    for (let i = 0; i < tries; i++) {
+      if (i) await sleep(retryMs)
+      if (await wentOn(stop.pane, env, { every: checkMs })) return "working"
+      const state = readBoard(stop.file)
+      const sent = sendJobMessage(state, jobCard(state, stop.slug, stop.workspace), stop.text, env)
+      if (!sent.error) {
+        keep({ key: stop.key, to: sent.to, sent: new Date().toISOString() })
+        return "sent"
+      }
+      error = sent.error
+    }
+    keep({ error: oneLine(error, 160) })
+    return "failed"
+  } catch {
+    return "failed"
+  } finally {
+    releaseStop(stop.file, stop.slug, stop.key)
+  }
+}
+
+/**
+ * Start the sender for `stop` in the background, unless another hook for the same stop has (its
+ * claim). The hook returns at once; Claude Code doesn't wait for the sender.
+ */
+export function startDeliver(stop, env = process.env, now = new Date()) {
+  if (!claimStop(stop.file, stop.slug, stop.key, now)) return false
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--deliver", Buffer.from(JSON.stringify(stop)).toString("base64url")], { env, detached: true, stdio: "ignore" })
+  child.unref()
+  return true
+}
+
 // --- the hook ----------------------------------------------------------------------------------
 
 /** Whether the hooks apply: inside Herdr, the coordinator, not a subagent. */
@@ -249,7 +433,8 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
     recordTurn(file, sessionId, state, now)
     const imported = importNotice(state, `node ${quote(BOARD_CLI)}`)
     const mine = mineOf(state, cwd, env)
-    const text = [legacyLine(cwd, env), imported && `Job board: ${imported}.`, reminder(state, BOARD_CLI, mine), readyReminder(state, mine)].filter(Boolean).join("\n")
+    const finished = unreviewedReminder(state, readStops(file), { mine, agents: () => listAgents(env), now, workspace: String(env.HERDR_WORKSPACE_ID || "") })
+    const text = [legacyLine(cwd, env), imported && `Job board: ${imported}.`, reminder(state, BOARD_CLI, mine), readyReminder(state, mine), finished && `Job board: ${finished}`].filter(Boolean).join("\n")
     if (!text) return { stdout: "" }
     return { stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }) }
   }
@@ -273,7 +458,7 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
 /** The settings.json "hooks" entries that run this script. */
 export function settingsSnippet(script = fileURLToPath(import.meta.url)) {
   const hook = { type: "command", command: `node ${quote(script)}`, timeout: 10 }
-  return { hooks: { UserPromptSubmit: [{ hooks: [hook] }], Stop: [{ hooks: [hook] }] } }
+  return { hooks: { UserPromptSubmit: [{ hooks: [hook] }], Stop: [{ hooks: [hook] }], Notification: [{ matcher: "permission_prompt", hooks: [hook] }] } }
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -281,12 +466,25 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${JSON.stringify(settingsSnippet(), null, 2)}\n`)
     return 0
   }
+  const d = argv.indexOf("--deliver")
+  if (d >= 0) {
+    try {
+      await deliver(JSON.parse(Buffer.from(argv[d + 1] || "", "base64url").toString("utf8")))
+    } catch {}
+    return 0
+  }
   const i = argv.indexOf("--role-env")
   const roleEnv = i >= 0 && argv[i + 1] ? argv[i + 1] : "JOB_AGENT_ROLE"
   let text = ""
   for await (const chunk of process.stdin) text += chunk
   try {
-    const { stdout } = handle(JSON.parse(text), process.env, { roleEnv })
+    const input = JSON.parse(text)
+    // A job's stop: its line goes to the coordinator from the background.
+    const stop = workerStop(input, process.env, { roleEnv })
+    if (stop) startDeliver(stop)
+    // JOB_BOARD_NOW: the clock, as for board.mjs and the pane (tests).
+    const now = process.env.JOB_BOARD_NOW ? new Date(process.env.JOB_BOARD_NOW) : new Date()
+    const { stdout } = handle(input, process.env, { roleEnv, now })
     if (stdout) process.stdout.write(`${stdout}\n`)
   } catch {
     // A board hook never gets in the way.

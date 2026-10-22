@@ -1,6 +1,6 @@
 {
   "name": "herdr-job-board",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "A To do / Doing / Waiting-on-you board for agent jobs, in a Herdr split pane.",
   "license": "MIT",
   "private": true,

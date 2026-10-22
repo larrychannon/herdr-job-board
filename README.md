@@ -565,6 +565,7 @@ this list.
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |
 | | `move`, `edit`, `done`, `rm`, `order` and `retag` change another project's card only with `--project <its project>`, unless your pane owns it (exit 2 otherwise): ids are global, and a remembered id may be another project's. |
 | `answer <id> <text> [--from telegram] [--front]` | What a button press does (see Answer buttons). |
+| `tell "<line>"` | From a job's pane: send `[job note] <its slug> — <line>` to its coordinator. Its own job only (the slug is the pane's Herdr agent name); not for a coordinator. |
 | `front [show]` | This coordinator pane gets the answers no other coordinator can take, and holds Telegram (default: the pane that last opened the board). |
 | `adopt <id>…` / `adopt --project P --gone` | This coordinator pane owns these cards (`--gone`: P's open cards whose owner pane is gone). |
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
@@ -632,11 +633,21 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    until the report is final. Calling it again with the same report changes nothing: no second
    card, no new `updated` time, and edits you made to the card since stay. A report rewritten
    with a different outcome moves the same card again.
+6. **It stops**: you hear at once (see the hooks below). A job's Stop hook sends one prompt into
+   your chat, where a button press on its card would go:
+   `[job finished] search-ui — done — <the report's summary>` (`no report yet` and its last line
+   when it stopped without a final report), or `[job waiting] search-ui — needs: <its question>`
+   (also for a permission prompt in its tab: `needs: approval: …`). Look at the report or the tab,
+   then update the card yourself. A job can also send a line of its own:
+   `board.mjs tell "<line>"` from its pane arrives as `[job note] <slug> — <line>`. A Doing card
+   whose job finished and that nobody changed for 10 minutes since shows **job finished — not
+   reviewed yet** (amber), and the turn-start reminder lists it, until you job-report, move or
+   edit it.
 
 ### Keep the board current: hooks for Claude Code
 
 A coordinator that asks you something in the chat but forgets the card leaves the board stale.
-`hooks/board-hook.mjs` is a pair of [Claude Code hooks](https://code.claude.com/docs/en/hooks)
+`hooks/board-hook.mjs` is a set of [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 that catch that:
 
 - **When you send a message** (UserPromptSubmit), the coordinator is reminded of its cards
@@ -647,7 +658,9 @@ that catch that:
   instructions; a card's description and ask are never passed on. The hook also notes where
   the board stood, for the next check. A second line names its cards **ready to resume** (every
   card made for them is done; id, title and what it waited on, up to 8, `+N ready in other
-  projects`), until the coordinator moves, edits, orders or job-starts them.
+  projects`), until the coordinator moves, edits, orders or job-starts them. A third lists its
+  Doing cards whose job finished and that nobody has changed for 10 minutes since (`Jobs
+  finished, cards not updated: …`).
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
   of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
   changed during that turn, the hook sends it back
@@ -678,6 +691,23 @@ to a new folder and removes the old one once nothing uses it, so after an update
 `job-board.mjs`, which finds the installed copy itself.
 
 Each session's turn record is kept in the store's `turns/` folder and removed after 7 days.
+
+**In a job's pane** (a worker: a role variable set to anything but `coordinator`, with a Herdr
+agent name, the job's slug), the same hooks tell its coordinator when it stops:
+
+- **Stop**: one line, `[job finished] <slug> — <report status, or no report yet> — <the report's
+  summary, else the last line it wrote>`; or, when it has no final report and its reply asks
+  something, `[job waiting] <slug> — needs: <the question>`.
+- **Notification** (`permission_prompt`): `[job waiting] <slug> — needs: approval: <what it asks>`.
+
+The line goes where a button press on the job's card would go (no card: the front coordinator),
+sent by a background process so the hook returns at once. It waits a moment
+(`JOB_BOARD_NOTIFY_DELAY_MS`, 3 s) and sends nothing when the job is working again by then (Herdr's
+status, looked at for a few seconds); when the coordinator can't take a prompt, it tries again
+every 30 s (`JOB_BOARD_NOTIFY_RETRY_MS`), 10 times at most. The same line is never sent twice in a
+row, and two copies of the hook (a repo's settings and your global ones) send it once. Jobs run
+in any repo, so put the hooks in `~/.claude/settings.json` too, or the job skill's equivalent
+(`job-board.mjs hook --jobs`, which does nothing outside a job's pane).
 
 ### Writing cards
 
@@ -713,6 +743,7 @@ archive/2026-10.jsonl Done cards older than 7 days, one JSON line each (json --a
 backups/              board-<date>.json (the first write of each day, 7 kept; restore puts one back),
                       import-<time>/<repo>.json (each 0.4 board an import brought in)
 turns/                the Stop hook's turn records
+jobs/<slug>.json      each job's last stop (finished or waiting, when, whether it was sent and to whom)
 tokens.json           the sidebar text last reported for each workspace
 ```
 
