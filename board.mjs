@@ -9,7 +9,8 @@
 //                           add an item to this folder's project (or P); prints its id. --option
 //                           (up to 4, Waiting only) puts answer buttons on the card, --suggest
 //                           marks the suggested one; --parent: the open card it is made for (the
-//                           card shows "for #ID …", ID "waiting on …" until it is done)
+//                           card shows "for <its short name>", and ID "waiting on N" with
+//                           the cards under it until they are done)
 //   move <ref> <column> [--ask A] [--desc D]                   <ref> is an item id or a job slug
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //        [--parent ID | --no-parent]                           set or remove the card it is made for
@@ -1159,6 +1160,27 @@ export function waitingOn(state, item) {
   return out.sort((a, b) => a - b)
 }
 
+/**
+ * The open cards drawn under `item` (0.7.1): its open children, and the open cards under a Done
+ * child in their place. One level: a child's own children are drawn under the child's card.
+ * Something is open under `item` exactly when this is not empty.
+ */
+export function openUnder(state, item) {
+  const out = []
+  const seen = new Set([item.id])
+  const queue = [item.id]
+  while (queue.length) {
+    const id = queue.shift()
+    for (const c of state.items) {
+      if (c.parent !== id || seen.has(c.id)) continue
+      seen.add(c.id)
+      if (c.column === "done") queue.push(c.id)
+      else out.push(c)
+    }
+  }
+  return out
+}
+
 /** The Done cards under `item`: what a ready parent waited on. */
 function doneUnder(state, item) {
   const out = []
@@ -1513,6 +1535,18 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     view.waiting.push({ id: null, title: a.name, desc: "", ask: "", job: a.name, live: "blocked", age: null, reportStatus: "" })
   }
   view.doneToday.sort((a, b) => new Date(b.since) - new Date(a.since))
+  // The cards drawn under a parent: by section (Waiting, Doing, To do), then in their order; each
+  // with its own state, its agent's (live) or its section's.
+  const shown = new Map([...view.waiting, ...view.doing, ...view.todo].filter((e) => e.id != null).map((e) => [e.id, e]))
+  for (const e of [...view.waiting, ...view.doing, ...view.todo]) {
+    if (!e.under?.length) continue
+    e.under = e.under
+      .map((c) => {
+        const live = shown.get(c.id)?.live || ""
+        return { id: c.id, title: shortTitle(c.title), column: c.column, order: c.order, created: c.created, live: live === "no agent" ? "" : live }
+      })
+      .sort((a, b) => sectionRank(a) - sectionRank(b) || byOrder(a, b))
+  }
   // Blocked agents first: a job is stuck until the user answers it. Then the cards in their
   // order, then blocked agents that have no card.
   view.waiting.sort((a, b) => (b.live === "blocked") - (a.live === "blocked") || (a.id == null) - (b.id == null))
@@ -1521,6 +1555,9 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
   return view
 }
 
+// A blocked job's card shows under Waiting on you, whatever its column.
+const sectionRank = (c) => (c.live === "blocked" ? 0 : SECTIONS.indexOf(c.column))
+
 /**
  * A card's links for the view: `parentOf` ({ id, title (short), tag (when its project differs),
  * done }) for a child, `waitingOn` (open ids under it) for a parent, and `ready` only while
@@ -1528,6 +1565,10 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
  */
 function linksOf(state, item, projects = {}) {
   const out = { waitingOn: item.column === "done" ? [] : waitingOn(state, item) }
+  // The open cards drawn under it, by short name (no ids in what the user reads).
+  if (out.waitingOn.length) out.under = openUnder(state, item)
+  // What a ready parent waited on, by short name: the cards still on the board.
+  if (item.ready_after?.length) out.afterNames = item.ready_after.map((id) => state.items.find((i) => i.id === id)).filter(Boolean).map((i) => shortTitle(i.title))
   if (item.parent) {
     const parent = state.items.find((i) => i.id === item.parent)
     out.parentOf = parent
@@ -1929,6 +1970,8 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     lines.push(line)
   }
   lines.push(...linkLines(entry, inner, indent, status))
+  // The cards under it, on a card; a row draws them under its own line, open or not.
+  if (status && column !== "done") lines.push(...underLines(entry, width, indent))
   // With several projects on the board, an open card names its project in full first:
   // "sfc-integration · <description>".
   const head = ui.projectName ? `${ui.projectName} · ` : ""
@@ -1953,24 +1996,57 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   return lines
 }
 
-// --- a card's links (0.7.0): "for #253 Node health", "waiting on #230, #266", "ready to resume" ---
+// --- a card's links (0.7.0, in words since 0.7.1): "for Node health", "waiting on 2" and the
+// cards under it, "Waiting on: Badge fixes, Phone alerts move", "ready to resume" ---
 const forText = (entry) => {
   const p = entry.parentOf
-  return p ? `for ${p.tag ? `${p.tag} ` : ""}#${p.id}${p.title ? ` ${p.title}` : ""}${p.done ? " (done)" : ""}` : ""
+  if (!p) return ""
+  // A parent no longer on the board (archived) has no name to give.
+  if (!p.title) return "for a card no longer on the board"
+  const notes = [p.tag, p.done && "done"].filter(Boolean)
+  return `for ${p.title}${notes.length ? ` (${notes.join(", ")})` : ""}`
 }
-const waitText = (entry) => (entry.waitingOn?.length ? `waiting on ${idList(entry.waitingOn)}` : "")
+const underOf = (entry) => entry.under || []
+// Where the state goes (a row's right, a card's status line): how many cards it waits on.
+const waitText = (entry) => (underOf(entry).length ? `waiting on ${underOf(entry).length}` : "")
+// On an open card and in its details: which, by name.
+const waitNames = (entry) => (underOf(entry).length ? `Waiting on: ${underOf(entry).map((c) => c.title).join(", ")}` : "")
 const readyText = (entry) => (entry.live === "working" ? "working · ready to resume" : "ready to resume")
-const afterText = (entry) => (entry.ready_after?.length ? `${idList(entry.ready_after)} ${entry.ready_after.length === 1 ? "is" : "are"} done` : "")
+const afterText = (entry) => {
+  const names = entry.afterNames || []
+  if (!names.length) return entry.ready_after?.length ? `${plural(entry.ready_after.length, "card")} ${entry.ready_after.length === 1 ? "is" : "are"} done` : ""
+  return `${names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`} ${names.length === 1 ? "is" : "are"} done`
+}
+// A card under a parent: its agent's state, else its section's.
+const UNDER_PLACE = { waiting: "waiting on you", doing: "doing", todo: "to do", done: "done" }
+const underState = (c) => (c.live ? { t: c.live, s: STATUS_STYLE[c.live] || "gone" } : { t: UNDER_PLACE[c.column] || c.column, s: c.column === "waiting" ? "waiting" : "dim" })
+
+/**
+ * The cards under a parent, one line each, indented by `indent` and `width` cells wide in all:
+ * "↳ 279  Badge and chart fixes        working". The id and the state are never cut; the name is.
+ */
+function underLines(entry, width, indent) {
+  const idWidth = Math.max(1, ...underOf(entry).map((c) => String(c.id).length))
+  return underOf(entry).map((c) => {
+    const head = [indent, { t: `↳ ${String(c.id).padStart(idWidth)}  `, s: "dim" }]
+    const state = underState(c)
+    const room = width - segWidth(head) - textWidth(state.t) - 1
+    const name = fit(c.title, room)
+    const line = [...head, { t: name }]
+    if (room >= 4) line.push({ t: " ".repeat(Math.max(1, width - segWidth(line) - textWidth(state.t))) }, state)
+    return line
+  })
+}
 
 /**
  * The link lines under a card's status: what a ready parent waited on (dim), "for …" (dim) and
- * "waiting on …" (bold). On a card (`apart`) each on its own line; under a row, "for …" and
- * "waiting on …" share one line where they fit.
+ * "Waiting on: …" (bold). On a card (`apart`) each on its own line; under a row, "for …" and
+ * "Waiting on: …" share one line where they fit.
  */
 function linkLines(entry, inner, indent, apart = true) {
   const lines = []
   if (entry.ready && afterText(entry)) lines.push([indent, { t: fit(afterText(entry), inner), s: "dim" }])
-  const parts = [forText(entry) && { t: forText(entry), s: "dim" }, waitText(entry) && { t: waitText(entry), s: "title" }].filter(Boolean)
+  const parts = [forText(entry) && { t: forText(entry), s: "dim" }, waitNames(entry) && { t: waitNames(entry), s: "title" }].filter(Boolean)
   if (!apart && parts.length === 2 && segWidth(parts) + 3 <= inner) lines.push([indent, parts[0], { t: " · ", s: "dim" }, parts[1]])
   else for (const part of parts) lines.push([indent, { t: fit(part.t, inner), s: part.s }])
   return lines
@@ -2052,8 +2128,8 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
     const bar = barOf(entry, ui)
     if (bar) status.push({ t: bar, s: "working", anim: true })
   }
-  // A child's row starts with ↳ (one cell in every terminal: Unicode width neutral).
-  const title = `${entry.parentOf ? "↳ " : ""}${printable(entry.title)}`
+  // A child's row starts with ↳ (one cell in every terminal: Unicode width neutral) and whose it is.
+  const title = `${entry.parentOf ? `↳ ${entry.parentOf.title ? `for ${entry.parentOf.title}: ` : ""}` : ""}${printable(entry.title)}`
   const right = () => [...status, ...(status.length && end ? [{ t: "  " }] : []), ...(end ? [end] : [])]
   const roomFor = () => width - lead - segWidth(right()) - 1
   const want = Math.min(12, textWidth(title))
@@ -2069,6 +2145,8 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   if (tail.length) line.push({ t: " ".repeat(Math.max(1, width - segWidth(line) - segWidth(tail))) }, ...tail)
   const lines = [line]
   for (const t of titleLines.slice(1)) lines.push([indent, ...linkify(t, style, urlsIn(entry.title))])
+  // The cards under it, straight under its line, whatever their section.
+  if (column !== "done") lines.push(...underLines(entry, width, { t: " ".repeat(2 + idWidth) }))
   if (opened) lines.push(...cardBody(entry, column, width, indent, ui.full ? Infinity : DESC_LINES, ui, { status: false }))
   else if (ui.note) for (const t of wrap(ui.note.t, width - lead, 2)) lines.push([indent, { t, s: ui.note.s }])
   return lines
@@ -2578,7 +2656,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
   lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
   if (entry.ready) lines.push([ind, { t: `Ready to resume${afterText(entry) ? `: ${afterText(entry)}` : ""}`, s: "ready" }])
-  const link = [forText(entry).replace(/^for/, "For"), waitText(entry)].filter(Boolean).join(" · ")
+  const link = [forText(entry).replace(/^for/, "For"), waitNames(entry)].filter(Boolean).join(" · ")
   if (link) for (const t of wrap(link, inner, 3)) lines.push([ind, { t, s: "dim" }])
 
   if (clean(entry.desc)) {
@@ -4636,7 +4714,7 @@ Writing cards
   When the user asks to move a card: order <id> top|up|down|bottom.
 - A card made because of another (doing card A, you find you need B first): add B with
   --parent <A's id> (job-start --parent too; edit --parent / --no-parent later). A shows
-  "waiting on #B"; when every card under it is done, A is "ready to resume", on top of its
+  "waiting on 1" with B drawn under it; when every card under it is done, A is "ready to resume", on top of its
   section, and your turn-start reminder says so: pick A up again, or tell the user why not.
 
 Buttons
@@ -5672,7 +5750,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         })
         out(`${item.id} → ${label(column)}: ${item.title}`)
         for (const parent of woke) out(readyNote(parent))
-        if (open.length) err(`board: #${item.id} had open cards for it: ${idList(open)}. They keep their link, shown as "for #${item.id} ${shortTitle(item.title)} (done)".`)
+        if (open.length) err(`board: #${item.id} had open cards for it: ${idList(open)}. They keep their link, shown as "for ${shortTitle(item.title)} (done)".`)
         return 0
       }
       case "edit": {
