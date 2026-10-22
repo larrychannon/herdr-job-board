@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.7.5 · unreleased
+
+The section a card shows in says what it needs from you: a sub-task is drawn under its parent
+only when both are in the same section.
+
+- **A sub-task in another section than its parent's** keeps its own row (or card) in its own
+  section, with its own state, buttons, age, amber flag and order, and one line under its title:
+  `for #231 Node health` (the parent's project first when it is another's, `(done)` when the
+  parent is done). No `↳ for …:` in its title. A Waiting sub-task of a To do parent shows in
+  Waiting on you, not inside To do; a blocked job's card counts as Waiting on you.
+- **A sub-task in its parent's section** is drawn straight under it, as in 0.7.3, now with its
+  state as a tag where its state goes: `[waiting on you]`, `[doing]`, `[to do]` (a Doing one
+  with an agent shows the agent's state, as before).
+- **The parent's `Waiting on:` line** (on its card, its open row and its details, as before)
+  gives each open sub-task a state tag in its section's colour: `Waiting on: Node health fixes
+  [waiting on you] · Phone alerts move [to do]`; `[waiting on you]` amber, `[working]`, `[idle]`
+  or `[doing]` in Doing's blue, `[to do]` grey, `[done]` dim. With `NO_COLOR` (or no terminal)
+  the tags are plain text. Where it doesn't fit on one line, the label has its own line and each
+  card one line under it; names are cut, tags never. A closed row still says `waiting on N`.
+- **Counts**: each section's header counts exactly the cards drawn in it, sub-tasks under a
+  parent there included (`TO DO (0) · 1 under its parent` is gone). `N need you` and the sidebar
+  count every Waiting card, as before.
+- **Shift+↑ ↓**: a sub-task under its parent moves among that parent's sub-tasks; a sub-task in
+  another section moves among its section's top cards.
+- **The coordinator's turn-start reminder** names a Waiting sub-task's open parent with
+  `(for #231 …)` instead of `(under #231 …)`; one whose parent waits too still follows it
+  (`↳ #286 …`). `done` on a parent with open cards says they show as `for #<id> <name> (done)`.
+- Unchanged: ready to resume, `json`, `waiting_on`, the row of a sub-task whose parent is done
+  (now with the `for … (done)` line instead of the title prefix). A Done row no longer names its
+  parent.
+
 ## 0.7.4 · unreleased
 
 A sub-task shows only under its parent, wherever its parent is.

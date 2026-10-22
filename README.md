@@ -94,30 +94,39 @@ itself out again at once.
 - **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
   doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
   where its state goes (bold) and so never looks finished, and the cards under it are drawn
-  **straight under it**, in every layout, further in than its title (0.7.3): `↳`, the id, then
-  the card. Each is drawn **once, only there** (0.7.4), as its own row (or card) with its own
-  buttons and selection, whatever its section: one from another section says that section where
-  its state goes (`to do`, `waiting on you` in amber, or its agent's state), and is neither drawn
-  nor counted in its own section (`TO DO (0) · 1 under its parent`); a Waiting one still counts in
-  `N need you` and the sidebar. Shift+↑ ↓ moves it among the parent's sub-tasks of its section.
-  When its parent is done, or another project's in a view of one project, it is its own row in its
-  section again, marked whose it is (`↳ for Node health (done): …`). The coordinator's turn-start
-  reminder lists a Waiting one after its parent (`↳ #286 …`), or with it (`under #231 …`). An open card
-  and the details say `Waiting on: Badge and chart fixes, Phone alerts move`. One level: a card's
-  own cards are drawn under that card. When the last of them is done, the parent says **ready to
-  resume** (amber, bold) with what it waited on, goes on top of its section, and the
-  coordinator's turn-start reminder names it. Moving, editing, ordering or starting the parent
-  clears the mark. In a 60-column pane:
+  **straight under it** when they are in its section, in every layout, further in than its title
+  (0.7.3): `↳`, the id, then the card, with its state as a tag (`[to do]`). **The section a card
+  shows in says what it needs from you** (0.7.5): a card in another section than its parent's
+  keeps its own row (or card) there, with its own state, buttons, age and order, counted there,
+  and one line under its title, `for #1 Node health` (with the parent's project when it is
+  another's; `(done)` when the parent is done). A blocked job's card counts as Waiting on you. On
+  the parent's card, its open row and its details, `Waiting on:` names every open card under it
+  with its state as a tag in its section's colour: `Waiting on: Phone alerts [waiting on you] ·
+  Badge and chart fixes [doing] · Phone alerts move [to do]`, amber, blue (Doing's) and grey
+  (plain text with `NO_COLOR`); a closed row says `waiting on 3` where its state goes. A
+  section's header counts the cards drawn in it, sub-tasks under a parent included; `N need you`
+  and the sidebar count every Waiting card. Shift+↑ ↓ moves a sub-task drawn under its parent
+  among that parent's sub-tasks, any other card among its section's top cards. The coordinator's
+  turn-start reminder lists a Waiting card after its parent when that waits too (`↳ #286 …`),
+  else with its link (`#290 … (for #231 …)`). One level: a card's own cards are drawn under that
+  card. When the last of them is done, the parent says **ready to resume** (amber, bold) with
+  what it waited on, goes on top of its section, and the coordinator's turn-start reminder names
+  it. Moving, editing, ordering or starting the parent clears the mark. In a 60-column pane:
 
   ```
+  WAITING ON YOU (1) ─────────────────────────────────────────
+   4 ! Phone alerts: go live tonight?                 just now
+       for #1 Node health
+       Needs you: Tonight?
   DOING (2) ──────────────────────────────────────────────────
-   1   Node health: goes live after it… waiting on 2  just now
-       ↳ 3  Badge and chart fixes before going liv… just now
-       ↳ 2  Phone alerts move: then merge it  to do  just now
-  TO DO (0) · 1 under its parent ─────────────────────────────
+   1   Node health: goes live after it… waiting on 3  just now
+         ↳ 3  Badge and chart fixes before … [doing]  just now
+  TO DO (1) ──────────────────────────────────────────────────
+   2   Phone alerts move: then merge it               just now
+       for #1 Node health
   ```
 
-  and after `done 2` and `done 3`:
+  and after `done 2`, `done 3` and `done 4`:
 
   ```
   DOING (1) ──────────────────────────────────────────────────
@@ -562,7 +571,7 @@ this list.
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D]` | Move a card. `<ref>` is its id or its job slug. |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
-| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for <its short name> (done)`. |
+| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |

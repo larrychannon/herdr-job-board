@@ -206,8 +206,8 @@ export function reminder(state, cli = BOARD_CLI, mine = null) {
   const others = all.length - waiting.length
   const otherLine = others ? `+${others} waiting in other projects (not yours; the board shows them).` : ""
   if (!waiting.length) return otherLine && `Job board: ${otherLine}`
-  // A sub-task goes under its parent, as on the board (0.7.4): straight after it when the parent
-  // waits too ("↳ #286 …"), else named with its open parent ("under #231 …").
+  // A sub-task goes under its parent when the parent waits too, as on the board ("↳ #286 …"); else
+  // it is listed with the others, naming its open parent ("for #231 …", 0.7.5).
   const byId = new Map(state.items.map((i) => [i.id, i]))
   const openParent = (i) => (byId.get(i.parent)?.column && byId.get(i.parent).column !== "done" ? byId.get(i.parent) : null)
   const listed = waiting.slice(0, REMINDER_CARDS)
@@ -223,7 +223,7 @@ export function reminder(state, cli = BOARD_CLI, mine = null) {
   const shown = ordered.map((i) => {
     const p = openParent(i)
     const head = `#${Number(i.id)} ${titleAsData(i.title)}`
-    return !p ? head : ids.has(p.id) ? `↳ ${head}` : `${head} (under #${Number(p.id)} ${titleAsData(p.title)})`
+    return !p ? head : ids.has(p.id) ? `↳ ${head}` : `${head} (for #${Number(p.id)} ${titleAsData(p.title)})`
   })
   const more = waiting.length > REMINDER_CARDS ? `; +${waiting.length - REMINDER_CARDS} more` : ""
   return (
