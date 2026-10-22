@@ -1608,6 +1608,47 @@ export function filterView(view, project) {
 }
 
 /**
+ * A sub-task in the same section as its parent drawn once (0.7.3): its own row (or card) moves to
+ * straight under the parent's, in its order, with `nest` (the parent's id) and `depth`; the
+ * parent's `nested` lists those ids, so its short lines under it leave them out. A sub-task in
+ * another section keeps its place there, and its short line under the parent.
+ */
+export function nestView(view) {
+  const out = { ...view }
+  for (const s of ["waiting", "doing", "todo"]) {
+    const list = view[s] || []
+    const here = new Map(list.filter((e) => e.id != null).map((e) => [e.id, e]))
+    // Each open card is in the `under` of one card at most: the nearest open one above it.
+    const nestOf = new Map()
+    for (const e of list) for (const c of e.under || []) if (here.has(c.id) && c.id !== e.id) nestOf.set(c.id, e.id)
+    const kids = new Map()
+    for (const e of list) if (nestOf.has(e.id)) kids.set(nestOf.get(e.id), [...(kids.get(nestOf.get(e.id)) || []), e])
+    const placed = new Set()
+    const sorted = []
+    const put = (e, depth, nest) => {
+      if (placed.has(keyOf(e))) return
+      placed.add(keyOf(e))
+      const mine = (kids.get(e.id) || []).filter((c) => !placed.has(keyOf(c)))
+      const me = { ...e, ...(depth ? { nest, depth } : {}), ...(mine.length ? { nested: mine.map((c) => c.id) } : {}) }
+      sorted.push(me)
+      for (const c of mine) put(c, depth + 1, e.id)
+      // Its short lines (the cards under it in other sections) come after its sub-tasks' rows:
+      // the last of them draws them (`trailers`), indented as under the parent.
+      if (mine.length && (me.under || []).some((c) => !me.nested.includes(c.id))) {
+        me.underLater = true
+        const last = sorted.at(-1)
+        last.trailers = [...(last.trailers || []), me]
+      }
+    }
+    for (const e of list) if (!nestOf.has(e.id)) put(e, 0, null)
+    // A loop of parents (never made by the board) leaves its cards where they were.
+    for (const e of list) put(e, 0, null)
+    out[s] = sorted
+  }
+  return out
+}
+
+/**
  * The projects with open cards, for the pane's strip and `p`: each with its tag, colour and how
  * many of its cards need the user, the ones that need the user most first.
  */
@@ -1986,7 +2027,7 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   }
   lines.push(...linkLines(entry, inner, indent, status))
   // The cards under it, on a card; a row draws them under its own line, open or not.
-  if (status && column !== "done") lines.push(...underLines(entry, width, indent))
+  if (status && column !== "done" && !entry.underLater) lines.push(...underLines(entry, width, indent))
   // With several projects on the board, an open card names its project in full first:
   // "sfc-integration · <description>".
   const head = ui.projectName ? `${ui.projectName} · ` : ""
@@ -2037,13 +2078,17 @@ const UNDER_PLACE = { waiting: "waiting on you", doing: "doing", todo: "to do", 
 const underState = (c) => (c.live ? { t: c.live, s: STATUS_STYLE[c.live] || "gone" } : { t: UNDER_PLACE[c.column] || c.column, s: c.column === "waiting" ? "waiting" : "dim" })
 
 /**
- * The cards under a parent, one line each, indented by `indent` and `width` cells wide in all:
- * "↳ 279  Badge and chart fixes        working". The id and the state are never cut; the name is.
+ * The cards under a parent, one line each, `width` cells wide in all: "↳ 279  Badge and chart
+ * fixes        working", the ↳ two cells in from `indent` (where the parent's title starts), so it
+ * reads as inside the parent (0.7.3). The id and the state are never cut; the name is.
  */
 function underLines(entry, width, indent) {
-  const idWidth = Math.max(1, ...underOf(entry).map((c) => String(c.id).length))
-  return underOf(entry).map((c) => {
-    const head = [indent, { t: `↳ ${String(c.id).padStart(idWidth)}  `, s: "dim" }]
+  // The ones drawn as their own rows right under it (nestView) are not drawn again.
+  const under = underOf(entry).filter((c) => !entry.nested?.includes(c.id))
+  if (!under.length) return []
+  const idWidth = Math.max(1, ...under.map((c) => String(c.id).length))
+  return under.map((c) => {
+    const head = [indent, { t: `  ↳ ${String(c.id).padStart(idWidth)}  `, s: "dim" }]
     const state = underState(c)
     const room = width - segWidth(head) - textWidth(state.t) - 1
     const name = fit(c.title, room)
@@ -2061,7 +2106,9 @@ function underLines(entry, width, indent) {
 function linkLines(entry, inner, indent, apart = true) {
   const lines = []
   if (entry.ready && afterText(entry)) lines.push([indent, { t: fit(afterText(entry), inner), s: "dim" }])
-  const parts = [forText(entry) && { t: forText(entry), s: "dim" }, waitNames(entry) && { t: waitNames(entry), s: "title" }].filter(Boolean)
+  // A sub-task drawn under its parent (nestView) needs no "for …"; one drawn under its parent's
+  // parent (its own is done) still says whose it is.
+  const parts = [!(entry.depth && entry.parentOf?.id === entry.nest) && forText(entry) && { t: forText(entry), s: "dim" }, waitNames(entry) && { t: waitNames(entry), s: "title" }].filter(Boolean)
   if (!apart && parts.length === 2 && segWidth(parts) + 3 <= inner) lines.push([indent, parts[0], { t: " · ", s: "dim" }, parts[1]])
   else for (const part of parts) lines.push([indent, { t: fit(part.t, inner), s: part.s }])
   return lines
@@ -2081,14 +2128,19 @@ const barOf = (entry, ui) => (entry.live === "working" && Number.isInteger(ui.fr
 function card(entry, column, width, idWidth, descMax, ui = {}) {
   // The project's tag after the id; the title and the body start after it.
   const tag = tagSegs(ui)
-  const indent = { t: " ".repeat(idWidth + 1 + segWidth(tag)) }
-  const inner = Math.max(4, width - textWidth(indent.t))
+  const base = idWidth + 1 + segWidth(tag)
   const blocked = entry.live === "blocked"
   const mark = entry.id == null ? "•" : String(entry.id)
+  // A sub-task straight under its parent's card (nestView): "  ↳ 279  title", its id moved in
+  // two cells right of where its parent's title starts, so it reads as inside the parent; its
+  // whole card is indented as far.
+  const sub = subSegs(entry, ui)
+  const indent = { t: " ".repeat(base + segWidth(sub)) }
+  const inner = Math.max(4, width - textWidth(indent.t))
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
   const titles = wrap(entry.title, inner, 2)
   const lines = titles.map((t, i) => [
-    ...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag]),
+    ...(i ? [indent] : [{ t: `${(sub.length ? "" : mark).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag, ...sub]),
     ...linkify(t, blocked ? "blocked" : "title", urls),
   ])
   lines.push(...cardBody(entry, column, width, indent, descMax, ui))
@@ -2103,6 +2155,7 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
     if (line) line.push({ t: " ".repeat(room(line)) }, { t: age, s: style })
     else lines.push([indent, { t: age, s: style }])
   }
+  lines.push(...trailerLines(entry, column, width, base))
   return lines
 }
 const ageStyle = (entry, column) => (column === "waiting" && entry.age > 24 * 3600_000 ? "old" : "dim")
@@ -2124,8 +2177,12 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const mark = entry.id == null ? "•" : String(entry.id)
   const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : { t: " " }
   const tag = tagSegs(ui)
-  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag]
-  const lead = 1 + idWidth + 3 + segWidth(tag)
+  // A sub-task under its parent (nestView): its id moves in, after a ↳ two cells right of where
+  // its parent's title starts (deeper ones two more), so it reads as inside the parent.
+  const sub = subSegs(entry, ui)
+  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: sub.length ? " ".repeat(idWidth) : mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
+  const base = 1 + idWidth + 3 + segWidth(tag)
+  const lead = base + segWidth(sub)
   const indent = { t: " ".repeat(lead) }
   const end =
     column === "done"
@@ -2144,8 +2201,9 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
     const bar = barOf(entry, ui)
     if (bar) status.push({ t: bar, s: "working", anim: true })
   }
-  // A child's row starts with ↳ (one cell in every terminal: Unicode width neutral) and whose it is.
-  const title = `${entry.parentOf ? `↳ ${entry.parentOf.title ? `for ${entry.parentOf.title}: ` : ""}` : ""}${printable(entry.title)}`
+  // A child's row in another section than its parent's starts with ↳ (one cell in every terminal:
+  // Unicode width neutral) and whose it is.
+  const title = `${!entry.depth && entry.parentOf ? `↳ ${entry.parentOf.title ? `for ${entry.parentOf.title}: ` : ""}` : ""}${printable(entry.title)}`
   const right = () => [...status, ...(status.length && end ? [{ t: "  " }] : []), ...(end ? [end] : [])]
   const roomFor = () => width - lead - segWidth(right()) - 1
   const want = Math.min(12, textWidth(title))
@@ -2162,11 +2220,20 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   const lines = [line]
   for (const t of titleLines.slice(1)) lines.push([indent, ...linkify(t, style, urlsIn(entry.title))])
   // The cards under it, straight under its line, whatever their section.
-  if (column !== "done") lines.push(...underLines(entry, width, { t: " ".repeat(2 + idWidth) }))
+  if (column !== "done" && !entry.underLater) lines.push(...underLines(entry, width, indent))
   if (opened) lines.push(...cardBody(entry, column, width, indent, ui.full ? Infinity : DESC_LINES, ui, { status: false }))
   else if (ui.note) for (const t of wrap(ui.note.t, width - lead, 2)) lines.push([indent, { t, s: ui.note.s }])
+  lines.push(...trailerLines(entry, column, width, base))
   return lines
 }
+
+// A sub-task's lead-in under its parent (nestView): "  ↳ 279  ", deeper ones two cells further.
+const subSegs = (entry, ui = {}) =>
+  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: entry.id == null ? "•" : String(entry.id), s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+// After a parent's last sub-task, the parent's short lines (`trailers`, nestView), indented from
+// where that parent's title starts (`base` + its own lead-in).
+const trailerLines = (entry, column, width, base) =>
+  column === "done" ? [] : (entry.trailers || []).flatMap((p) => underLines(p, width, { t: " ".repeat(base + segWidth(subSegs(p))) }))
 
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
@@ -2207,7 +2274,8 @@ export function sectionBlocks(view, section, width, perRow = 1, uiOf = () => ({}
       l.map((seg) => ({ ...seg, card: keyOf(e) })),
     )
   // Rows follow each other with no blank line between them; cards have one.
-  if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width), ...(form === "row" ? { gap: 0 } : {}) }))
+  // A sub-task's card follows its parent's with no blank line either (nestView).
+  if (perRow <= 1) return entries.map((e) => ({ keys: [keyOf(e)], lines: draw(e, width), ...(form === "row" || e.depth ? { gap: 0 } : {}) }))
   const gap = 3
   const cw = Math.floor((width - gap * (perRow - 1)) / perRow)
   const blocks = []
@@ -2873,7 +2941,7 @@ export function renderBoard(view, opts = {}) {
   const strip = projectStrip(full)
   const tagged = manyProjects(full)
   if (scroll.project && !strip.some((p) => p.name === scroll.project) && !full.projects?.[scroll.project]) scroll.project = ""
-  view = filterView(full, scroll.project || "")
+  view = nestView(filterView(full, scroll.project || ""))
   const notes = opts.notes || {}
   const frame = Number.isInteger(opts.frame) ? opts.frame : null
   const doneOpen = scroll.doneOpen === true
@@ -3041,6 +3109,8 @@ export function renderBoard(view, opts = {}) {
       cards: entriesOf(view, section).map((e) => ({
         key: keyOf(e),
         id: e.id,
+        // Its parent's id when drawn under it (nestView): Shift+↑ ↓ moves it among its siblings.
+        group: e.nest ?? null,
         // Only buttons on screen count: a card whose buttons are hidden has none to choose or press.
         buttons: shownOptions(e, section).length ? shownOptions(e, section).length + 1 : 0,
         // A closed row (inbox and compact) shows no buttons: ← → there move between sections.
@@ -3643,7 +3713,8 @@ export function handleInput(scroll, event, drawn) {
   } else if (name === "moveUp" || name === "moveDown") {
     // Shift+↑ ↓: the selected card one place up or down among the cards this section shows (the
     // pane's project filter); the selection stays on it.
-    if (current && current.id != null) action = { type: "order", id: current.id, key: current.key, where: name === "moveUp" ? "up" : "down", among: cards.map((c) => c.id).filter((id) => id != null) }
+    // A sub-task under its parent moves among its siblings; a top card among the top cards.
+    if (current && current.id != null) action = { type: "order", id: current.id, key: current.key, where: name === "moveUp" ? "up" : "down", among: cards.filter((c) => (c.group ?? null) === (current.group ?? null)).map((c) => c.id).filter((id) => id != null) }
   } else if (current && (name === "up" || name === "down")) {
     // The view follows the selection (renderBoard keeps the selected card in view).
     const i = Math.max(0, Math.min(cards.indexOf(current) + (name === "up" ? -1 : 1), cards.length - 1))
