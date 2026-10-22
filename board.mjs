@@ -13,9 +13,12 @@
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //   done <ref>                                                 same as move <ref> done
 //   rm <ref>
-//                           move, edit, done, rm and retag change a card of another project only
+//                           move, edit, done, rm, order and retag change a card of another project only
 //                           with --project <its project> (or from the coordinator pane that owns it)
 //   retag <id>… <project>   move cards to another project
+//   order <ref> top|up|down|bottom [--project P]
+//                           move a card in its section (To do, Doing, Waiting on you); with
+//                           --project, up and down step over P's cards only
 //   adopt <id>… | adopt --project P --gone
 //                           this coordinator pane owns these cards (--gone: P's open cards whose
 //                           owner pane is gone)
@@ -442,6 +445,7 @@ export function readBoard(file) {
   for (const p of Object.values(state.projects)) {
     if (!TAG.test(p.tag)) p.tag = tagFor(p.tag || "p", state.projects)
   }
+  orderAll(state)
   state.version = 2
   return state
 }
@@ -1017,6 +1021,7 @@ function addItem(state, column, title, opts, now, who = {}) {
     created: at,
     since: at,
     updated: at,
+    order: topOf(state, column),
   }
   if (opts.report) item.report = resolve(opts.report)
   setOptions(item, opts)
@@ -1024,9 +1029,11 @@ function addItem(state, column, title, opts, now, who = {}) {
   return item
 }
 
-function moveItem(item, column, now) {
+/** Move a card to `column`; one that changes section goes on top of it. */
+function moveItem(state, item, column, now) {
   const at = now.toISOString()
   if (item.column !== column) {
+    item.order = topOf(state, column, item)
     item.column = column
     item.since = at
     // A question, and its buttons, are only open while the item waits on the user.
@@ -1051,6 +1058,56 @@ function editItem(item, opts, now) {
   setOptions(item, opts)
   item.updated = now.toISOString()
   return item
+}
+
+// --- order: each open card's place in its section ------------------------------------------------
+
+// `order` is a number per card, lower is higher up, compared within a section only. New cards and
+// cards that change section go on top; `order` and Shift+↑ ↓ in the pane move them. Done keeps
+// its own order (newest first).
+export const PLACES = ["top", "up", "down", "bottom"]
+const byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.id - b.id
+const sectionOf = (state, column, except = null) => state.items.filter((i) => i.column === column && i !== except).sort(byOrder)
+const topOf = (state, column, except = null) => {
+  const first = sectionOf(state, column, except)[0]
+  return first && Number.isFinite(first.order) ? first.order - 1 : 0
+}
+
+/**
+ * Cards without a place (a board from before 0.6.0, a hand edit, an imported card) get one below
+ * those that have one, newest first. Nothing else changes.
+ */
+export function orderAll(state) {
+  const placed = state.items.filter((i) => Number.isFinite(i.order))
+  const missing = state.items.filter((i) => !Number.isFinite(i.order)).sort((a, b) => b.id - a.id)
+  let next = Math.floor(Math.max(-1, ...placed.map((i) => i.order))) + 1
+  for (const item of missing) item.order = next++
+}
+
+/**
+ * Move `item` to the top, one place up or down, or to the bottom of its section. `among`, when
+ * given, says which cards count as places (a pane's view of one project): up and down step over
+ * the others. Only the card's own `order` changes, unless its neighbours are too close to fit
+ * between (then the section is numbered again). Returns whether it moved.
+ */
+export function placeItem(state, item, where, among = null) {
+  if (!PLACES.includes(where)) throw usage(`where to? ${PLACES.join(", ")}`)
+  orderAll(state)
+  const rest = sectionOf(state, item.column, item)
+  const near = among ? rest.filter(among) : rest
+  const above = near.filter((i) => byOrder(i, item) < 0)
+  const below = near.filter((i) => byOrder(i, item) > 0)
+  // The card it goes before, or after.
+  const target = where === "top" ? above[0] : where === "up" ? above.at(-1) : where === "down" ? below[0] : below.at(-1)
+  if (!target) return false
+  const at = rest.indexOf(target) + (where === "top" || where === "up" ? 0 : 1)
+  const [a, b] = [rest[at - 1], rest[at]]
+  const mid = a && b ? (a.order + b.order) / 2 : a ? a.order + 1 : b.order - 1
+  if (a && b && !(mid > a.order && mid < b.order)) {
+    rest.splice(at, 0, item)
+    rest.forEach((i, n) => (i.order = n))
+  } else item.order = mid
+  return true
 }
 
 const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
@@ -1290,7 +1347,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     view.doneLabel = `in ${doneDays} day${doneDays === 1 ? "" : "s"}`
   }
   const onBoard = new Set()
-  const sorted = [...state.items].sort((a, b) => a.id - b.id)
+  const sorted = [...state.items].sort(byOrder)
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now) }
@@ -1316,8 +1373,9 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     view.waiting.push({ id: null, title: a.name, desc: "", ask: "", job: a.name, live: "blocked", age: null, reportStatus: "" })
   }
   view.doneToday.sort((a, b) => new Date(b.since) - new Date(a.since))
-  // Blocked agents first: a job is stuck until the user answers it.
-  view.waiting.sort((a, b) => (b.live === "blocked") - (a.live === "blocked") || (a.id ?? 1e9) - (b.id ?? 1e9))
+  // Blocked agents first: a job is stuck until the user answers it. Then the cards in their
+  // order, then blocked agents that have no card.
+  view.waiting.sort((a, b) => (b.live === "blocked") - (a.live === "blocked") || (a.id == null) - (b.id == null))
   for (const column of ["waiting", "doing", "todo"]) view.counts[column] = view[column].length
   view.counts.doneToday = view.doneToday.length
   return view
@@ -3012,7 +3070,7 @@ const CHAR_KEYS = {
 /**
  * Terminal input as events: { type: "key", name } (next and prev for Tab and Shift-Tab, left,
  * right, up, down, pageup, pagedown, top, bottom, enter, escape, other, copy, done, more, tab,
- * mouse, quit, redraw, project for p, allProjects for P), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
+ * mouse, quit, redraw, project for p, allProjects for P, moveUp and moveDown for Shift+↑ ↓), { type: "wheel", dir: "up" | "down", x, y } and { type: "click", x, y } from SGR
  * (1006) mouse reports. Anything else is skipped.
  */
 export function parseInput(text) {
@@ -3035,7 +3093,9 @@ export function parseInput(text) {
     if (m) {
       const params = m[1] ?? ""
       const final = m[2] ?? m[3]
-      const name = /[?<>=]/.test(params) ? null : final === "~" ? TILDE_KEYS[params.split(";")[0]] : LETTER_KEYS[final]
+      let name = /[?<>=]/.test(params) ? null : final === "~" ? TILDE_KEYS[params.split(";")[0]] : LETTER_KEYS[final]
+      // Shift+↑ ↓ (ESC [1;2A, ESC [1;2B) move the selected card; other modifiers are plain ↑ ↓.
+      if ((name === "up" || name === "down") && params.split(";")[1] === "2") name = name === "up" ? "moveUp" : "moveDown"
       if (name) events.push({ type: "key", name })
       i += m[0].length
       continue
@@ -3082,7 +3142,8 @@ const justMoved = (scroll, b, at) => Number.isFinite(at) && at - (scroll.seen?.[
 /**
  * One input event against the screen the user sees (`drawn`, from renderBoard): the new state
  * and maybe an action for the pane to carry out: { type: "send", id, key, label },
- * { type: "other", id, key }, { type: "copy", key }, { type: "tab", key } or { type: "mouse" }.
+ * { type: "other", id, key }, { type: "copy", key }, { type: "tab", key }, { type: "mouse" } or
+ * { type: "order", id, key, where, among } (Shift+↑ ↓: move the card, see orderCard).
  * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them, skipping Done
  *   while it is folded; ↑ ↓ select a card in the section, scrolling to keep it in view; PgUp PgDn
  *   scroll a page, g G go to the ends; the mouse wheel scrolls the section under the pointer.
@@ -3292,6 +3353,10 @@ export function handleInput(scroll, event, drawn) {
   } else if (event.type === "wheel") {
     const target = sectionAt(drawn.regions, event.x, event.y)
     if (target) scrollTo(target, at(target) + (event.dir === "up" ? -1 : 1))
+  } else if (name === "moveUp" || name === "moveDown") {
+    // Shift+↑ ↓: the selected card one place up or down among the cards this section shows (the
+    // pane's project filter); the selection stays on it.
+    if (current && current.id != null) action = { type: "order", id: current.id, key: current.key, where: name === "moveUp" ? "up" : "down", among: cards.map((c) => c.id).filter((id) => id != null) }
   } else if (current && (name === "up" || name === "down")) {
     // The view follows the selection (renderBoard keeps the selected card in view).
     const i = Math.max(0, Math.min(cards.indexOf(current) + (name === "up" ? -1 : 1), cards.length - 1))
@@ -3664,6 +3729,19 @@ export function markSent(file, id, label, now = new Date(), { pane = "", to = ""
   updateBoard(file, (s) => {
     const item = s.items.find((i) => i.id === id)
     if (item && item.column === "waiting") item.sent = { label: clean(label), at: now.toISOString(), ...(pane ? { pane, to: clean(to) } : {}), ...(from ? { from } : {}) }
+  }, now)
+}
+
+/**
+ * The pane's Shift+↑ ↓: move card `id` up or down among the cards with ids in `among` (the ones
+ * its section shows). Returns a message for the key line, or null when it can't move further.
+ */
+export function orderCard(file, id, where, among = null, now = new Date()) {
+  const ids = among ? new Set(among) : null
+  return updateBoard(file, (s) => {
+    const item = s.items.find((i) => i.id === id)
+    if (!item || item.column === "done") return null
+    return placeItem(s, item, where, ids ? (i) => ids.has(i.id) : null) ? `card ${id} moved ${where}` : null
   }, now)
 }
 
@@ -4362,6 +4440,8 @@ Writing cards
   a Waiting card also --ask "<exactly what the user should do>". move, edit, done, rm take an id
   or a job slug.
 - Before you ask the user something, add or update a Waiting card (the Stop hook checks).
+- Order: each section is in the user's order, new cards and cards that change section on top.
+  When the user asks to move a card: order <id> top|up|down|bottom.
 
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
@@ -4719,7 +4799,7 @@ export function importInto(state, sources, ctx) {
       const same = state.items.find(isSame(name, card, earlier))
       if (same) {
         if (new Date(card.updated) > new Date(same.updated)) {
-          const { id: _id, project: _p, origin: _o, workspace: _w, was: _was, ...fields } = card
+          const { id: _id, project: _p, origin: _o, workspace: _w, was: _was, order: _order, ...fields } = card
           Object.assign(same, fields, { origin: same.origin || card.origin || origin, workspace: same.workspace || card.workspace || project.workspace })
           entry.merged++
         } else entry.unchanged++
@@ -4734,7 +4814,9 @@ export function importInto(state, sources, ctx) {
     const kept = take.filter((c) => !used.has(c.id))
     state.next_id = Math.max(state.next_id, Number(src.board.next_id) || 1, ...kept.map((c) => c.id + 1))
     for (const card of take) {
-      const item = { ...card, project: name, origin: card.origin || origin, workspace: card.workspace || project.workspace }
+      // Its place on this board is given when it is next read (orderAll: below the cards here).
+      const { order: _order, ...fields } = card
+      const item = { ...fields, project: name, origin: card.origin || origin, workspace: card.workspace || project.workspace }
       if (used.has(card.id)) {
         item.id = state.next_id++
         item.was = `${name}#${card.id}`
@@ -5190,6 +5272,7 @@ export const COMMAND_FLAGS = {
   edit: ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project"],
   done: ["project"],
   rm: ["project"],
+  order: ["project"],
   retag: ["project"],
   adopt: ["project", "gone"],
   answer: ["from", "front"],
@@ -5223,7 +5306,7 @@ function only(opts, command) {
 
 const label = (column) => (column === "waiting" ? "waiting on you" : column === "todo" ? "to do" : column)
 // The commands that change the board, and those that only read it (see migrate).
-const WRITES = new Set(["add", "move", "done", "edit", "rm", "retag", "adopt", "front", "project", "job-start", "job-report"])
+const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report"])
 const READS = new Set(["ls", "json", "projects", "token", "export"])
 // answer writes (the sent note) but brings nothing in: the card is on the board already.
 
@@ -5378,7 +5461,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         need(command === "move" ? 2 : 1, command === "move" ? "<id|job> <column> [--ask A] [--desc D] [--project P]" : "<id|job> [--project P]")
         const column = command === "done" ? "done" : columnOf(rest[1])
         const item = change((s) => {
-          const it = moveItem(owned(s, findItem(s, rest[0], me)), column, now)
+          const it = moveItem(s, owned(s, findItem(s, rest[0], me)), column, now)
           return opts.ask !== undefined || opts.desc !== undefined ? editItem(it, opts, now) : it
         })
         out(`${item.id} → ${label(column)}: ${item.title}`)
@@ -5400,6 +5483,19 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return it
         })
         out(`${item.id} removed: ${item.title}`)
+        return 0
+      }
+      case "order": {
+        only(opts, command)
+        need(2, "<id|job> top|up|down|bottom [--project P]")
+        if (!PLACES.includes(rest[1])) throw usage(`usage: board.mjs order <id|job> ${PLACES.join("|")} [--project P]`)
+        const { item, moved } = change((s) => {
+          const it = owned(s, findItem(s, rest[0], me))
+          if (it.column === "done") throw usage(`${it.id} is done: Done keeps its own order (newest first)`)
+          return { item: it, moved: placeItem(s, it, rest[1], opts.project !== undefined ? (i) => i.project === it.project : null) }
+        })
+        const end = rest[1] === "top" || rest[1] === "up" ? "top" : "bottom"
+        out(moved ? `${item.id} → ${rest[1]} in ${label(item.column)}: ${item.title}` : `${item.id} is at the ${end} of ${label(item.column)} already: ${item.title}`)
         return 0
       }
       case "retag": {
@@ -5491,7 +5587,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           const found = opts.id ? findItem(s, String(opts.id)) : jobScope(s.items, slug, me, { any: false }).findLast(open)
           if (!found) return addItem(s, "doing", opts.title || slug, { ...opts, job: slug }, now, who(s))
           const it = owned(s, found, null)
-          moveItem(it, "doing", now)
+          moveItem(s, it, "doing", now)
           dropOptions(it)
           if (opts.worktree !== undefined || opts.project !== undefined) it.project = projectFor(s)
           if (me.workspace) it.workspace = me.workspace
@@ -5561,7 +5657,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           const found = cardFor(s.items)
           if (settled(found) || (!found && s.reports[reported])) return found || { id: s.reports[reported].id, title: `job ${slug}`, unchanged: true }
           const it = found || addItem(s, column, slug, { job: slug, report: path }, now, who(s))
-          moveItem(it, column, now)
+          moveItem(s, it, column, now)
           // A worker's report never puts answer buttons on the board.
           dropOptions(it)
           it.ask = ask

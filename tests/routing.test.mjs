@@ -114,19 +114,20 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     assert.match(flat(r.stdout), /sent: Go · 12:03 · to ai coordinator \(wA:p1\)/)
 
     // The owner is gone, and no other ai coordinator runs: the first press warns, the second sends to w4:p6.
+    // A new card goes on top of its section, so it is the first one selected.
     h.ok(ai, ["add", "waiting", "Second question", "--option", "Yes"], h.at("wA:p1"))
     h.live("w4:p6")
-    r = h.pane(sfc, "\x1b[B\x1b[C\r", "w4:p6")
+    r = h.pane(sfc, "\x1b[C\r", "w4:p6")
     assert.equal(h.prompts().length, 0)
     assert.match(flat(r.stdout), /no ai coordinator is running: press Yes again to send it to the board's coordinator \(sfc, pane w4:p6\)/)
-    r = h.pane(sfc, "\x1b[B\x1b[C\r\r", "w4:p6")
+    r = h.pane(sfc, "\x1b[C\r\r", "w4:p6")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w4:p6", "Board card 3 (ai · Second question): Yes"]])
     assert.equal(h.card(3).sent.to, "sfc coordinator (w4:p6)")
 
     // No coordinator at all: couldn't send, nothing sent.
     h.ok(ai, ["add", "waiting", "Third", "--option", "Ok"], h.at("wA:p1"))
     h.live()
-    r = h.pane(sfc, "\x1b[B\x1b[B\x1b[C\r\r", "w4:p6")
+    r = h.pane(sfc, "\x1b[C\r\r", "w4:p6")
     assert.equal(h.prompts().length, 0)
     assert.match(flat(r.stdout), /couldn't send: no ai coordinator is running; start one there, or use Other…/)
 
@@ -135,7 +136,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     h.ok(sfc, ["add", "todo", "x"], h.at("w4:p7"))
     h.ok(sfc, ["add", "waiting", "sfc question", "--option", "Ship"], h.at("w4:p6"))
     h.live("w4:p7", "w4:p9")
-    r = h.pane(sfc, "\x1b[B\x1b[B\x1b[B\x1b[C\r", "w4:p9")
+    r = h.pane(sfc, "\x1b[C\r", "w4:p9")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w4:p7", "Board card 6 (sfc · sfc question): Ship"]])
   } finally {
     h.done()

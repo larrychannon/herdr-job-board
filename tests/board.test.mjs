@@ -2,6 +2,7 @@
 // board.mjs (the CLI, the only writer) and board-pane.mjs (the renderer). Herdr is faked by
 // fixtures/fake-herdr.mjs; the real one is never called.
 import "./guard.mjs"
+import { idOrder } from "./id-order.mjs"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
@@ -162,6 +163,7 @@ function seedDemo(dir) {
   for (const [title, desc] of todo) add(["add", "todo", title, "--desc", desc], "2026-10-13T10:29:00Z")
   add(["add", "todo", "Nightly backup check"], "2026-10-13T07:00:00Z")
   add(["done", "12"], "2026-10-13T07:30:00Z")
+  idOrder(join(STATE, "board.json"))
 }
 
 const agent = (name, status, workspace = "w9") => ({ name, agent_status: status, workspace_id: workspace, pane_id: `${workspace}:p${name.length}` })

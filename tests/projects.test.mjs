@@ -5,6 +5,7 @@
 // the plan's mockups (real card titles), written to a temp store; Herdr is faked.
 // UPDATE_SNAPSHOTS=1 rewrites the snapshots.
 import "./guard.mjs"
+import { inIdOrder } from "./id-order.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -85,7 +86,7 @@ function setup(board = mockBoard(), agents = null) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "board-projects-")))
   const store = join(base, "store")
   mkdirSync(store)
-  writeFileSync(join(store, "board.json"), JSON.stringify(board))
+  writeFileSync(join(store, "board.json"), JSON.stringify({ ...board, items: inIdOrder(board.items) }))
   const herdr = join(base, "herdr.json")
   writeFileSync(
     herdr,

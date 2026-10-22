@@ -98,6 +98,7 @@ import {
   textWidth,
   tokenFor,
   nextCopy,
+  orderCard,
   atLeast,
   COPY_FILES,
   lastRestart,
@@ -202,6 +203,13 @@ async function perform(action, ctx) {
     // Selecting: the key line says it already, and how to get back; a message would push it aside.
     return ctx.mouse ? "mouse: board" : null
   }
+  if (action.type === "order") {
+    try {
+      return orderCard(ctx.file(), action.id, action.where, action.among, clockNow(ctx.env)) ?? `card ${action.id} can't go further ${action.where}`
+    } catch (e) {
+      return `couldn't move the card: ${String(e?.message ?? "").slice(0, 100)}`
+    }
+  }
   const entry = ctx.drawn?.entries?.[action.key]
   if (!entry) return null
   if (action.type === "copy") {
@@ -253,7 +261,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     let data = await load(file, env)
     data.notice = legacyNotice(legacy) || importNotice(data.state)
     const answers = createAnswerer({ file, origin: opts.origin, env, now: () => clockNow(env), agents: () => data.agents })
-    const ctx = { answers, env, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
+    const ctx = { answers, env, file: () => file, wait: true, mouse: true, drawn: null, copy: null, write: (text) => process.stdout.write(text) }
     let message = null
     const frame = opts.frame === null ? null : Number(opts.frame)
     const layout = {
@@ -321,7 +329,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     out.write(`\x1b[?2026h${patch}\x1b[?2026l`)
     for (const { y } of drawn.bars) shownLines[y - 1] = null
   })
-  const ctx = { answers, env, wait: false, mouse: true, drawn: null, copy: null, write: (text) => out.write(text) }
+  const ctx = { answers, env, file: () => file, wait: false, mouse: true, drawn: null, copy: null, write: (text) => out.write(text) }
   // A footer message (copied, mouse mode, …) shows for a few seconds.
   let message = null
   let messageTimer
