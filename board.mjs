@@ -5,13 +5,17 @@
 //
 //   node board.mjs <command> …        (installed as a Herdr plugin: "$HERDR_PLUGIN_ROOT/board.mjs")
 //
-//   add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]
+//   add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]
 //                           add an item to this folder's project (or P); prints its id. --option
 //                           (up to 4, Waiting only) puts answer buttons on the card, --suggest
-//                           marks the suggested one
+//                           marks the suggested one; --parent: the open card it is made for (the
+//                           card shows "for #ID …", ID "waiting on …" until it is done)
 //   move <ref> <column> [--ask A] [--desc D]                   <ref> is an item id or a job slug
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
-//   done <ref>                                                 same as move <ref> done
+//        [--parent ID | --no-parent]                           set or remove the card it is made for
+//   done <ref>                                                 same as move <ref> done; when it was
+//                           the last open card under its parent, the parent is ready to resume
+//                           and goes on top of its section
 //   rm <ref>
 //                           move, edit, done, rm, order and retag change a card of another project only
 //                           with --project <its project> (or from the coordinator pane that owns it)
@@ -43,7 +47,7 @@
 //                           { version, scope, items, projects } for this project's cards and this
 //                           pane's (--project P: P's; --project all: the board file as it is), or
 //                           a month's archived Done cards
-//   job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P]
+//   job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P] [--parent ID]
 //                           a job started: its item moves to Doing (--id, else this job's To do or
 //                           Doing item, else a new one, in W's repo, P, or this folder's project)
 //   job-report <slug> [report.json] [--if-final]
@@ -420,6 +424,10 @@ export function readBoard(file) {
     }
     if (item.sent != null && !(isObject(item.sent) && typeof item.sent.label === "string")) delete item.sent
     if (item.sent) for (const key of ["to", "pane", "from", "at"]) if (item.sent[key] != null && typeof item.sent[key] !== "string") delete item.sent[key]
+    // A parent is another card's id (0.7.0); a board from before has none, and a bad one is dropped.
+    if (item.parent != null && !(Number.isSafeInteger(item.parent) && item.parent > 0 && item.parent !== item.id)) delete item.parent
+    if (item.ready != null && (typeof item.ready !== "string" || Number.isNaN(new Date(item.ready).getTime()))) delete item.ready
+    if (item.ready_after != null && !(Array.isArray(item.ready_after) && item.ready_after.every((id) => Number.isSafeInteger(id) && id > 0))) delete item.ready_after
   }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}
@@ -1025,14 +1033,20 @@ function addItem(state, column, title, opts, now, who = {}) {
   }
   if (opts.report) item.report = resolve(opts.report)
   setOptions(item, opts)
+  if (opts.parent !== undefined) setParent(state, item, opts.parent)
   state.items.push(item)
   return item
 }
 
-/** Move a card to `column`; one that changes section goes on top of it. */
-function moveItem(state, item, column, now) {
+/**
+ * Move a card to `column`; one that changes section goes on top of it. A move clears "ready to
+ * resume"; a card that becomes done may make its parent ready (pushed to `woke`).
+ */
+function moveItem(state, item, column, now, woke = []) {
   const at = now.toISOString()
+  clearReady(item)
   if (item.column !== column) {
+    const closing = column === "done" && item.column !== "done"
     item.order = topOf(state, column, item)
     item.column = column
     item.since = at
@@ -1041,12 +1055,18 @@ function moveItem(state, item, column, now) {
       item.ask = ""
       dropOptions(item)
     }
+    if (closing) {
+      const parent = wakeParent(state, item, now)
+      if (parent) woke.push(parent)
+    }
   }
   item.updated = at
   return item
 }
 
-function editItem(item, opts, now) {
+/** Change a card's fields (and its parent: --parent, --no-parent); an edit clears "ready to resume". */
+function editItem(state, item, opts, now) {
+  if (opts.parent !== undefined && opts["no-parent"]) throw usage("--parent and --no-parent: pick one")
   if (opts.title !== undefined) {
     if (!clean(opts.title)) throw usage("an item needs a title")
     item.title = clean(opts.title)
@@ -1056,6 +1076,9 @@ function editItem(item, opts, now) {
   if (opts.job !== undefined) item.job = clean(opts.job)
   if (opts.report !== undefined) item.report = resolve(opts.report)
   setOptions(item, opts)
+  if (opts.parent !== undefined) setParent(state, item, opts.parent)
+  if (opts["no-parent"]) delete item.parent
+  clearReady(item)
   item.updated = now.toISOString()
   return item
 }
@@ -1107,8 +1130,121 @@ export function placeItem(state, item, where, among = null) {
     rest.splice(at, 0, item)
     rest.forEach((i, n) => (i.order = n))
   } else item.order = mid
+  clearReady(item)
   return true
 }
+
+// --- parents: a card made because of another --------------------------------------------------
+
+// A card made because of another has a `parent` (its id): a light "came from" link, not a tree.
+// The child says who it is for; the parent says which open cards it waits on (every one under it,
+// as ids); when the last of them is done, the parent gets `ready` (the time) and `ready_after`
+// (the ids it waited on), and goes on top of its section. Moving, editing, ordering or starting
+// the parent clears that mark.
+
+/** The open cards anywhere under `item` (children, their children, …), by id. */
+export function waitingOn(state, item) {
+  const out = []
+  const seen = new Set([item.id])
+  const queue = [item.id]
+  while (queue.length) {
+    const id = queue.shift()
+    for (const c of state.items) {
+      if (c.parent !== id || seen.has(c.id)) continue
+      seen.add(c.id)
+      queue.push(c.id)
+      if (c.column !== "done") out.push(c.id)
+    }
+  }
+  return out.sort((a, b) => a - b)
+}
+
+/** The Done cards under `item`: what a ready parent waited on. */
+function doneUnder(state, item) {
+  const out = []
+  const seen = new Set([item.id])
+  const queue = [item.id]
+  while (queue.length) {
+    const id = queue.shift()
+    for (const c of state.items) {
+      if (c.parent !== id || seen.has(c.id)) continue
+      seen.add(c.id)
+      queue.push(c.id)
+      if (c.column === "done") out.push(c.id)
+    }
+  }
+  return out.sort((a, b) => a - b)
+}
+
+/** Whether a card is marked ready to resume and still has nothing open under it. */
+export const isReady = (state, item) => Boolean(item.ready) && item.column !== "done" && !waitingOn(state, item).length
+
+function clearReady(item) {
+  delete item.ready
+  delete item.ready_after
+}
+
+/**
+ * Give `item` the parent `ref` (an id). The parent must be on the board and open, and not the card
+ * itself or a card under it (no loops). A parent that was ready to resume waits again.
+ */
+function setParent(state, item, ref) {
+  if (!/^\d+$/.test(String(ref ?? "").trim())) throw usage(`--parent takes a card's id, not "${clean(ref)}"`)
+  const id = Number(String(ref).trim())
+  const parent = state.items.find((i) => i.id === id)
+  if (!parent) throw new Error(`no item ${id} on the board`)
+  if (parent.column === "done") throw usage(`${id} is done: a card can only be made for an open card`)
+  for (let p = parent, seen = new Set(); p; p = state.items.find((i) => i.id === p.parent)) {
+    if (p.id === item.id) throw usage(`${item.id} can't be for ${id}: ${id} is ${id === item.id ? "the card itself" : `already under ${item.id}`}`)
+    if (seen.has(p.id)) break
+    seen.add(p.id)
+  }
+  item.parent = id
+  clearReady(parent)
+  return parent
+}
+
+/**
+ * A card was done or removed (`item`; `removed` when it left the board): if nothing is open under
+ * its parent any more, the parent is ready to resume and goes on top of its section. A Done parent
+ * is passed over to its own parent. Returns the parent it marked, or null.
+ */
+function wakeParent(state, item, now) {
+  const seen = new Set([item.id])
+  let parent = state.items.find((i) => i.id === item.parent)
+  while (parent && parent.column === "done" && !seen.has(parent.id)) {
+    seen.add(parent.id)
+    parent = state.items.find((i) => i.id === parent.parent)
+  }
+  if (!parent || seen.has(parent.id) || waitingOn(state, parent).length) return null
+  const at = now.toISOString()
+  parent.ready = at
+  parent.ready_after = doneUnder(state, parent)
+  parent.order = topOf(state, parent.column, parent)
+  parent.updated = at
+  return parent
+}
+
+/** A parent's short name in a child's "for …" line: its title up to the first ":" or "—". */
+export function shortTitle(title) {
+  const text = printable(clean(title))
+  const cut = text.split(/:\s|\s[—–]\s|[—–]/)[0].trim()
+  return cut || text
+}
+
+/** The ids as "#230, #266". */
+export const idList = (ids) => ids.map((id) => `#${id}`).join(", ")
+
+/** What add, edit and job-start with --parent print: " · for #253 Node health; #253 now waits on #230, #277". */
+function parentNote(state, item) {
+  const parent = state.items.find((i) => i.id === item.parent)
+  if (!parent) return ""
+  const open = waitingOn(state, parent)
+  return ` · for #${parent.id} ${shortTitle(parent.title)}${open.length ? `; #${parent.id} now waits on ${idList(open)}` : ""}`
+}
+
+/** What `rm` and `done` print about a parent: "#253 Node health is ready to resume (top of Doing)". */
+const readyNote = (parent) => `#${parent.id} ${shortTitle(parent.title)} is ready to resume (top of ${parent.column === "todo" ? "To do" : parent.column === "waiting" ? "Waiting on you" : "Doing"})`
 
 const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
 // An entry of a report's list may be an object ({ "question": …, "suggested_answer": … }): its
@@ -1333,7 +1469,7 @@ export function reportToken(text, env = process.env, { wait = true, workspace = 
  * to Waiting, and a blocked named agent in this workspace that isn't on the board shows up there
  * too. `agents` null means Herdr couldn't be asked, so no live status at all.
  */
-export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0 } = {}) {
+export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null } = {}) {
   // A job's agent by name, in the card's workspace (where its job runs), else this one: another
   // workspace may run an agent with the same name. With neither known, any agent of that name.
   const agentFor = (name, ws) => (agents || []).findLast((a) => a.name === name && (!ws || a.workspace_id === ws))
@@ -1347,10 +1483,14 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     view.doneLabel = `in ${doneDays} day${doneDays === 1 ? "" : "s"}`
   }
   const onBoard = new Set()
+  // Parents and children are looked up among every card (`links`: ls draws a scope of them).
+  const all = { items: links || state.items }
   const sorted = [...state.items].sort(byOrder)
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
-    const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now) }
+    const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
+    // A card ready to resume shows how long since it got ready.
+    if (entry.ready) entry.age = now - new Date(entry.ready)
     if (item.column === "done") {
       if (new Date(item.since) >= startOfDay) view.doneToday.push(doneDays ? { ...entry, when: shortTime(item.since, now) } : entry)
       continue
@@ -1379,6 +1519,23 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
   for (const column of ["waiting", "doing", "todo"]) view.counts[column] = view[column].length
   view.counts.doneToday = view.doneToday.length
   return view
+}
+
+/**
+ * A card's links for the view: `parentOf` ({ id, title (short), tag (when its project differs),
+ * done }) for a child, `waitingOn` (open ids under it) for a parent, and `ready` only while
+ * nothing is open under it.
+ */
+function linksOf(state, item, projects = {}) {
+  const out = { waitingOn: item.column === "done" ? [] : waitingOn(state, item) }
+  if (item.parent) {
+    const parent = state.items.find((i) => i.id === item.parent)
+    out.parentOf = parent
+      ? { id: parent.id, title: shortTitle(parent.title), tag: parent.project && parent.project !== item.project ? projects?.[parent.project]?.tag || parent.project : "", done: parent.column === "done" }
+      : { id: item.parent, title: "", tag: "", done: false }
+  }
+  if (item.ready && (out.waitingOn.length || item.column === "done")) out.ready = undefined
+  return out
 }
 
 /**
@@ -1480,6 +1637,8 @@ const STYLES = {
   idle: "36",
   finished: "36",
   gone: "90",
+  // A parent whose cards are all done: amber, the colour of "needs attention" (0.7.0).
+  ready: "1;33",
 }
 const STATUS_STYLE = { working: "working", blocked: "blocked", idle: "idle", done: "finished", "no agent": "gone", unknown: "gone" }
 // A Doing card whose agent is working shows a small bar bouncing beside "working", one frame per
@@ -1758,6 +1917,8 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   const lines = []
   if (blocked) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
+  } else if (status && entry.ready) {
+    lines.push([indent, { t: fit(readyText(entry), inner), s: "ready" }])
   } else if (status && column === "doing" && (entry.live || entry.reportStatus)) {
     const text = statusText(entry)
     const line = [indent, { t: text, s: statusStyle(entry) }]
@@ -1767,6 +1928,7 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     if (bar && textWidth(text + bar) <= inner) line.push({ t: bar, s: "working", anim: true })
     lines.push(line)
   }
+  lines.push(...linkLines(entry, inner, indent, status))
   // With several projects on the board, an open card names its project in full first:
   // "sfc-integration · <description>".
   const head = ui.projectName ? `${ui.projectName} · ` : ""
@@ -1788,6 +1950,29 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   // Where a press would go (the pane's routeAnswer), until something is sent.
   if (buttons && !entry.sent?.label && !ui.note && ui.route) for (const t of wrap(ui.route.t, inner, 3)) lines.push([indent, { t, s: ui.route.s }])
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
+  return lines
+}
+
+// --- a card's links (0.7.0): "for #253 Node health", "waiting on #230, #266", "ready to resume" ---
+const forText = (entry) => {
+  const p = entry.parentOf
+  return p ? `for ${p.tag ? `${p.tag} ` : ""}#${p.id}${p.title ? ` ${p.title}` : ""}${p.done ? " (done)" : ""}` : ""
+}
+const waitText = (entry) => (entry.waitingOn?.length ? `waiting on ${idList(entry.waitingOn)}` : "")
+const readyText = (entry) => (entry.live === "working" ? "working · ready to resume" : "ready to resume")
+const afterText = (entry) => (entry.ready_after?.length ? `${idList(entry.ready_after)} ${entry.ready_after.length === 1 ? "is" : "are"} done` : "")
+
+/**
+ * The link lines under a card's status: what a ready parent waited on (dim), "for …" (dim) and
+ * "waiting on …" (bold). On a card (`apart`) each on its own line; under a row, "for …" and
+ * "waiting on …" share one line where they fit.
+ */
+function linkLines(entry, inner, indent, apart = true) {
+  const lines = []
+  if (entry.ready && afterText(entry)) lines.push([indent, { t: fit(afterText(entry), inner), s: "dim" }])
+  const parts = [forText(entry) && { t: forText(entry), s: "dim" }, waitText(entry) && { t: waitText(entry), s: "title" }].filter(Boolean)
+  if (!apart && parts.length === 2 && segWidth(parts) + 3 <= inner) lines.push([indent, parts[0], { t: " · ", s: "dim" }, parts[1]])
+  else for (const part of parts) lines.push([indent, { t: fit(part.t, inner), s: part.s }])
   return lines
 }
 
@@ -1859,12 +2044,16 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
         : { t: formatAge(entry.age), s: ageStyle(entry, column) }
   let status = []
   if (blocked) status = [{ t: "blocked", s: "blocked" }]
+  else if (entry.ready && column !== "done") status = [{ t: readyText(entry), s: "ready" }]
+  // A parent waiting on other cards says so where the state goes, unless its own agent works.
+  else if (waitText(entry) && column !== "done" && entry.live !== "working") status = [{ t: waitText(entry), s: "title" }]
   else if (column === "doing" && (entry.live || entry.reportStatus)) {
     status = [{ t: statusText(entry), s: statusStyle(entry) }]
     const bar = barOf(entry, ui)
     if (bar) status.push({ t: bar, s: "working", anim: true })
   }
-  const title = printable(entry.title)
+  // A child's row starts with ↳ (one cell in every terminal: Unicode width neutral).
+  const title = `${entry.parentOf ? "↳ " : ""}${printable(entry.title)}`
   const right = () => [...status, ...(status.length && end ? [{ t: "  " }] : []), ...(end ? [end] : [])]
   const roomFor = () => width - lead - segWidth(right()) - 1
   const want = Math.min(12, textWidth(title))
@@ -2388,6 +2577,9 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
   lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
+  if (entry.ready) lines.push([ind, { t: `Ready to resume${afterText(entry) ? `: ${afterText(entry)}` : ""}`, s: "ready" }])
+  const link = [forText(entry).replace(/^for/, "For"), waitText(entry)].filter(Boolean).join(" · ")
+  if (link) for (const t of wrap(link, inner, 3)) lines.push([ind, { t, s: "dim" }])
 
   if (clean(entry.desc)) {
     heading("What it is")
@@ -4442,6 +4634,10 @@ Writing cards
 - Before you ask the user something, add or update a Waiting card (the Stop hook checks).
 - Order: each section is in the user's order, new cards and cards that change section on top.
   When the user asks to move a card: order <id> top|up|down|bottom.
+- A card made because of another (doing card A, you find you need B first): add B with
+  --parent <A's id> (job-start --parent too; edit --parent / --no-parent later). A shows
+  "waiting on #B"; when every card under it is done, A is "ready to resume", on top of its
+  section, and your turn-start reminder says so: pick A up again, or tell the user why not.
 
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
@@ -5234,8 +5430,8 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
-const SWITCHES = new Set(["clear-options", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload"])
+const FLAGS = new Set(["parent", "desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
+const SWITCHES = new Set(["no-parent", "clear-options", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -5267,9 +5463,9 @@ function parse(argv) {
 
 // Each command and the flags it takes: what only() allows, and what `contract` tells callers.
 export const COMMAND_FLAGS = {
-  add: ["desc", "job", "ask", "option", "suggest", "project", "worktree"],
+  add: ["desc", "job", "ask", "option", "suggest", "project", "worktree", "parent"],
   move: ["ask", "desc", "project"],
-  edit: ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project"],
+  edit: ["title", "desc", "ask", "job", "report", "option", "suggest", "clear-options", "project", "parent", "no-parent"],
   done: ["project"],
   rm: ["project"],
   order: ["project"],
@@ -5279,7 +5475,7 @@ export const COMMAND_FLAGS = {
   front: [],
   projects: [],
   project: ["tag", "color", "name"],
-  "job-start": ["id", "title", "desc", "report", "project", "worktree"],
+  "job-start": ["id", "title", "desc", "report", "project", "worktree", "parent"],
   "job-report": ["if-final"],
   ls: ["width", "project", "done"],
   json: ["archive", "project"],
@@ -5448,10 +5644,15 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     switch (command) {
       case "add": {
         only(opts, command)
-        need(2, "<column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P]")
+        need(2, "<column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]")
         const column = columnOf(rest[0])
-        const item = change((s) => addItem(s, column, rest[1], opts, now, who(s)))
-        out(`added ${item.id} (${label(column)}): ${item.title}`)
+        let link = ""
+        const item = change((s) => {
+          const it = addItem(s, column, rest[1], opts, now, who(s))
+          link = parentNote(s, it)
+          return it
+        })
+        out(`added ${item.id} (${label(column)}): ${item.title}${link}`)
         hint(err, item)
         return 0
       }
@@ -5460,29 +5661,46 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         only(opts, command)
         need(command === "move" ? 2 : 1, command === "move" ? "<id|job> <column> [--ask A] [--desc D] [--project P]" : "<id|job> [--project P]")
         const column = command === "done" ? "done" : columnOf(rest[1])
+        let woke = []
+        let open = []
         const item = change((s) => {
-          const it = moveItem(s, owned(s, findItem(s, rest[0], me)), column, now)
-          return opts.ask !== undefined || opts.desc !== undefined ? editItem(it, opts, now) : it
+          woke = []
+          const target = owned(s, findItem(s, rest[0], me))
+          open = column === "done" && target.column !== "done" ? waitingOn(s, target) : []
+          const it = moveItem(s, target, column, now, woke)
+          return opts.ask !== undefined || opts.desc !== undefined ? editItem(s, it, opts, now) : it
         })
         out(`${item.id} → ${label(column)}: ${item.title}`)
+        for (const parent of woke) out(readyNote(parent))
+        if (open.length) err(`board: #${item.id} had open cards for it: ${idList(open)}. They keep their link, shown as "for #${item.id} ${shortTitle(item.title)} (done)".`)
         return 0
       }
       case "edit": {
         only(opts, command)
-        need(1, "<id|job> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--project P]")
-        const item = change((s) => editItem(owned(s, findItem(s, rest[0], me)), opts, now))
-        out(`${item.id} edited: ${item.title}`)
+        need(1, "<id|job> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID | --no-parent] [--project P]")
+        let link = ""
+        const item = change((s) => {
+          const it = editItem(s, owned(s, findItem(s, rest[0], me)), opts, now)
+          link = opts.parent !== undefined ? parentNote(s, it) : opts["no-parent"] ? " · no parent now" : ""
+          return it
+        })
+        out(`${item.id} edited: ${item.title}${link}`)
         return 0
       }
       case "rm": {
         only(opts, command)
         need(1, "<id|job> [--project P]")
+        let woke = null
         const item = change((s) => {
           const it = owned(s, findItem(s, rest[0], me))
           s.items = s.items.filter((i) => i !== it)
+          // Its children are for nothing now; its parent may have nothing open left.
+          for (const c of s.items) if (c.parent === it.id) delete c.parent
+          woke = it.column === "done" ? null : wakeParent(s, it, now)
           return it
         })
         out(`${item.id} removed: ${item.title}`)
+        if (woke) out(readyNote(woke))
         return 0
       }
       case "order": {
@@ -5576,7 +5794,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       }
       case "job-start": {
         only(opts, command)
-        need(1, "<slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P]")
+        need(1, "<slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P] [--parent ID]")
         const slug = rest[0]
         if (!SLUG.test(slug)) throw usage(`job slug "${slug}" must match ${SLUG}`)
         const item = change((s) => {
@@ -5592,9 +5810,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           if (opts.worktree !== undefined || opts.project !== undefined) it.project = projectFor(s)
           if (me.workspace) it.workspace = me.workspace
           if (me.coordinator && !it.origin) it.origin = me.pane
-          return editItem(it, { ...opts, job: slug, id: undefined, project: undefined, worktree: undefined }, now)
+          return editItem(s, it, { ...opts, job: slug, id: undefined, project: undefined, worktree: undefined }, now)
         })
-        out(`${item.id} → doing: ${item.title} (job ${slug})`)
+        out(`${item.id} → doing: ${item.title} (job ${slug})${opts.parent !== undefined ? parentNote(readBoard(file), item) : ""}`)
         hint(err, item)
         return 0
       }
@@ -5653,11 +5871,13 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           if (!quiet) out(before ? `${before.id} unchanged (${label(column)}): ${before.title}` : `${board.reports[reported].id} unchanged (archived): job ${slug}`)
           return 0
         }
+        let woke = []
         const item = change((s) => {
+          woke = []
           const found = cardFor(s.items)
           if (settled(found) || (!found && s.reports[reported])) return found || { id: s.reports[reported].id, title: `job ${slug}`, unchanged: true }
           const it = found || addItem(s, column, slug, { job: slug, report: path }, now, who(s))
-          moveItem(s, it, column, now)
+          moveItem(s, it, column, now, woke)
           // A worker's report never puts answer buttons on the board.
           dropOptions(it)
           it.ask = ask
@@ -5669,6 +5889,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         })
         if (item.unchanged) out(`${item.id} unchanged (archived): ${item.title}`)
         else out(`${item.id} → ${label(column)}: ${item.title}${ask ? `\n  ask: ${ask.replace(/\n/g, "\n  ask: ")}` : ""}`)
+        for (const parent of woke) out(readyNote(parent))
         return 0
       }
       case "ls": {
@@ -5685,7 +5906,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const scope = opts.project === undefined ? scopeOf(state, opts.project, me, agents) : { items: state.items, label: "all projects", hidden: 0 }
         const shownProject = opts.project !== undefined && opts.project !== "all" ? projectRef(state, opts.project) : ""
         if (opts.project !== undefined && opts.project !== "all" && !shownProject) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them, or --project all)`)
-        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays })
+        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays, links: state.items })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined
@@ -5701,6 +5922,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // Scope "mine" (this project's cards and this pane's) by default: { version, scope, items, projects };
         // --project all: the whole file.
         const state = readBoard(file)
+        // An open card with open cards under it says which (`waiting_on`, ids), as the pane does.
+        for (const item of state.items) {
+          const open = item.column === "done" ? [] : waitingOn(state, item)
+          if (open.length) item.waiting_on = open
+        }
         const scoped = (items) => scopeOf({ ...state, items }, opts.project, me, agents)
         const data =
           opts.archive !== undefined

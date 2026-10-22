@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.7.0 · unreleased
+
+A card made because of another remembers it, so the first card isn't forgotten once the others
+are done.
+
+- **`--parent <id>`** on `add` and `job-start`: the new card is made for an open card (doing A,
+  you find you need B first). `edit --parent <id>` sets or changes it later, `edit --no-parent`
+  removes it. One parent per card; a card can't be under itself (exit 2); a Done or unknown
+  parent is refused. The child keeps its own project.
+- **The child** shows `for #253 Node health` under its title (dim; the parent's title up to its
+  first `:` or `—`, with the parent's tag when it is another project's), and in the inbox and
+  compact layouts its row starts with `↳`.
+- **The parent** shows `waiting on #230, #266` (bold): every open card anywhere under it, as ids.
+  In the inbox and compact layouts that sits where the agent's state goes, unless its agent is
+  working.
+- **Ready to resume**: when the last open card under a parent is done (`done`, `move … done`,
+  `job-report`, or `rm`), the parent says `ready to resume` (amber, bold) with `#230, #266 are
+  done`, goes on top of its section (never to Waiting on you), and its age counts from then. The
+  CLI prints `#253 Node health is ready to resume (top of Doing)`. It works one level at a time:
+  a card that still has open cards under it waits. Moving, editing, ordering (also `Shift+↑` `↓`)
+  or job-starting the parent clears the mark, and so does a new card under it.
+- **Done on a parent with open cards** is allowed, with a warning; those cards keep their link,
+  shown as `for #253 Node health (done)`, and when they are done the parent's own parent can
+  wake. `rm` of a parent unlinks its cards.
+- **The coordinator's turn-start reminder** (the UserPromptSubmit hook) adds one line for its
+  cards ready to resume (id, title as data, what it waited on; at most 8; `+N ready in other
+  projects`).
+- **`json`** shows `parent`, `ready` (the time), `ready_after` (the ids it waited on) and
+  `waiting_on` (worked out each time, never stored). The card details say `For #253 Node health ·
+  waiting on #266` and `Ready to resume: #230, #266 are done`.
+- **Upgrading**: a board from before 0.7.0 has no links and reads unchanged. A link field that
+  isn't valid (a hand edit) is dropped when the board is read. An older copy of the board reading
+  a 0.7.0 file ignores the new fields.
+
 ## 0.6.0 · unreleased
 
 Cards stay in the order you put them: the ones that matter most on top.
