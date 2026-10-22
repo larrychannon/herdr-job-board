@@ -92,25 +92,33 @@ itself out again at once.
   Waiting, a **blocked** job shows first, since it is stuck until you answer it. Done is newest
   first. A board from before 0.6.0 starts newest first (the highest id on top) in each section.
 - **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
-  doing B you find C) has a **parent**: `add … --parent <A>`. The child says `for #1 Node
-  health` under its title (dim), and its row starts with `↳`; the parent says `waiting on #2,
-  #3` (bold, every open card anywhere under it) and so never looks finished. When the last of
-  them is done, the parent says **ready to resume** (amber, bold) with what it waited on, goes on
-  top of its section, and the coordinator's turn-start reminder names it. Moving, editing,
-  ordering or starting the parent clears the mark. In a 60-column pane:
+  doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
+  where its state goes (bold) and so never looks finished, and the cards under it are drawn
+  **straight under it**, in every layout and whatever their section: `↳`, the id, the short name
+  (its title up to the first `:` or `—`) and its own state on the right (its agent's, else its
+  section: to do, waiting on you, doing). Each keeps its own card in its own section too, for its
+  buttons and details, marked `for Node health` (its row: `↳ for Node health: …`). An open card
+  and the details say `Waiting on: Badge and chart fixes, Phone alerts move`. One level: a card's
+  own cards are drawn under that card. When the last of them is done, the parent says **ready to
+  resume** (amber, bold) with what it waited on, goes on top of its section, and the
+  coordinator's turn-start reminder names it. Moving, editing, ordering or starting the parent
+  clears the mark. In a 60-column pane:
 
   ```
-  DOING (3) ──────────────────────────────────────────────────
-   3   ↳ ~/work backup: let the coordinator commit a… just now
-   2   ↳ AI agents' AWS switch: appro… waiting on #3  just now
-   1   Node health: review found … waiting on #2, #3  just now
+  DOING (2) ──────────────────────────────────────────────────
+   3   ↳ for Node health: Badge and chart fixes befo… just now
+   1   Node health: goes live after it… waiting on 2  just now
+     ↳ 3  Badge and chart fixes before going live        doing
+     ↳ 2  Phone alerts move                              to do
+  TO DO (1) ──────────────────────────────────────────────────
+   2   ↳ for Node health: Phone alerts move: then me… just now
   ```
 
-  and after `done 3` and `done 2`:
+  and after `done 2` and `done 3`:
 
   ```
   DOING (1) ──────────────────────────────────────────────────
-   1   Node health: review found on… ready to resume  just now
+   1   Node health: goes live after… ready to resume  just now
   ```
 - **DONE** is folded to one line, `DONE · 3 today ▸`, so it takes no room. `d` or a click on
   that line opens it (today's finished cards, newest first, with the time they finished, under
@@ -551,7 +559,7 @@ this list.
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D]` | Move a card. `<ref>` is its id or its job slug. |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
-| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #1 … (done)`. |
+| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |

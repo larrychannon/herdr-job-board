@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.1 · unreleased
+
+A parent and the cards made for it now read as one group, in words.
+
+- **Grouped**: in every layout (wide, inbox, compact) the open cards under a parent are drawn
+  straight under it, whatever section they are in: `↳ 279  Badge and chart fixes   working`
+  (the id, the short name, and the card's own state on the right: its agent's, else its section:
+  to do, waiting on you, doing). A blocked one comes first, then by section and order. One level:
+  a card's own cards are drawn under that card; the open cards under a Done card show under its
+  parent in its place. Each card keeps its own card in its own section too, for its buttons and
+  details.
+- **Words, not numbers**: the parent's state says `waiting on 2` (how many are drawn under it); an
+  open card and the details say `Waiting on: Badge and chart fixes, Phone alerts move`. A child
+  says `for Node health` (with `(sfc, done)` when the parent is another project's or Done; `for a
+  card no longer on the board` when it was archived), and its row `↳ for Node health: …`. A ready
+  parent says `Badge and chart fixes and Phone alerts move are done`. The CLI's own lines (`added
+  … · for #231 …`, the reminder hook) and `json` keep their ids.
+
 ## 0.7.0 · unreleased
 
 A card made because of another remembers it, so the first card isn't forgotten once the others
