@@ -348,7 +348,9 @@ test("ls at 120 columns: 'for …' (dim), 'Waiting on: …' (bold) and the cards
     t.ok(["add", "todo", "Child again", "--parent", "1"])
     const again = render(buildView(readBoard(t.file), null, { now: new Date(NOW) }), { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: {} })
     assert.match(again, /\x1b\[1mWaiting on: Child again/)
-    assert.match(again, /\x1b\[2mfor Node health/)
+    // The new one (To do) is drawn under its parent only (0.7.4), its section where its state goes.
+    assert.match(again, /↳ \x1b\[0m\x1b\[2m4\x1b\[0m  \x1b\[1mChild again[^\n]*\n {13}\x1b\[2mto do\x1b\[0m\n/)
+    assert.doesNotMatch(again, /for Node health/)
   } finally {
     t.done()
   }
@@ -435,15 +437,17 @@ test("grouped (0.7.1): at 60 columns the cards under a parent are drawn straight
     const at = lines.findIndex((l) => /^ 1 /.test(l))
     assert.match(lines[at], /^ 1   Node health: goes live after .* waiting on 2  just now$/)
     // The one in Doing too (0.7.3): its own row, once, straight under it and further in than its
-    // title, its id after the ↳; then the one in To do as a short line with its state.
+    // title, its id after the ↳; then the one in To do (0.7.4) the same, its section where its
+    // state goes.
     assert.match(lines[at + 1], /^ {7}↳ 3  Badge and chart fixes before going liv… just now$/)
-    assert.match(lines[at + 2], /^ {7}↳ 2  Phone alerts move\s+to do$/)
+    assert.match(lines[at + 2], /^ {7}↳ 2  Phone alerts move: being update… to do  just now$/)
     const doing = lines.slice(lines.findIndex((l) => /^DOING/.test(l)), lines.findIndex((l) => /^TO DO/.test(l)))
     assert.equal(doing.filter((l) => /\b3\b/.test(l)).length, 1, "3 drawn once")
     assert.doesNotMatch(doing.join("\n"), /for Node health/)
-    // The one in To do keeps its own row there, marked whose it is.
+    // Not drawn again in To do, nor counted there.
     const todo = lines.slice(lines.findIndex((l) => /^TO DO/.test(l)))
-    assert.match(todo.join("\n"), /^ 2   ↳ for Node health: Phone alerts move/m)
+    assert.match(todo[0], /^TO DO \(0\) · 1 under its parent/)
+    assert.doesNotMatch(lines.join("\n"), /for Node health/)
     // No ids in the waiting lines; nothing wider than the pane.
     assert.doesNotMatch(lines.join("\n"), /waiting on #|#\d/)
     for (const line of lines) assert.ok([...line].length <= 60, `fits 60: ${line}`)
@@ -460,8 +464,9 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <names
     const card = wide.split("\n\n").find((b) => /(^|\n)1 Node health/.test(b)) || ""
     // A column of a third of the pane: the names are cut, the ids and states never.
     assert.match(card, /\n\s+Waiting on: Badge and chart fixes b…\s/)
-    // 3 (Doing too) is its own card straight under it, further in; 2 (To do) a short line after it.
-    assert.match(card, /\n    ↳ 3  Badge and chart fixes before\n {9}going live — build   just now\n {9}Honest Offline badge.\n    ↳ 2  Phone alerts move\s+to do(\n|$)/)
+    // 3 (Doing too) is its own card straight under it, further in; 2 (To do) too, after it.
+    assert.match(card, /\n    ↳ 3  Badge and chart fixes before\n {9}going live — build   just now\n {9}Honest Offline badge.\n    ↳ 2  Phone alerts move: being\n {9}updated to the latest code —…\n {9}to do\n/)
+    assert.equal(wide.match(/↳ 2 |^2 /gm).length, 1, "2 drawn once")
     assert.equal(wide.match(/↳ 3 /g).length, 1, "3 drawn once")
     assert.doesNotMatch(wide, /waiting on #|Waiting on: #/)
     // The same through the view, with agents: a working one says so; a blocked one is first (it waits on you).
@@ -474,8 +479,11 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <names
     const parent = view.doing.find((e) => e.id === 1)
     assert.deepEqual(parent.under.map((c) => [c.id, c.title, c.live]), [[2, "Phone alerts move", "blocked"], [3, "Badge and chart fixes before going live", "working"]])
     const text = render(view, { width: 60, now: new Date(NOW), layout: "compact", scroll: { doneOpen: true } })
-    // 3 (working, in Doing with it) its own row under it; 2 (blocked: under Waiting on you) a short line.
-    assert.match(text, /\n 1   Node health[^\n]*\n {7}↳ 3  Badge and chart fixes[^\n]* working  just now\n {7}↳ 2  Phone alerts move\s+blocked\n/)
+    // 3 (working, in Doing with it) its own row under it; 2 (blocked: Waiting on you) its row too
+    // (0.7.4), marked "!" and open as a Waiting row is in ls, and Waiting says it needs you.
+    assert.match(text, /\n 1   Node health[^\n]*\n {7}↳ 3  Badge and chart fixes[^\n]* working  just now\n {3}! {3}↳ 2  Phone alerts move[^\n]* blocked  just now\n {12}blocked: answer it in tab alerts\n/)
+    assert.match(text, /^Job board · 1 needs you/)
+    assert.match(text, /\nWAITING ON YOU \(0\)  1 needs you, under its parent ─/)
     // The details name them too.
     const details = detailLines({ ...parent, column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
     assert.match(details, /\n  Waiting on: Phone alerts move, Badge and chart fixes before going live\n/)

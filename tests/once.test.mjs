@@ -1,8 +1,9 @@
 // Run: node --test (from the repo root)
-// Each sub-task drawn once (0.7.3): one in its parent's section is its own row (or card) straight
-// under the parent's, further in than the parent's title, its id after the ↳; one in another
-// section keeps its row there ("↳ for …") and a short line under the parent. Wide, inbox and
-// compact; ↑ ↓ through them, Shift+↑ ↓ among a parent's sub-tasks.
+// Each sub-task drawn once (0.7.3), only under its parent (0.7.4): its own row (or card) straight
+// under the parent's, further in than the parent's title, its id after the ↳, whatever its
+// section; one from another section says that section where its state goes, and is neither drawn
+// nor counted there. Wide, inbox and compact; ↑ ↓ through them, Shift+↑ ↓ among a parent's
+// sub-tasks.
 import "./guard.mjs"
 import assert from "node:assert/strict"
 import test from "node:test"
@@ -44,35 +45,40 @@ const section = (text, head, next) => {
   return lines.slice(from + 1, to)
 }
 
-test("compact: a sub-task in its parent's section is one row, straight under the parent and further in; the other section's one is a short line after it", () => {
+test("compact: every sub-task is one row, straight under the parent and further in; the other section's one after its siblings, with that section's state", () => {
   const d = draw(board(), { layout: "compact" })
   const doing = section(d.text, "DOING", "TO DO")
   const rows = doing.map((l) => l.replace(/\s+$/, ""))
-  // Parent first, then its sub-tasks in Doing's order (279 before 282), then the short line for
-  // 274 (To do), then the next top card (280).
+  // Parent first, then its sub-tasks in Doing's order (279 before 282), then 274's row (To do,
+  // said where its state goes), then the next top card (280).
   assert.match(rows[0], /^.231   Node health: goes live[^\n]* waiting on 3 +\d/)
   assert.match(rows[1], /^ {9}↳ 279  Node health fixes[^\n]* working +\d/)
   assert.match(rows[2], /^ {9}↳ 282  Badge tweaks +\d/)
-  assert.match(rows[3], /^ {9}↳ 274  Phone alerts move +to do$/)
+  assert.match(rows[3], /^ {9}↳ 274  Phone alerts move: merged… to do +\d/)
   assert.match(rows[4], /^ 280   Blank error page/)
   assert.equal(rows.length, 5)
   // Each drawn once; the ↳ sits two cells right of where the parent's title starts.
   const text = plain(d.text)
   assert.equal(text.match(/↳ 279|279 /g).length, 1)
   assert.equal(text.match(/↳ 282|282 /g).length, 1)
+  assert.equal(text.match(/↳ 274|274 /g).length, 1)
   assert.equal(rows[1].indexOf("↳"), rows[0].indexOf("Node") + 2)
-  // 274 keeps its own row in To do, marked whose it is.
-  assert.match(section(d.text, "TO DO", "DONE").join("\n"), /^ 274   ↳ for Node health: Phone alerts move/m)
+  // Not in To do, nor counted there; no "for …" anywhere.
+  assert.match(text, /\nTO DO \(0\) · 1 under its parent ─/)
+  assert.match(text, /\n▸ DOING \(4\) ─/)
+  assert.doesNotMatch(text, /for Node health/)
   for (const line of text.split("\n")) assert.ok([...line].length <= 60, `fits 60: ${line}`)
 })
 
-test("wide: a sub-task's card follows its parent's, indented with its id after the ↳; the other section's one is a short line after it", () => {
+test("wide: a sub-task's card follows its parent's, indented with its id after the ↳; the other section's one too, with that section's state", () => {
   const d = renderBoard(buildView(board(), agents, { now: NOW, workspace: "w9" }), { width: 120, now: NOW, layout: "wide", scroll: { doneOpen: true } })
   const text = plain(d.text)
   assert.match(text, /\n231 Node health: goes live after its {5}/)
   assert.match(text, /\n {6}↳ 279  Node health fixes: built\n {13}— in independent review\n {13}working\n/)
   assert.match(text, /\n {6}↳ 282  Badge tweaks/)
-  assert.match(text, /\n {6}↳ 274  Phone alerts move +to do/)
+  assert.match(text, /\n {6}↳ 274  Phone alerts move: merged\n {13}— goes live with Node he…\n {13}to do\n/)
+  assert.match(text, /TO DO \(0\) · 1 under its parent/)
+  assert.equal(text.match(/↳ 274|^274 /gm).length, 1, "274 drawn once")
   assert.ok(text.indexOf("↳ 279") < text.indexOf("↳ 282") && text.indexOf("↳ 282") < text.indexOf("↳ 274") && text.indexOf("↳ 274") < text.indexOf("280 Blank"))
   assert.equal(text.match(/↳ 279|^279 /gm).length, 1, "279 drawn once")
   assert.doesNotMatch(text.slice(0, text.indexOf("280 Blank")), /\n\s+for Node health/, "no 'for …' inside its parent's family")
@@ -91,11 +97,11 @@ test("keys: ↓ goes parent, its sub-tasks, the next card; Shift+↑ ↓ on a su
   const state = board()
   let d = draw(state, { layout: "compact", scroll: { card: "#231" } })
   const order = [d.scroll.card]
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     d = draw(state, { layout: "compact", scroll: handleInput(d.scroll, key("down"), d).scroll })
     order.push(d.scroll.card)
   }
-  assert.deepEqual(order, ["#231", "#279", "#282", "#280"])
+  assert.deepEqual(order, ["#231", "#279", "#282", "#274", "#280"])
   // 282 up: among 279 and 282 only, so it goes above 279 (not above 280 or 231).
   d = draw(state, { layout: "compact", scroll: { card: "#282" } })
   const up = handleInput(d.scroll, key("moveUp"), d).action
