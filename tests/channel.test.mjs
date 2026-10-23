@@ -291,6 +291,13 @@ test("the Go channel: go test passes (its own unit tests)", { skip: !go && "no G
   assert.equal(r.status, 0, `${r.stdout}${r.stderr}`)
 })
 
+test("the Go channel builds for macOS too (the board's other platform; compiled, not run)", { skip: !go && "no Go toolchain" }, () => {
+  for (const arch of ["arm64", "amd64"]) {
+    const r = spawnSync("go", ["build", "-o", "/dev/null", "."], { cwd: CHANNEL, encoding: "utf8", env: { ...process.env, CGO_ENABLED: "0", GOOS: "darwin", GOARCH: arch, GOFLAGS: "-mod=mod" } })
+    assert.equal(r.status, 0, `darwin/${arch}: ${r.stderr}`)
+  }
+})
+
 test("the channel plugin: its manifest and MCP entry, and the version everywhere is the same", () => {
   const manifest = JSON.parse(readFileSync(join(CHANNEL, ".claude-plugin", "plugin.json"), "utf8"))
   const mcp = JSON.parse(readFileSync(join(CHANNEL, ".mcp.json"), "utf8"))

@@ -5466,9 +5466,9 @@ Jobs
   per stop: "[job finished] <slug> — <report status, or no report yet> — <summary, or its last
   line>" or "[job waiting] <slug> — needs: <its question, or the approval it waits for>".
 - With the job-board channel (your session started with it, as the coordinator's start does):
-  each message arrives in your session by itself, <channel source="job-board" id=… kind=…>, the
-  ones sent while you were down as soon as you start; so does a board button's answer (kind
-  answer: act on it as the user's answer). Read each job's report (or its tab), update its card
+  each message arrives in your session by itself, <channel source="plugin:job-board:job-board"
+  id=… kind=…>, the ones sent while you were down as soon as you start; so does a board
+  button's answer (kind answer: act on it as the user's answer). Read each job's report (or its tab), update its card
   yourself (job-report, move or edit), then ack it with the channel's ack tool. No inbox wait.
 - Without it, keep one board.mjs inbox wait running as a background command. It returns (exit
   0) with the messages not acked yet, one a line ending in #<id>; at once when there are some

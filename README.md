@@ -780,8 +780,8 @@ after hundreds of messages, against about 60 MB for a Node `inbox wait`) that Cl
 starts with the coordinator's session and stops with it. Nothing has to be kept running.
 
 - **What it does**: it pushes every inbox message for its Herdr workspace that isn't acked yet
-  into the session, as `<channel source="job-board" id="…" kind="…" slug="…" card="…">text</channel>`:
-  the ones written while the coordinator was down as soon as it starts, then each new one within
+  into the session, as `<channel source="plugin:job-board:job-board" id="…" kind="…" slug="…"
+  card="…">text</channel>`: the ones written while the coordinator was down as soon as it starts, then each new one within
   a second. The session acks one with the channel's `ack` tool (`ids`, or `all: true`), which
   writes the same ack line as `inbox ack`; its `inbox` tool lists the unacked ones. A message
   still unacked 10 minutes after it was pushed is pushed again (twice at most), and every
