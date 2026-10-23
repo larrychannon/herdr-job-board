@@ -237,7 +237,8 @@ Checkout redesign mockup: approve
 
 - **The title**, then where the card is, in words: "Waiting on you for 7 h 30 min", "Doing for
   2 h", "Done at 01:10".
-- **What it is**: the description. **What you need to do**: the ask and the card's buttons
+- **What it is**: the description, whole: its paragraphs, list items and labels (`Why:`) as
+  written (0.9.0). **What you need to do**: the ask and the card's buttons
   right under it, which work here as on the card (`←` `→` or a click on the question choose
   one, `Enter` or a click on the button presses it), then what was sent. Choosing a button
   below the panel's fold scrolls it into view, and `Enter` presses only a button on screen.
@@ -768,8 +769,53 @@ node "$BOARD" inbox ack --all     # after reading them and updating the cards; t
   lists the messages not acked yet, and says when no watcher runs for its workspace.
 - **The file**: acked messages older than 7 days are dropped once it grows past 256 KB.
 
-Button presses are not job messages: a press still reaches the coordinator with
-`herdr agent prompt` (you pressed it on purpose).
+Without the channel below, button presses are not job messages: a press reaches the
+coordinator with `herdr agent prompt` (you pressed it on purpose).
+
+### The channel: messages and answers pushed into the coordinator's session (0.9.0)
+
+`channel/` is a Claude Code channel plugin (channels are a research preview of Claude Code): a
+small Go program (one static binary, no dependencies; about 4 MB of memory idle, under 9 MB
+after hundreds of messages, against about 60 MB for a Node `inbox wait`) that Claude Code
+starts with the coordinator's session and stops with it. Nothing has to be kept running.
+
+- **What it does**: it pushes every inbox message for its Herdr workspace that isn't acked yet
+  into the session, as `<channel source="plugin:job-board:job-board" id="…" kind="…" slug="…"
+  card="…">text</channel>`: the ones written while the coordinator was down as soon as it starts, then each new one within
+  a second. The session acks one with the channel's `ack` tool (`ids`, or `all: true`), which
+  writes the same ack line as `inbox ack`; its `inbox` tool lists the unacked ones. A message
+  still unacked 10 minutes after it was pushed is pushed again (twice at most), and every
+  unacked one again at the next start: at least once.
+- **Button answers too**: while it runs it keeps a note, `channels/<pid>.json` (pid, host, pane,
+  workspace, renewed every 30 s). A press (or `answer`) for a pane with a live note goes into
+  the inbox as `{ kind: "answer", card, label, to: <pane>, text: "Board card <id> (…): <label>" }`
+  and the channel delivers it, so nothing is typed into the coordinator's input box. Without a
+  live note (no channel, an older coordinator, a note not renewed for 90 s) the board types it
+  in with `herdr agent prompt`, as before. An answer goes to the pane it was sent to; if that
+  coordinator is gone, the next one in the workspace gets it. The turn-start reminder doesn't
+  ask for an `inbox wait` while a channel runs.
+- **Loading it**: Claude Code loads a channel only when the session is started with it. A
+  home-made one isn't on the approved list, so it needs the development flag, and Claude Code
+  asks to confirm at every start:
+
+  ```sh
+  claude --plugin-dir "$BOARD_DIR/channel" \
+    --dangerously-load-development-channels plugin:job-board@inline
+  ```
+
+  ai-config's `scripts/claude-coordinator.sh` does this next to Telegram, finding the board
+  through `herdr plugin list`. Enabling it in settings is not enough, and it is never for a
+  job's session.
+- **Building it**: `channel/run.sh` (what the plugin's `.mcp.json` runs) builds
+  `channel/bin/job-board-channel` with Go 1.22 or later when it is missing or older than its
+  sources, then runs it; `sh channel/run.sh --build` only builds. Install or update the board
+  and the next coordinator start builds it (a second or two). Without Go the coordinator starts
+  without the channel.
+- **Writes**, like the CLI's: only the installed copy (in Herdr's plugins folder, or Claude
+  Code's plugin cache) writes a board under your home; a development build reads it but acks
+  nothing (a trial: `JOB_BOARD_HOME` on a scratch folder, `JOB_BOARD_DEV=1` under your home).
+  The lock is the board's (`inbox.jsonl.lock`, the same owner file), so the two never write at
+  once.
 
 ### Writing cards
 
@@ -777,7 +823,11 @@ The user reads a card with no other context: not the chat, not the job's instruc
 
 - **title**: the thing in plain words, then the kind of action: `…: approve`, `…: merge`,
   `…: review`, `…: pick one`; for jobs `…: build`, `…: fix`. No internal slugs or shorthand.
-- **desc**: what it is and why it matters, in one or two plain sentences.
+- **desc**: what it is and why it matters, first, in one or two plain sentences: that
+  paragraph is what a card shows. More can follow (0.9.0): paragraphs (a blank line), `- ` or
+  `• ` items, and lines that start with a label (`Why:`, `What changes:`, `Risk:`, `Your
+  answers:`; up to four words, then a colon) are kept and shown so in the card details and in
+  `ls`. Pass real newlines in `--desc`, or `\n`.
 - **ask** (Waiting): exactly what the user should do.
 
 | | Bad | Good |
@@ -925,7 +975,9 @@ S=$(mktemp -d); HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp node --test
 ```
 
 Herdr is faked (`tests/fixtures/fake-herdr.mjs`); nothing touches your real Herdr session.
-`UPDATE_SNAPSHOTS=1 node --test` rewrites the render snapshots. `board-pane.mjs --once --width N
+`UPDATE_SNAPSHOTS=1 node --test` rewrites the render snapshots. With Go installed, the channel's
+tests run too (its `go test`, and the binary against the board's inbox); `cd channel && go test
+./...` runs its own. `board-pane.mjs --once --width N
 --height N [--layout wide|inbox|compact] [--color] [--emoji] [--keys …]` prints one frame.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.

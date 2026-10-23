@@ -483,9 +483,10 @@ test("nothing in the board sends a job's message with herdr agent prompt any mor
   const board = readFileSync(BOARD, "utf8")
   const hook = readFileSync(HOOK, "utf8")
   assert.doesNotMatch(board + hook, /sendJobMessage/)
-  // The only `agent prompt` calls left: a button press (deliver) and `answer`, both with an answer's text.
+  // The only `agent prompt` calls left: a button press (deliver) and `answer`, both with an
+  // answer's text, both only when the pane has no job-board channel (0.9.0).
   const calls = [...board.matchAll(/\["agent", "prompt", ([^\]]+)\]/g)].map((m) => m[1])
-  assert.deepEqual(calls, ["origin, answerText(item, action.label, action.from)", "route.pane, answerText({ ...item, tag: tagOf(state, item.project) }, answer, from)"])
+  assert.deepEqual(calls, ["origin, answerText(item, action.label, action.from)", "route.pane, answerText(tagged, answer, from)"])
   assert.doesNotMatch(hook, /"prompt"/)
 })
 

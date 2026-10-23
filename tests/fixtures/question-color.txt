@@ -147,7 +147,7 @@
   [2mWaiting on you for 7 h 16 min[0m
 
   [1mWhat it is[0m
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark
+  [1mAll PRs reviewed OK:[0m #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark
   mode).
 
   [1mWhat you need to do[0m
@@ -311,7 +311,7 @@
   [2mWaiting on you for 7 h 16 min[0m
 
   [1mWhat it is[0m
-  All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
+  [1mAll PRs reviewed OK:[0m #12 invoice rounding, #14 docs move, #15 search filters, #17
   export to CSV (+ optional #16 dark mode).
 
   [1mWhat you need to do[0m
