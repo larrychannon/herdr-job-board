@@ -65,7 +65,7 @@
   [2mWaiting on you for 7 h 47 min[0m
 
   [1mWhat it is[0m
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then
+  [1mLive bug:[0m a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then
   go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.
 
   [1mWhat you need to do[0m
@@ -229,7 +229,7 @@
   [2mWaiting on you for 7 h 47 min[0m
 
   [1mWhat it is[0m
-  Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
+  [1mLive bug:[0m a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
   0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
   sell gift cards with coupons until fixed.
 

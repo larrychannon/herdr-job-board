@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.9.0 · unreleased
+
+The inbox reaches the coordinator through a Claude Code channel, button answers included; card
+descriptions keep their paragraphs and lists.
+
+- **Why**: with 0.8.0 the coordinator kept a Node `inbox wait` running as a background command
+  (two Node processes, about 107 MB, started again after every message), and a board button
+  press was still typed into the coordinator's input box, where it collided with what was being
+  typed there. Card descriptions are now long (what it is, why, what changes, risk, what each
+  answer does), and the board flattened them into one block.
+- **The channel** (`channel/`): a Claude Code channel plugin, a Go program with no dependencies
+  (one static binary; about 4 MB idle, under 9 MB after 400 messages). Claude Code starts it
+  with the coordinator's session (`--plugin-dir <board>/channel
+  --dangerously-load-development-channels plugin:job-board@inline`: a home-made channel needs
+  the development flag, and Claude Code asks to confirm at start). It pushes each unacked inbox
+  message for its workspace into the session as a channel event, the ones written while the
+  coordinator was down as soon as it starts, and offers `ack` and `inbox` tools. An unacked
+  message is pushed again after 10 minutes (twice at most) and at every start. It answers the
+  older MCP handshake on purpose: Claude Code skips channels on the newer one.
+- **Button answers through it**: the channel keeps a note, `channels/<pid>.json`, renewed every
+  30 s. A press (or `answer`) for a pane with a live note goes into the inbox as kind `answer`
+  (`card`, `label`, `to` the pane) and nothing is typed; without one, `herdr agent prompt` as
+  before. `INBOX_KINDS` has `answer`.
+- **The turn-start reminder** doesn't ask for an `inbox wait` while a channel runs for the
+  workspace, and says to ack with the channel's tool.
+- **Building**: `channel/run.sh` builds the binary (Go 1.22 or later) when it is missing or older
+  than its sources, then runs it; `--build` only builds. The binary writes (acks, its note) under
+  the same rules as the CLI: only the installed copy writes a board under your home.
+- **Card descriptions**: `add` and `edit --desc` keep line breaks (real ones, or `\n`): lines
+  cleaned one by one, one blank line between paragraphs. The details panel and an open card in
+  `ls` show paragraphs, `- ` / `• ` items (as `• `, with a hanging indent) and leading labels
+  (`Why:`, `What changes:`, `Risk:`, `Your answers:`, in bold); a card or row in the pane shows
+  the first paragraph only, ending in `…` when more follows. A one-line description shows as
+  before, except that a leading label is bold (the colour snapshots changed for that). `c`
+  copies a card with its lines.
+- Tests: `tests/channel.test.mjs` (the notes, answers into the inbox, the fallback, the Go
+  binary against the board's inbox: the startup push, live pushes, acks, routing an answer to
+  its pane), `tests/desc.test.mjs`, and `go test` in `channel/`; the Go ones skip without Go.
+
 ## 0.8.0 · unreleased
 
 A job's messages go to an inbox file that its coordinator reads, instead of being typed into the
