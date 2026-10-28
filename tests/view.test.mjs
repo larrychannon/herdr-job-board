@@ -750,13 +750,34 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
     assert.doesNotMatch(r.stdout, /── card/)
     r = t.pane([], click + click)
     assert.match(r.stdout, /── card 5 /, "a double click opens it")
-    // t: Herdr's agent focus for the job, as argv.
+    // t: Herdr's agent focus for the job's pane (the agent the card shows), as argv.
     t.pane([], "\tt")
-    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "search-ui"])
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "w9:p5"])
     r = t.pane([], "t")
     assert.match(r.stdout, /this card has no job, so no tab/)
     // m flips the footer's mouse mode (the pane also switches mouse reporting; see the pty test).
     assert.match(t.pane([], "m").stdout.trimEnd().split("\n").at(-1), /^selecting text: m mouse back/)
+  } finally {
+    t.done()
+  }
+})
+
+test("a job that runs in another workspace than its card's: Waiting when its agent there is blocked, its tab's label, t to its pane (0.10.1)", () => {
+  const elsewhere = [...agents, { name: "vault-tidy", agent_status: "blocked", workspace_id: "wA", pane_id: "wA:p6", tab_id: "wA:t5", interactive_ready: true }]
+  const t = setup({ agents: elsewhere, tabs: [...tabs, { tab_id: "wA:t5", label: "vault tidy", workspace_id: "wA" }] })
+  try {
+    t.board("2026-10-13T10:05:00Z", "job-start", "vault-tidy", "--title", "Vault: tidy")
+    // Written by the coordinator in w9 (the board's workspace); the job runs in wA.
+    const state = JSON.parse(readFileSync(t.file, "utf8"))
+    state.items[0].workspace = "w9"
+    writeFileSync(t.file, JSON.stringify(state))
+    const r = t.pane(["--width", "120"])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout.split("DOING")[0], /WAITING ON YOU \(1\)[\s\S]*Vault: tidy[\s\S]*blocked/)
+    assert.doesNotMatch(r.stdout, /no agent/)
+    assert.match(t.pane([], "\r").stdout, /Job vault-tidy is blocked: it needs you in its tab[\s\S]*its tab: vault tidy \(press t\)/)
+    t.pane([], "t")
+    assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "wA:p6"])
   } finally {
     t.done()
   }

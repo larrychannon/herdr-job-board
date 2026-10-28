@@ -81,7 +81,8 @@ itself out again at once.
   **blocked** on a question or an approval shows here by itself, even when nobody put it on the
   board.
 - **DOING** shows the live state of each job's agent from `herdr agent list` (working, done,
-  idle, no agent) and its age. A card whose agent is **working** shows a small ASCII bar
+  idle, no agent) and its age. A job's agent is the one named after it in the card's workspace,
+  else in any workspace (a job may run in its project's workspace: 0.10.1). A card whose agent is **working** shows a small ASCII bar
   bouncing beside the word (`working [=   ]`); idle, done, blocked and gone agents stand still,
   so the motion itself says what is running.
 - **Order**: To do, Doing and Waiting on you are in your order, so the cards that matter most
@@ -1019,7 +1020,8 @@ tokens.json           the sidebar text last reported for each workspace
 
 - Every card has a `project` (its repo, by git's common dir, so worktrees count as their repo),
   an `origin` (the coordinator pane that owns it: where its answers go) and a `workspace` (where
-  its job runs, for the agent's live state and the sidebar count). Ids are global and never
+  it was written, for the sidebar count; its job's agent is looked for there first, then in any
+  workspace, since a job may run in its project's). Ids are global and never
   reused.
 - A project's `tag` is its name's first part (`sfc` for sfc-integration), at most 7 characters,
   made unique when two would clash; `project set` changes it and the colour.

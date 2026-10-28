@@ -1407,11 +1407,14 @@ export function listAgentsAsync(env = process.env) {
   })
 }
 
-/** Tab labels in a workspace, { tab_id: label }, from `herdr tab list`; {} when unavailable. */
+/**
+ * Tab labels, { tab_id: label }, from `herdr tab list`: every workspace's (a job may run in
+ * another one than the board's); {} when unavailable.
+ */
 export function listTabsAsync(env = process.env) {
-  if (!inHerdr(env) || !env.HERDR_WORKSPACE_ID) return Promise.resolve({})
+  if (!inHerdr(env)) return Promise.resolve({})
   return new Promise((done) => {
-    execFile(herdrBin(env), ["tab", "list", "--workspace", env.HERDR_WORKSPACE_ID], { env, timeout: 5000 }, (error, stdout) => {
+    execFile(herdrBin(env), ["tab", "list"], { env, timeout: 5000 }, (error, stdout) => {
       try {
         const tabs = error ? [] : JSON.parse(stdout).result?.tabs || []
         done(Object.fromEntries(tabs.filter((t) => t?.tab_id).map((t) => [t.tab_id, String(t.label ?? "")])))
@@ -1504,10 +1507,10 @@ export function selfIsBoard(dir, env = process.env, { asPlugin = false } = {}) {
   return boardCopy(dir, env) || (asPlugin && pluginIdOf(dir) === PLUGIN_ID)
 }
 
-/** Switch the user's view to a job's agent (its tab): `herdr agent focus <name>`, argv only. */
-export function focusAgent(name, env = process.env) {
+/** Switch the user's view to a job's agent (its tab): `herdr agent focus <pane or name>`, argv only. */
+export function focusAgent(target, env = process.env) {
   if (!inHerdr(env)) return Promise.resolve("not inside Herdr")
-  return herdrCall(["agent", "focus", name], env)
+  return herdrCall(["agent", "focus", target], env)
 }
 
 /** Report the sidebar token, or clear it when the text is empty. Returns whether it ran. */
@@ -1523,15 +1526,24 @@ export function reportToken(text, env = process.env, { wait = true, workspace = 
 // --- the view: the board plus live agent status ----------------------------------------------
 
 /**
+ * A job's agent in Herdr's list, by name (Herdr names a job's agent by its slug): the one in
+ * `workspace` first (the card's, else the viewer's), since another workspace may run an agent of
+ * the same name; else one in any workspace, since a job may run in its project's workspace rather
+ * than its coordinator's (0.10.1). null when there is none, or no list.
+ */
+export function jobAgent(agents, name, workspace = "") {
+  if (!name || !Array.isArray(agents)) return null
+  const named = agents.filter((a) => a?.name === name)
+  return (workspace && named.findLast((a) => a.workspace_id === workspace)) || named.at(-1) || null
+}
+
+/**
  * What the pane shows. Doing items get their agent's live status; a blocked agent moves its item
  * to Waiting, and a blocked named agent in this workspace that isn't on the board shows up there
  * too. `agents` null means Herdr couldn't be asked, so no live status at all. `stops`: each job's
  * last stop (readStops), for "job finished — not reviewed yet" (`unreviewed`).
  */
 export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {} } = {}) {
-  // A job's agent by name, in the card's workspace (where its job runs), else this one: another
-  // workspace may run an agent with the same name. With neither known, any agent of that name.
-  const agentFor = (name, ws) => (agents || []).findLast((a) => a.name === name && (!ws || a.workspace_id === ws))
   const view = { waiting: [], doing: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
   // Done shows today's cards; with `doneDays` (ls --done 30d), those of the last N days, each
   // with its date.
@@ -1556,8 +1568,10 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     }
     if (item.job) onBoard.add(item.job)
     if (item.job && agents && (item.column === "doing" || item.column === "waiting")) {
-      const agent = agentFor(item.job, item.workspace || workspace)
+      const agent = jobAgent(agents, item.job, item.workspace || workspace)
       entry.live = agent ? agent.agent_status || "unknown" : item.column === "doing" ? "no agent" : ""
+      // Where it runs, for t (focusAgent): the pane, so a namesake elsewhere isn't the one shown.
+      if (agent?.pane_id) entry.agentPane = clean(agent.pane_id)
     }
     let reportAt = null
     if (item.column === "doing" && item.report) {
@@ -2704,11 +2718,8 @@ export function reportFacts(path) {
   return facts
 }
 
-/** The agent behind a job card in this workspace, from Herdr's list. */
-function agentOf(entry, agents, workspace) {
-  if (!entry.job || !Array.isArray(agents)) return null
-  return agents.find((a) => a.name === entry.job && (!workspace || a.workspace_id === workspace)) || null
-}
+/** The agent behind a job card, from Herdr's list (jobAgent: the card's workspace first, else any). */
+const agentOf = (entry, agents, workspace) => jobAgent(agents, entry.job, entry.workspace || workspace)
 
 const PLACE = { waiting: "Waiting on you", doing: "Doing", todo: "In To do" }
 
@@ -5125,8 +5136,7 @@ export function unreviewedReminder(state, stops, { mine = null, agents = () => n
   let list
   const live = (item) => {
     list ??= agents() || []
-    const ws = item.workspace || workspace
-    const agent = list.findLast((a) => a.name === item.job && (!ws || a.workspace_id === ws))
+    const agent = jobAgent(list, item.job, item.workspace || workspace)
     return agent ? clean(agent.agent_status) : ""
   }
   const cards = state.items
