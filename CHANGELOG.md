@@ -16,22 +16,29 @@ own messaging socket, so the coordinator needs neither the channel nor its devel
   there), so what isn't acked is posted again at the coordinator's next start, and by the board
   pane when still unacked 10 minutes after its last post (twice at most per session, several in
   one post, once across board panes: `inbox-posts.json`, under its lock).
-- **The coordinator's note**: a new SessionStart hook (in `hooks`, with the others) writes, when
+- **The coordinator's note**: a new SessionStart hook (the coordinator's only, from its start
+  script's `--settings`: `hooks --coordinator` prints it, `hooks` leaves it out) writes, when
   the session's `JOB_BOARD_DELIVERY` is set to `socket` or `auto` (the start script's choice;
   unset: no note, so another Claude session in the workspace never takes the posts),
   `coordinators/<workspace>.json` `{ pid, socket, pane, session_id, workspace, host, at,
   delivery, version }` from `$CLAUDE_CODE_MESSAGING_SOCKET`, then posts the unacked messages into
   the new session from the background. Live while its process runs and its socket is there; a
-  post that finds it gone (ENOENT, ECONNREFUSED) removes it. Its start-of-session note tells the
-  coordinator how posts look and that a `[board answer]` is the user's button press.
+  post that finds it gone (ENOENT, ECONNREFUSED) removes it, except in its first 30 s while its
+  process runs (the session may not listen yet). Its start-of-session note tells the coordinator
+  how posts look and that only a post that begins with `[board answer]` is the user's button
+  press.
 - **What a post says**: `[job finished|waiting|note] <slug> — … #<msg id>` (the line `inbox ls`
   prints), `[board answer] card <id> (<tag> · <title>): <label> #<msg id>` (always a post of its
   own), and for several job messages at once `[board inbox] <n> messages not acked yet …` with
   one such line each. The inbox keeps an
-  answer's 0.9.0 text. Text posing as Claude Code's `<cross-session-message` framing is defused.
+  answer's 0.9.0 text. `[board answer]` and `[board inbox]` inside any message's text (any case
+  or spacing) become `(board answer)` and `(board inbox)`, so a job can't forge a press; text
+  posing as Claude Code's `<cross-session-message` framing or a `<system-reminder` is defused in
+  every post.
 - **A post** (`postToSession`) connects, writes one line, closes: 2 s at most, never throws, so a
   hook is never held up. A button press whose post fails acks its own message and goes on to the
-  channel, then `herdr agent prompt`.
+  channel, then `herdr agent prompt`; one that timed out after connecting (maybe written) counts
+  as posted and stays unacked for the re-post, so it isn't delivered twice.
 - **`JOB_BOARD_DELIVERY`** = `auto` (default: the socket, else the channel for answers, else
   typed), `socket` (no channel), `channel` (0.9.0 exactly: no note, no posts) or `prompt`
   (0.8.0: answers typed, job messages for `inbox wait`). Read by the sender (unset: auto) and by
@@ -44,12 +51,15 @@ own messaging socket, so the coordinator needs neither the channel nor its devel
   (`JOB_BOARD_SMOKE=1`, skipped by default) checks it against a throw-away `claude -p` session:
   the start's replay through the real hook, and a posted `[board answer]`.
 - `contract` lists the SessionStart hook, the posted texts and the delivery modes; `doctor`
-  says when the hooks in your settings have no SessionStart entry. The tests drop
+  flags the board's hook on SessionStart in a settings file (fix: take it out) and otherwise
+  notes it apart, coordinator only. The tests drop
   `CLAUDE_CODE_MESSAGING_*` and `JOB_BOARD_DELIVERY`, and a post refuses a socket outside the
   test sandbox.
 - Tests: `tests/socket.test.mjs` (a fake session over a Unix socket: written, ENOENT,
   ECONNREFUSED, a session that doesn't read; the notes; the delivery order and modes; the
-  SessionStart note and replay, also through the real hook; the re-post; the reminder).
+  SessionStart note and replay, also through the real hook; the re-post; the reminder; a forged
+  `[board answer]` in a `tell`, a stop, a batch and a replay; a note kept in its grace window; an
+  answer timed out after connecting).
 - Unchanged: the channel (`channel/`), `inbox wait`, the inbox's file and acks.
 
 ## 0.9.0 · unreleased

@@ -10,7 +10,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { asksUser, blockReason, handle, readTurn, reminder, settingsSnippet, snapshot, waitingTouched } from "../hooks/board-hook.mjs"
+import { asksUser, blockReason, coordinatorSettings, handle, readTurn, reminder, settingsSnippet, snapshot, waitingTouched } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
@@ -255,7 +255,12 @@ test("the hook script: stdin JSON in, Claude Code's JSON out; settings snippet; 
     assert.equal(w.stdout, "")
 
     const settings = JSON.parse(run("", ["--print-settings"]).stdout)
-    assert.deepEqual(Object.keys(settings.hooks), ["SessionStart", "UserPromptSubmit", "Stop", "Notification"])
+    // SessionStart is the coordinator's only: printed apart, for its start script's --settings.
+    assert.deepEqual(Object.keys(settings.hooks), ["UserPromptSubmit", "Stop", "Notification"])
+    const coordinator = JSON.parse(run("", ["--print-coordinator-settings"]).stdout)
+    assert.deepEqual(coordinator, coordinatorSettings(HOOK))
+    assert.equal(coordinator.crossSessionInbound, "accept")
+    assert.equal(coordinator.hooks.SessionStart[0].hooks[0].command, `node "${HOOK}"`)
     assert.equal(settings.hooks.Notification[0].matcher, "permission_prompt")
     assert.equal(settings.hooks.Stop[0].hooks[0].command, `node "${HOOK}"`)
     assert.deepEqual(settings, settingsSnippet(HOOK))

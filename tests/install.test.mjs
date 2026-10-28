@@ -93,15 +93,23 @@ test("doctor: says what works and the one command for what's missing; exit 1 onl
     mkdirSync(join(t.repo, ".claude"))
     const hook = [{ hooks: [{ command: 'node "$HOME/.claude/skills/job/scripts/job-board.mjs" hook' }] }]
     writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { Stop: hook } }))
-    // Hooks without SessionStart (0.10.0): optional, said once.
-    r = t.run(["doctor"])
-    assert.equal(r.status, 0)
-    assert.match(r.stdout, /^opt {3}no SessionStart hook in .*settings\.json: nothing is posted into a coordinator's session unless its --settings has one\n {6}node '.*' hooks$/m)
-    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { SessionStart: hook, Stop: hook } }))
+    // Hooks without SessionStart (0.10.0): right; SessionStart is said apart, coordinator only.
     r = t.run(["doctor"])
     assert.equal(r.status, 0)
     assert.doesNotMatch(r.stdout, /^(fix|add|opt) /m, r.stdout)
     assert.match(r.stdout, /^ok {4}Claude Code hooks \(in .*\/app\/\.claude\/settings\.json\)$/m)
+    assert.match(r.stdout, /^note  SessionStart \(the inbox socket, coordinator only\): in the coordinator's start script's --settings, not a settings file\n {6}node '.*' hooks --coordinator$/m)
+    // The board's SessionStart in a settings file: take it out (a session-sync one is fine).
+    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { SessionStart: hook, Stop: hook } }))
+    r = t.run(["doctor"])
+    assert.equal(r.status, 1)
+    assert.match(r.stdout, /^fix {3}.*\/app\/\.claude\/settings\.json runs the board's hook on SessionStart: take it out; it belongs in the coordinator's start script's --settings only$/m)
+    assert.doesNotMatch(r.stdout, /^note  SessionStart/m)
+    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ command: "bash session-sync.sh" }] }], Stop: hook } }))
+    r = t.run(["doctor"])
+    assert.equal(r.status, 0)
+    assert.doesNotMatch(r.stdout, /^(fix|add|opt) /m, r.stdout)
+    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { Stop: hook } }))
     // A board pane on an older version: the restart command, exit 1.
     t.setHerdr((s) => {
       s.panes.push({ pane_id: "w9:p5", tab_id: "w9:t1", workspace_id: "w9", label: "board", running: `node '${t.plugin}/board-pane.mjs' --board x --origin 'w9:p1' --version '0.3.9'` })
