@@ -91,7 +91,13 @@ test("doctor: says what works and the one command for what's missing; exit 1 onl
     // All set up: every line ok.
     writeFileSync(join(t.home, ".config", "herdr", "config.toml"), `[[keys.command]]\nkey = "prefix+b"\ntype = "plugin_action"\ncommand = "herdr-job-board.open"\n\n[ui.sidebar.spaces]\nrows = [["$board"]]\n`)
     mkdirSync(join(t.repo, ".claude"))
-    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ command: 'node "$HOME/.claude/skills/job/scripts/job-board.mjs" hook' }] }] } }))
+    const hook = [{ hooks: [{ command: 'node "$HOME/.claude/skills/job/scripts/job-board.mjs" hook' }] }]
+    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { Stop: hook } }))
+    // Hooks without SessionStart (0.10.0): optional, said once.
+    r = t.run(["doctor"])
+    assert.equal(r.status, 0)
+    assert.match(r.stdout, /^opt {3}no SessionStart hook in .*settings\.json: nothing is posted into a coordinator's session unless its --settings has one\n {6}node '.*' hooks$/m)
+    writeFileSync(join(t.repo, ".claude", "settings.json"), JSON.stringify({ hooks: { SessionStart: hook, Stop: hook } }))
     r = t.run(["doctor"])
     assert.equal(r.status, 0)
     assert.doesNotMatch(r.stdout, /^(fix|add|opt) /m, r.stdout)

@@ -201,7 +201,11 @@ test("contract and guide: the commands and flags this copy takes (the same table
   assert.equal(c.version, VERSION)
   assert.equal(c.contract, 2)
   assert.equal(c.store, "global")
-  assert.deepEqual(c.hooks, ["UserPromptSubmit", "Stop", "Notification"])
+  assert.deepEqual(c.hooks, ["SessionStart", "UserPromptSubmit", "Stop", "Notification"])
+  // 0.10.0: the inbox socket's texts and delivery modes.
+  assert.match(c.socket_text.answer, /^\[board answer\] card <id> /)
+  assert.deepEqual(c.delivery.modes, ["auto", "socket", "channel", "prompt"])
+  assert.equal(c.delivery.current, "auto")
   assert.deepEqual(c.flags, COMMAND_FLAGS)
   for (const command of ["add", "answer", "setup", "guide", "import", "export", "projects", "retag", "adopt", "front"]) assert.ok(c.commands.includes(command), command)
   assert.ok(c.flags["job-start"].includes("worktree"))

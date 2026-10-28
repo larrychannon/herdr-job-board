@@ -41,9 +41,10 @@
 //                           a coordinator's: wait until its inbox has messages not acked yet
 //                           (at once when it has some), print them, one a line ("[job finished]
 //                           <slug> — <status> — <summary> #<id>"), exit 0; 124 after S seconds.
-//                           Keep one running in the background (unless the session has the
-//                           job-board channel, channel/, which pushes them); after it returns,
-//                           read, update the cards, ack, and start it again
+//                           Keep one running in the background (unless they are posted into the
+//                           session, 0.10.0, or it has the job-board channel, channel/, which
+//                           pushes them); after it returns, read, update the cards, ack, and
+//                           start it again
 //   inbox ls [--all]        this coordinator's unacked messages (--all: the acked ones too)
 //   inbox ack <id>… | --all mark messages handled; they stay in the inbox until acked
 //   front [show]            this coordinator pane gets the answers no other coordinator can take
@@ -128,9 +129,12 @@
 // Answers: a button (or `answer`) sends "Board card <id> (<tag> · <title>): <label>" to the
 // card's owner pane while it runs, else to its project's newest live coordinator, else to the
 // pane that opened the board (or the front coordinator), after a second press when that is
-// another project's coordinator; the card notes where it went. A pane whose session has the
-// job-board channel (channel/, 0.9.0) gets it as an inbox message (kind answer) the channel
-// pushes into the session; any other pane has it typed in (`herdr agent prompt`).
+// another project's coordinator; the card notes where it went. A pane whose session keeps an
+// inbox-socket note (0.10.0) gets it as an inbox message (kind answer) posted into its session
+// ("[board answer] card <id> (…): <label> #<msg id>"); one with the job-board channel
+// (channel/, 0.9.0) as an inbox message the channel pushes; any other pane has it typed in
+// (`herdr agent prompt`). JOB_BOARD_DELIVERY (auto, socket, channel, prompt) picks; see "the
+// coordinator's inbox socket" below.
 //
 // After each change, and from the board pane, the counts go to Herdr as the workspace token
 // `board` ("1 doing · 3 need you"): each workspace its own cards (those whose job runs there,
@@ -143,6 +147,7 @@
 import { execFile, spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
 import { appendFileSync, chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
+import { createConnection } from "node:net"
 import { hostname, tmpdir, userInfo } from "node:os"
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -4039,9 +4044,11 @@ function herdrCall(args, env) {
 }
 
 /**
- * Carry out a button press. "send": into the inbox when `origin` has a live job-board channel
- * (board file `file`; answerByChannel), so nothing is typed into its pane; else `herdr agent
- * prompt <origin> <text>` (argv only, never a shell), and nothing else: Herdr checks the agent's
+ * Carry out a button press. "send", in JOB_BOARD_DELIVERY's order: into the inbox and posted to
+ * `origin`'s session when it has a live coordinator note (board file `file`; answerBySocket);
+ * else into the inbox when it has a live job-board channel (answerByChannel); either way nothing
+ * is typed into its pane. Else `herdr agent prompt <origin> <text>` (argv only, never a shell),
+ * and nothing else: Herdr checks the agent's
  * state itself and refuses an agent that is waiting on a question, so a button can never press
  * Enter on someone else's prompt. "other": `herdr agent focus <origin>`, so the user can type
  * the answer; nothing is typed for them. Resolves to an error message, or null.
@@ -4050,7 +4057,10 @@ export async function deliver(action, item, origin, env = process.env, file = ""
   if (!inHerdr(env)) return "not inside Herdr"
   if (!origin) return "no coordinator pane known; open the board with board.mjs open"
   if (action.type === "send") {
-    const viaChannel = await answerByChannel(file, item, action.label, origin, { from: action.from, env })
+    const mode = deliveryOf(env)
+    const viaSocket = await answerBySocket(file, item, action.label, origin, { from: action.from, env })
+    if (viaSocket && !viaSocket.fallback) return viaSocket.error ? `the inbox couldn't take it: ${viaSocket.error}` : null
+    const viaChannel = mode === "auto" || mode === "channel" ? await answerByChannel(file, item, action.label, origin, { from: action.from, env }) : null
     if (viaChannel) return viaChannel.error ? `the inbox couldn't take it: ${viaChannel.error}` : null
     return herdrCall(["agent", "prompt", origin, answerText(item, action.label, action.from)], env)
   }
@@ -4155,7 +4165,7 @@ function herdrError(r) {
  * itself (it owns the card): nothing is sent, it acts on the answer. The card notes what was
  * sent and to whom. Returns the lines to print.
  */
-export function answerCard(file, ref, text, opts, { env, now, me }) {
+export async function answerCard(file, ref, text, opts, { env, now, me }) {
   if (!/^\d+$/.test(String(ref))) throw usage("answer takes a card's id")
   const state = readBoard(file)
   const item = findItem(state, ref)
@@ -4183,7 +4193,14 @@ export function answerCard(file, ref, text, opts, { env, now, me }) {
     return [`card ${item.id} is this pane's (${route.to}): act on it here: ${answer}`]
   }
   const tagged = { ...item, tag: tagOf(state, item.project) }
-  const viaChannel = answerByChannelSync(file, tagged, answer, route.pane, { from, env, now })
+  const mode = deliveryOf(env)
+  const viaSocket = await answerBySocket(file, tagged, answer, route.pane, { from, env, now })
+  if (viaSocket && !viaSocket.fallback) {
+    if (viaSocket.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaSocket.error}`)
+    markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
+    return [`sent to ${route.to} (posted to its session): ${answer}`]
+  }
+  const viaChannel = mode === "auto" || mode === "channel" ? answerByChannelSync(file, tagged, answer, route.pane, { from, env, now }) : null
   if (viaChannel) {
     if (viaChannel.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaChannel.error}`)
     markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
@@ -4575,6 +4592,370 @@ export function answerByChannelSync(file, item, label, pane, { from = "", env = 
   const note = file ? channelFor(file, pane, now.getTime()) : null
   if (!note) return null
   return { via: "channel", error: appendInboxRetry(file, [answerMessage(item, label, note, { from, at: now })], { env, budgetMs }) }
+}
+
+// --- the coordinator's inbox socket (0.10.0) ---------------------------------------------------
+//
+// Claude Code gives each session a messaging socket ($CLAUDE_CODE_MESSAGING_SOCKET) that takes
+// messages from other sessions and scripts: one arrives as a new turn when the session is idle,
+// between tool calls when it is busy, and waits while a dialog is open. The board uses it as a
+// doorbell, not a store: the inbox (inbox.jsonl and its acks) stays the truth, and right after a
+// message goes into the inbox its line is posted into its coordinator's session. Claude Code
+// keeps what was posted in memory only (a message queued in a session that dies is lost there),
+// so what isn't acked is posted again:
+// - at the coordinator's start: its SessionStart hook (hooks/board-hook.mjs) keeps a note,
+//   coordinators/<workspace>.json { pid, socket, pane, session_id, workspace, host, at, delivery,
+//   version }, then posts every message not acked yet for it into the new session;
+// - by the board pane, when a message is still unacked 10 minutes after its last post: twice at
+//   most per session (inbox-posts.json { <id>: { last, n, session, pane } } counts, under its
+//   own lock, so several board panes post it once).
+// A note is live while its process (the socket's <pid>.sock) on this host runs and its socket
+// is there (or the note is under 30 s old: the session may not listen yet); a post that finds
+// the socket gone (ENOENT) or refusing (ECONNREFUSED) removes it.
+//
+// JOB_BOARD_DELIVERY picks the way, in the process that sends (and, for the coordinator, whether
+// its SessionStart hook keeps a note at all):
+//   auto (default)  post to a live note; a button's answer without one goes through a live
+//                   job-board channel (0.9.0), else is typed (herdr agent prompt)
+//   socket          the same without the channel
+//   channel         0.9.0: no note, no posts; the channel pushes the inbox, answers go through it
+//   prompt          0.8.0: no note, no posts, no channel answers; answers are typed, job messages
+//                   wait for `inbox wait`
+// What a post says (socketText): a job's message as `inbox ls` prints it, "[job finished] <slug>
+// — … #<id>" ([job waiting], [job note]); a button's answer "[board answer] card <id> (<tag> ·
+// <title>): <label> #<id>"; several at once (the replay, a re-post) one post headed "[board
+// inbox] <n> messages not acked yet …", a line each.
+
+/** The Claude Code version the wire format (wireLines) was tested with. */
+export const SOCKET_TESTED_WITH = "2.1.312"
+export const POST_TIMEOUT_MS = 2000
+export const REPOST_AFTER_MS = 10 * 60_000
+export const REPOSTS_MAX = 2
+export const DELIVERIES = ["auto", "socket", "channel", "prompt"]
+// A note this young is live without its socket: the session may not be listening yet.
+const NOTE_GRACE_MS = 30_000
+const POST_BATCH = 20
+const DOWN = new Set(["ENOENT", "ECONNREFUSED"])
+
+/** JOB_BOARD_DELIVERY: auto (also when unset or unknown), socket, channel or prompt. */
+export function deliveryOf(env = process.env) {
+  const mode = String(env.JOB_BOARD_DELIVERY ?? "").trim().toLowerCase()
+  return DELIVERIES.includes(mode) ? mode : "auto"
+}
+/** Whether this mode posts to the coordinator's socket. */
+export const postsToSocket = (mode) => mode === "auto" || mode === "socket"
+
+/**
+ * The wire format: what a post writes into a session's socket. Claude Code's own, and internal:
+ * only the socket, its two variables and an optional auth line are documented; this line comes
+ * from what Claude Code itself does (tested with SOCKET_TESTED_WITH). One JSON object, one line;
+ * `from` and `msg_id` stay metadata, the model sees the content only. The one place that knows
+ * it: when an update changes it, change it here, and check with the smoke test
+ * (JOB_BOARD_SMOKE=1 node --test tests/socket-smoke.test.mjs).
+ */
+export function wireLines(text, { msgId = "" } = {}) {
+  const line = { type: "user", message: { role: "user", content: String(text) }, from: "job-board", ...(msgId ? { msg_id: String(msgId) } : {}) }
+  return `${JSON.stringify(line)}\n`
+}
+
+// Text from a job can't pose as Claude Code's own cross-session framing.
+const unframed = (text) => String(text).replace(/<(\/?)(cross-session-message)/gi, "‹$1$2")
+
+/**
+ * Post `text` into the session listening on `socket`: connect, write the line, close. Never
+ * throws and never takes longer than `timeoutMs` (2 s): resolves to { ok, error, code } (code:
+ * ENOENT, ECONNREFUSED, ETIMEDOUT, …). Nothing comes back from the session: ok means written.
+ */
+export function postToSession(socket, text, { msgId = "", timeoutMs = POST_TIMEOUT_MS } = {}) {
+  return new Promise((done) => {
+    let settled = false
+    let conn = null
+    let timer = null
+    const finish = (error = "", code = "") => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try {
+        conn?.destroy()
+      } catch {}
+      done({ ok: !error, error, code })
+    }
+    try {
+      if (typeof socket !== "string" || !socket) return finish("no socket", "ENOSOCKET")
+      sandboxed(socket)
+      timer = setTimeout(() => finish(`no answer from ${socket} within ${timeoutMs} ms`, "ETIMEDOUT"), timeoutMs)
+      conn = createConnection(socket)
+      conn.on("error", (e) => finish(clean(e?.message) || "the socket failed", e?.code || "EIO"))
+      conn.on("connect", () => conn.end(wireLines(unframed(text), { msgId }), () => finish()))
+    } catch (e) {
+      finish(clean(e?.message || String(e)) || "couldn't post", "EINVAL")
+    }
+  })
+}
+
+/**
+ * What a post says for inbox message `m`, ending in its id: a job's line as `inbox ls` prints
+ * it; a button's answer marked "[board answer] card <id> (…): <label>" (the inbox keeps the
+ * 0.9.0 text, "Board card …", which the channel and Herdr still send).
+ */
+export function socketText(m) {
+  const text = oneLine(m.text, INBOX_TEXT_MAX)
+  return `${m.kind === "answer" ? `[board answer] ${text.replace(/^Board card /, "card ")}` : text} #${clean(m.id)}`
+}
+
+/** The posts for `messages`: one each up to one, else batches of 20 headed "[board inbox] …". */
+export function postTexts(messages) {
+  const texts = []
+  for (let i = 0; i < messages.length; i += POST_BATCH) {
+    const part = messages.slice(i, i + POST_BATCH)
+    texts.push(part.length === 1 ? socketText(part[0]) : [`[board inbox] ${part.length} messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, ...part.map(socketText)].join("\n"))
+  }
+  return texts
+}
+
+// --- coordinator notes: coordinators/<workspace>.json, kept by the coordinator's SessionStart hook
+
+const coordinatorsDir = (file) => join(sideDir(file), "coordinators")
+const noteFile = (file, workspace) => join(coordinatorsDir(file), `${String(workspace || "").replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64) || "_"}.json`)
+
+/**
+ * Note the coordinator session listening on `socket` (its SessionStart hook): one per Herdr
+ * workspace, the newest start wins. The pid is the socket's name (<pid>.sock): the hook's own
+ * parent may be a shell. Returns the note.
+ */
+export function noteCoordinatorSession(file, { socket, pane = "", sessionId = "", workspace = "", delivery = "auto", now = new Date() }) {
+  const path = sandboxed(noteFile(file, workspace))
+  checkWrite(file)
+  mkdirSync(coordinatorsDir(file), { recursive: true, mode: 0o700 })
+  const pid = Number(/^(\d+)\.sock$/.exec(basename(String(socket || "")))?.[1]) || 0
+  const note = { pid, socket: String(socket), pane: clean(pane), session_id: clean(sessionId), workspace: clean(workspace), host: hostname(), at: now.toISOString(), delivery, version: VERSION }
+  const tmp = `${path}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify(note), { mode: 0o600 })
+  renameSync(tmp, path)
+  return note
+}
+
+/** Whether a note on this host is live, without connecting (see above). */
+function noteLive(n, now) {
+  if (typeof n.socket !== "string" || !n.socket) return false
+  if (Number(n.pid) > 0 && !alive(Number(n.pid))) return false
+  return existsSync(n.socket) || now - (Date.parse(n.at) || 0) < NOTE_GRACE_MS
+}
+
+/** The live coordinator notes for `scope` ({ workspace }; none: all). This host's dead ones go. */
+export function coordinatorNotes(file, scope = {}, now = Date.now()) {
+  const dir = coordinatorsDir(file)
+  let names = []
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return []
+  }
+  const live = []
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue
+    const n = readJson(join(dir, name))
+    const mine = n && n.host === hostname()
+    if (!n || (mine && !noteLive(n, now))) {
+      try {
+        rmSync(sandboxed(join(dir, name)), { force: true })
+      } catch {}
+      continue
+    }
+    if (!mine) continue
+    if (!scope.workspace || !n.workspace || n.workspace === scope.workspace) live.push(n)
+  }
+  return live
+}
+
+/** The live coordinator note for pane `pane`, or null. */
+export const coordinatorNoteFor = (file, pane, now = Date.now()) => (pane ? coordinatorNotes(file, {}, now).find((n) => n.pane === pane) || null : null)
+
+/** Remove `note` (a post found its session gone), unless a newer start replaced it. */
+function dropNote(file, note) {
+  const path = noteFile(file, note.workspace)
+  if (readJson(path)?.socket !== note.socket) return
+  try {
+    rmSync(sandboxed(path), { force: true })
+  } catch {}
+}
+
+// --- posts: what was posted when (inbox-posts.json), for the re-posts --------------------------
+
+const postsPath = (file) => join(sideDir(file), "inbox-posts.json")
+
+/** { <message id>: { last, n (re-posts in this session), session, pane } }; {} when none. */
+export function readPosts(file) {
+  const p = readJson(postsPath(file))
+  return p && typeof p === "object" && !Array.isArray(p) ? p : {}
+}
+
+/** Change the posts under their lock; records a week old go. Returns what `change` returns. */
+function updatePosts(file, change, now = new Date()) {
+  const path = sandboxed(postsPath(file))
+  checkWrite(file)
+  mkdirSync(sideDir(file), { recursive: true, mode: 0o700 })
+  return withLock(path, () => {
+    const posts = readPosts(file)
+    const result = change(posts)
+    for (const [id, p] of Object.entries(posts)) if (!(now - (Date.parse(p?.last) || 0) < INBOX_KEEP_MS)) delete posts[id]
+    const tmp = `${path}.${process.pid}.tmp`
+    writeFileSync(tmp, JSON.stringify(posts), { mode: 0o600 })
+    renameSync(tmp, path)
+    return result
+  })
+}
+
+/** A first post (or a replay) of `messages` to `note`'s session: the 10 minutes start again. */
+function notePosted(file, messages, note, now) {
+  try {
+    updatePosts(file, (posts) => {
+      for (const m of messages) {
+        const same = posts[m.id]?.session === note.session_id
+        posts[m.id] = { last: now.toISOString(), n: same ? Number(posts[m.id].n) || 0 : 0, session: note.session_id, pane: note.pane }
+      }
+    }, now)
+  } catch {}
+}
+
+/**
+ * Post `messages` to `note`'s session, batched. Stops at the first failure; a session found gone
+ * loses its note (not with `drop` false). Resolves to { sent (messages posted), error, code }.
+ */
+async function postMessages(file, note, messages, { drop = true } = {}) {
+  let sent = 0
+  const texts = postTexts(messages)
+  for (let i = 0; i < texts.length; i++) {
+    const part = messages.slice(i * POST_BATCH, (i + 1) * POST_BATCH)
+    const r = await postToSession(note.socket, texts[i], { msgId: part.length === 1 ? part[0].id : "" })
+    if (!r.ok) {
+      if (drop && DOWN.has(r.code)) dropNote(file, note)
+      return { sent, error: r.error, code: r.code }
+    }
+    sent += part.length
+  }
+  return { sent, error: "", code: "" }
+}
+
+/**
+ * The unacked messages for `note`'s coordinator: its workspace's, a button's answer only when it
+ * is for its pane (or that pane has no live note: its coordinator restarted elsewhere).
+ */
+function messagesFor(file, note, notes, list = null) {
+  const panes = new Set(notes.map((n) => n.pane))
+  return (list || unacked(file, { workspace: note.workspace })).filter((m) => inboxFor(m, { workspace: note.workspace }) && (!m.to || m.to === note.pane || !panes.has(m.to)))
+}
+
+/**
+ * Ring the doorbell for `records`, just put in the inbox (a job's stop or note): post them to the
+ * live coordinator note(s) they are for, when JOB_BOARD_DELIVERY posts. Never throws; resolves
+ * to the number of messages posted (0: none, or no coordinator note: `inbox wait`, the channel
+ * or the reminder has them).
+ */
+export async function postInbox(file, records, { env = process.env, now = new Date() } = {}) {
+  try {
+    if (!postsToSocket(deliveryOf(env)) || !records.length) return 0
+    const notes = coordinatorNotes(file, {}, now.getTime())
+    let sent = 0
+    for (const note of notes) {
+      const mine = messagesFor(file, note, notes, records)
+      if (!mine.length) continue
+      const r = await postMessages(file, note, mine)
+      if (r.sent) notePosted(file, mine.slice(0, r.sent), note, now)
+      sent += r.sent
+    }
+    return sent
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * At a coordinator's start: post every message not acked yet for it into its new session (one
+ * post, or batches of 20). Waits up to `waitMs` for the session to listen (the hook runs while
+ * it starts). Resolves to { sent, error }; never throws.
+ */
+export async function replayInbox(file, note, { now = () => new Date(), waitMs = 10_000, everyMs = 250 } = {}) {
+  try {
+    const list = messagesFor(file, note, [note, ...coordinatorNotes(file).filter((n) => n.socket !== note.socket)])
+    if (!list.length) return { sent: 0, error: "" }
+    const end = Date.now() + waitMs
+    for (;;) {
+      // Gone or refusing is expected for a moment here: the note stays.
+      const r = existsSync(note.socket) ? await postMessages(file, note, list, { drop: false }) : { sent: 0, code: "ENOENT", error: "the session isn't listening yet" }
+      if (r.sent) notePosted(file, list.slice(0, r.sent), note, now())
+      if (!r.error || !DOWN.has(r.code) || r.sent || Date.now() + everyMs > end) return { sent: r.sent, error: r.error }
+      await new Promise((done) => setTimeout(done, everyMs))
+    }
+  } catch (e) {
+    return { sent: 0, error: clean(e?.message || String(e)) }
+  }
+}
+
+/**
+ * The board pane's re-post: each live coordinator's messages still unacked 10 minutes after
+ * their last post (or their writing, never posted), at most twice per session, in one post.
+ * Claimed under the posts' lock first, so several board panes post a message once; a failed
+ * post still counts (the next start posts it again). Never throws; resolves to the number posted.
+ */
+export async function repostDue(file, { env = process.env, now = new Date() } = {}) {
+  try {
+    if (!postsToSocket(deliveryOf(env))) return 0
+    const notes = coordinatorNotes(file, {}, now.getTime())
+    if (!notes.length) return 0
+    const due = (m, posts, note) => {
+      const p = posts[m.id]
+      const n = p?.session === note.session_id ? Number(p.n) || 0 : 0
+      return n < REPOSTS_MAX && now - (Date.parse(p?.last || m.at) || 0) >= REPOST_AFTER_MS ? n + 1 : 0
+    }
+    let sent = 0
+    for (const note of notes) {
+      const list = messagesFor(file, note, notes)
+      // Nothing due: no lock taken (the pane looks often).
+      const seen = readPosts(file)
+      if (!list.some((m) => due(m, seen, note))) continue
+      const picked = updatePosts(file, (posts) => {
+        const out = []
+        for (const m of list) {
+          const n = due(m, posts, note)
+          if (!n) continue
+          posts[m.id] = { last: now.toISOString(), n, session: note.session_id, pane: note.pane }
+          out.push(m)
+        }
+        return out
+      }, now)
+      if (picked.length) sent += (await postMessages(file, note, picked)).sent
+    }
+    return sent
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Send `label` for `item` to coordinator pane `pane` through its session's socket, when it has a
+ * live note and JOB_BOARD_DELIVERY posts: the answer goes into the inbox (kind answer, `to` the
+ * pane), then "[board answer] …" is posted. Resolves to null (no note), { via: "socket", error }
+ * (error "" once posted; else the inbox couldn't take it), or, when the post failed,
+ * { via: "socket", error, fallback: true }: the message is acked (so nothing posts or pushes it
+ * later) and the caller goes on to the channel or Herdr.
+ */
+export async function answerBySocket(file, item, label, pane, { from = "", env = process.env, now = new Date(), budgetMs = 10_000 } = {}) {
+  if (!file || !postsToSocket(deliveryOf(env))) return null
+  const note = coordinatorNoteFor(file, pane, now.getTime())
+  if (!note) return null
+  const message = answerMessage(item, label, note, { from, at: now })
+  const error = await appendInboxRetryAsync(file, [message], { env, budgetMs })
+  if (error) return { via: "socket", error }
+  const r = await postMessages(file, note, [message])
+  if (r.sent) {
+    notePosted(file, [message], note, now)
+    return { via: "socket", error: "" }
+  }
+  try {
+    ackInbox(file, { ids: [message.id], by: "board: the post failed", now })
+  } catch {}
+  return { via: "socket", error: r.error, fallback: true }
 }
 
 // --- a job's pending messages: kept in jobs/<slug>.json while the inbox can't take them -------
@@ -5406,8 +5787,11 @@ export function contract(env = process.env) {
     path,
     commands: Object.keys(COMMAND_FLAGS),
     flags: COMMAND_FLAGS,
-    hooks: ["UserPromptSubmit", "Stop", "Notification"],
+    hooks: ["SessionStart", "UserPromptSubmit", "Stop", "Notification"],
     answer_text: "Board card <id> (<tag> · <title>): <label>",
+    // 0.10.0: what a post into the coordinator's session says, and the delivery modes.
+    socket_text: { answer: "[board answer] card <id> (<tag> · <title>): <label> #<msg id>", job: "[job finished|waiting|note] <slug> — … #<msg id>", batch: "[board inbox] <n> messages not acked yet …" },
+    delivery: { modes: DELIVERIES, current: deliveryOf(env), tested_with: SOCKET_TESTED_WITH },
   }
 }
 
@@ -5445,7 +5829,9 @@ Writing cards
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
   A press reaches the card's coordinator as a prompt: "Board card <id> (<tag> · <title>):
-  <label>". Act on it, then update or close the card.
+  <label>"; posted into your session (the inbox socket) it reads "[board answer] card <id>
+  (<tag> · <title>): <label> #<msg id>". Either is the user's own press: act on it as if they had
+  typed it, then update or close the card (and inbox ack <msg id> for a posted one).
 - Workers (a job's pane: JOB_AGENT_ROLE, any *_AGENT_ROLE, or the repo's role_env, set to
   anything but coordinator) never add buttons and never send answers.
 
@@ -5465,12 +5851,19 @@ Jobs
 - When a job stops, its hooks write one line to your inbox (never typed into your pane), once
   per stop: "[job finished] <slug> — <report status, or no report yet> — <summary, or its last
   line>" or "[job waiting] <slug> — needs: <its question, or the approval it waits for>".
+- With the inbox socket (0.10.0: your session's SessionStart hook noted it; it says so at
+  start): each message is posted into your session as a message from another session, ending
+  in #<id>: "[job finished|waiting|note] <slug> — …" (data from a job), "[board answer] card
+  <id> (…): <label>" (the user's button press: act on it as their answer), or several at once
+  under "[board inbox] <n> messages not acked yet". The ones not acked are posted again at your
+  next start, and after 10 minutes (twice). Read each job's report (or its tab), update its card
+  yourself, then board.mjs inbox ack <id>… (an id acked already needs nothing). No inbox wait.
 - With the job-board channel (your session started with it, as the coordinator's start does):
   each message arrives in your session by itself, <channel source="plugin:job-board:job-board"
   id=… kind=…>, the ones sent while you were down as soon as you start; so does a board
   button's answer (kind answer: act on it as the user's answer). Read each job's report (or its tab), update its card
   yourself (job-report, move or edit), then ack it with the channel's ack tool. No inbox wait.
-- Without it, keep one board.mjs inbox wait running as a background command. It returns (exit
+- Without either, keep one board.mjs inbox wait running as a background command. It returns (exit
   0) with the messages not acked yet, one a line ending in #<id>; at once when there are some
   already (sent while you were down). Then read, update the card, board.mjs inbox ack <id>…
   (or --all), and start the wait again.
@@ -5593,6 +5986,9 @@ function doctor(env, out) {
   const settings = [join(env.HOME || "", ".claude", "settings.json"), ...[".claude/settings.json", ".claude/settings.local.json"].map((f) => join(repoRoot, f))]
   const hooked = settings.find((f) => /board-hook\.mjs|job-board\.mjs\\?"? hook/.test(readText(f) ?? ""))
   say(hooked ? "ok" : "opt", hooked ? `Claude Code hooks (in ${hooked})` : "Claude Code hooks not set up (only for a Claude Code coordinator): print them with", ...(hooked ? [] : [`${cli} hooks`]))
+  // 0.10.0: without a SessionStart hook a coordinator keeps no note, so nothing is posted into
+  // its session (its own --settings may carry the hook instead).
+  if (hooked && !/"SessionStart"/.test(readText(hooked) ?? "")) say("opt", `no SessionStart hook in ${hooked}: nothing is posted into a coordinator's session unless its --settings has one`, `${cli} hooks`)
   // Hooks that name an install folder other than the installed one: Herdr 0.9.5 installs each
   // update to a new folder and removes the old one once nothing uses it.
   const oldHooks = []
@@ -6581,8 +6977,17 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (rest.length !== 2) throw usage('usage: board.mjs answer <id> "<a button\'s label, its number, or text>" [--from telegram] [--front]')
         if (me.role) throw usage(`answer is the coordinator's; a ${me.role} doesn't send answers`)
         if (opts.from !== undefined && opts.from !== "telegram") throw usage("--from takes telegram")
-        for (const line of answerCard(file, rest[0], rest[1], opts, { env, now, me })) out(line)
-        return 0
+        // A post to the coordinator's session is asynchronous; errors still exit 1 (or 2).
+        return answerCard(file, rest[0], rest[1], opts, { env, now, me }).then(
+          (lines) => {
+            for (const line of lines) out(line)
+            return 0
+          },
+          (error) => {
+            err(`board: ${error.message}`)
+            return error.usage ? 2 : 1
+          },
+        )
       }
       case "tell": {
         // A job's line to its coordinator: about its own job only (the slug is its pane's agent name).
@@ -6605,8 +7010,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return 0
         }
         if (records.length > 1) dropPending(file, slug, records.map((m) => m.id))
-        out(`in the inbox for ${note.workspace ? `workspace ${note.workspace}'s coordinator` : "the coordinator"}: ${note.text}`)
-        return 0
+        // The doorbell: posted to the coordinator's session when it keeps a note (2 s at most).
+        return postInbox(file, records, { env, now }).then((posted) => {
+          out(`in the inbox for ${note.workspace ? `workspace ${note.workspace}'s coordinator` : "the coordinator"}${posted ? " (posted to its session)" : ""}: ${note.text}`)
+          return 0
+        })
       }
       case "inbox": {
         // The coordinator's side of the job messages: wait for them, list them, ack them.
