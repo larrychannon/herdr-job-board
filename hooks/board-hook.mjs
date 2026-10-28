@@ -5,8 +5,8 @@
 //
 // For the coordinator (no role variable, JOB_AGENT_ROLE by default, any *_AGENT_ROLE or the
 // repo's job.json role_env, set to anything but "coordinator"):
-//   SessionStart      when Claude Code gave the session a messaging socket and
-//                     JOB_BOARD_DELIVERY posts (auto, socket): notes it for the board
+//   SessionStart      when Claude Code gave the session a messaging socket and its
+//                     JOB_BOARD_DELIVERY is set to socket or auto (not unset): notes it for the board
 //                     (coordinators/<workspace>.json), says how posted messages look, and
 //                     posts the inbox's unacked messages into the new session from the
 //                     background (0.10.0; board.mjs, "the coordinator's inbox socket").
@@ -58,7 +58,7 @@ import {
   boardPath,
   channelNotes,
   claimStop,
-  coordinatorNotes,
+  coordinatorNoteFor,
   deliveryOf,
   dropPending,
   idList,
@@ -84,6 +84,7 @@ import {
   readBoard,
   readStop,
   readStops,
+  registersSocket,
   releaseStop,
   replayInbox,
   reportNow,
@@ -288,7 +289,9 @@ export function inboxReminder(file, { workspace = "", cli = BOARD_CLI, env = pro
   if (!list.length) return ""
   const shown = list.slice(0, REMINDER_CARDS).map((m) => `#${String(m.id).replace(/[^A-Za-z0-9]/g, "")} ${JSON.stringify(oneLine(m.text, 100))}`)
   const more = list.length > REMINDER_CARDS ? `; +${list.length - REMINDER_CARDS} more` : ""
-  const socket = postsToSocket(deliveryOf(env)) && coordinatorNotes(file, { workspace }).length > 0
+  // Its own note (this pane's session), not another session's in the workspace.
+  const pane = env.HERDR_ENV === "1" ? String(env.HERDR_PANE_ID || "") : ""
+  const socket = postsToSocket(deliveryOf(env)) && Boolean(coordinatorNoteFor(file, pane))
   const channel = channelNotes(file, { workspace }).length > 0
   const watcher = socket || channel || inboxWatchers(file, { workspace }).length ? "" : ` No inbox watcher is running; start: node ${quote(cli)} inbox wait, in the background.`
   const ack = channel && !socket ? "the job-board channel's ack tool" : `node ${quote(cli)} inbox ack <id>… (or --all)`
@@ -299,15 +302,16 @@ export function inboxReminder(file, { workspace = "", cli = BOARD_CLI, env = pro
 }
 
 /**
- * The coordinator's SessionStart (0.10.0): when JOB_BOARD_DELIVERY posts and Claude Code gave the
- * session a messaging socket, note it (coordinators/<workspace>.json), and say how posts look;
- * `replay` is the note when messages not acked yet are to be posted into the new session (not
- * after a compaction: the session is the same). Channel and prompt keep no note.
+ * The coordinator's SessionStart (0.10.0): when its JOB_BOARD_DELIVERY is set to socket or auto
+ * (its start script's choice: unset, channel and prompt keep no note, so no other session in the
+ * workspace takes its posts) and Claude Code gave the session a messaging socket, note it
+ * (coordinators/<workspace>.json), and say how posts look; `replay` is the note when messages not
+ * acked yet are to be posted into the new session (not after a compaction: the same session).
  */
 export function sessionStart(file, input, env, now = new Date(), cli = BOARD_CLI) {
   const mode = deliveryOf(env)
   const socket = String(env.CLAUDE_CODE_MESSAGING_SOCKET || "")
-  if (!postsToSocket(mode) || !socket) return { stdout: "" }
+  if (!registersSocket(env) || !socket) return { stdout: "" }
   const workspace = String(env.HERDR_WORKSPACE_ID || "")
   const note = noteCoordinatorSession(file, { socket, pane: String(env.HERDR_PANE_ID || ""), sessionId: input.session_id || "", workspace, delivery: mode, now })
   const waiting = unacked(file, { workspace }).length

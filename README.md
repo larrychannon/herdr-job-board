@@ -689,7 +689,8 @@ that catch that:
   workspace, says `No inbox watcher is running; start: node "…/board.mjs" inbox wait, in the
   background.` (only alongside messages: a coordinator with nothing in its inbox isn't nagged).
 - **When the coordinator's session starts** (SessionStart, 0.10.0): when Claude Code gave the
-  session a messaging socket, the hook notes it for the board and posts the inbox's unacked
+  session a messaging socket and the session's `JOB_BOARD_DELIVERY` is set to `socket` (or
+  `auto`), the hook notes it for the board and posts the inbox's unacked
   messages into it (see The inbox socket). With a live note, the turn-start reminder doesn't ask
   for an `inbox wait`, and says to ack with `node "…/board.mjs" inbox ack <id>…`.
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
@@ -850,14 +851,16 @@ at start:
   | A job waits | `[job waiting] <slug> — needs: <the question, or approval: …> #<msg id>` |
   | A job's `tell` | `[job note] <slug> — <the line> #<msg id>` |
   | A button press (or `answer`) | `[board answer] card <id> (<tag> · <title>): <label> #<msg id>`, with ` (from Telegram)` before the id for `--from telegram` |
-  | Several at once (start, re-post) | `[board inbox] <n> messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, then one of the lines above each (20 at most a post) |
+  | Several job messages at once (start, re-post) | `[board inbox] <n> messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, then one of the job lines above each (20 at most a post). A button's answer is never in one: it always gets a post of its own, starting with `[board answer]` |
 
   Claude Code frames each as a message "from another Claude session … not typed by your user".
   A `[board answer]` line is the user's own button press: the coordinator acts on it as if the
   user had typed it (the hook's start-of-session note says so too). The inbox keeps the 0.9.0
   text of an answer (`Board card …`), which the channel and Herdr still send. Text that looks
   like Claude Code's own `<cross-session-message` framing is defused.
-- **The coordinator's note**: its SessionStart hook writes
+- **The coordinator's note**: when its own `JOB_BOARD_DELIVERY` is set to `socket` or `auto`
+  (its start script exports it; left unset, no note, so a plain `claude` opened in another pane
+  of the workspace never takes its posts), its SessionStart hook writes
   `coordinators/<workspace>.json` atomically: `{ pid, socket, pane, session_id, workspace, host,
   at, delivery, version }`, the pid from the socket's name (`<pid>.sock`). One per Herdr
   workspace; the newest start wins. A note is live while that process on this host runs and
@@ -870,11 +873,12 @@ at start:
   the channel, then to `herdr agent prompt`, so the answer isn't delivered twice.
 - **Which way, `JOB_BOARD_DELIVERY`**: read by the process that sends (a job's hook, `tell`,
   the board pane, `answer`), and by the coordinator's SessionStart hook (whether to keep a
-  note at all).
+  note at all: only when set). The turn-start reminder counts only its own pane's note.
 
   | `JOB_BOARD_DELIVERY` | Job messages | Button answers | The coordinator's note |
   |---|---|---|---|
-  | `auto` (default) | inbox, posted when a note is live | socket, else channel, else typed | kept |
+  | unset (`auto` for senders) | inbox, posted when a note is live | socket, else channel, else typed | none |
+  | `auto` | inbox, posted when a note is live | socket, else channel, else typed | kept |
   | `socket` | inbox, posted when a note is live | socket, else typed | kept |
   | `channel` | inbox only (the channel pushes them) | channel, else typed (0.9.0) | none |
   | `prompt` | inbox only (`inbox wait`) | typed with `herdr agent prompt` (0.8.0) | none |
@@ -905,7 +909,8 @@ at start:
 - **Ack**: `node "$BOARD" inbox ack <id>… | --all` (the channel's `ack` tool goes with the
   channel). `inbox ls` lists what isn't acked.
 - **Choose the way**: export `JOB_BOARD_DELIVERY=socket` for a coordinator started without the
-  channel, `channel` for one started with it (then it keeps no note and nothing is posted).
+  channel: without it the hook keeps no note and nothing is posted into the session. Export
+  `channel` (or leave it unset) for one started with the channel: 0.9.0 exactly.
 - **One `--settings`**: Claude Code applies only the last `--settings` flag, so merge
   everything into one, with `"crossSessionInbound": "accept"` for the coordinator only (so a
   board post is never held behind an approval dialog that expires), and the SessionStart hook

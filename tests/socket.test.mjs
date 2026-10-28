@@ -196,12 +196,19 @@ test("socketText and postTexts: the markers, the id last, a batch headed [board 
   assert.equal(socketText(job), "[job finished] fix-x — done — shipped #k1")
   assert.equal(socketText(answer), "[board answer] card 12 (hjb · Pick a path): Go (from Telegram) #k2")
   assert.deepEqual(postTexts([job]), [socketText(job)])
-  const [batch] = postTexts([job, answer])
+  const two = { ...job, id: "k5", text: "[job note] fix-x — two" }
+  const [batch] = postTexts([job, two])
   const lines = batch.split("\n")
   assert.match(lines[0], /^\[board inbox\] 2 messages not acked yet, oldest first/)
-  assert.deepEqual(lines.slice(1), [socketText(job), socketText(answer)])
+  assert.deepEqual(lines.slice(1), [socketText(job), socketText(two)])
   const many = Array.from({ length: 45 }, (_, i) => ({ ...job, id: `m${i}` }))
   assert.deepEqual(postTexts(many).map((t) => t.split("\n").length - 1), [20, 20, 5])
+  // A button's answer is never inside a batch: its post starts with its marker.
+  const mixed = postTexts([job, { ...job, id: "k3" }, answer, { ...job, id: "k4" }])
+  assert.equal(mixed.length, 3)
+  assert.match(mixed[0], /^\[board inbox\] 2 messages/)
+  assert.equal(mixed[1], socketText(answer))
+  assert.equal(mixed[2], socketText({ ...job, id: "k4" }))
 })
 
 test("deliveryOf: auto by default; socket, channel, prompt as set (any case); anything else auto", () => {
@@ -351,9 +358,15 @@ test("SessionStart: the coordinator notes its socket and replays what isn't acke
   try {
     const a = s.message("[job finished] fix-x — done — one")
     const b = s.message("[job waiting] fix-x — needs: two?", { kind: "waiting" })
+    const c = s.message("Board card 7 (x · Pick): Go", { kind: "answer", to: COORD })
     const live = await fakeSession(s.sock())
-    const env = { ...s.coordEnv, CLAUDE_CODE_MESSAGING_SOCKET: live.path }
+    const env = { ...s.coordEnv, CLAUDE_CODE_MESSAGING_SOCKET: live.path, JOB_BOARD_DELIVERY: "socket" }
     const input = { hook_event_name: "SessionStart", source: "startup", session_id: "sess-9", cwd: s.base }
+    // Registering is the coordinator's start script's choice: left unset, no note (any other
+    // Claude session in the workspace runs the same hook).
+    const { JOB_BOARD_DELIVERY: _mode, ...unset } = env
+    assert.deepEqual(handle(input, unset), { stdout: "" })
+    assert.equal(coordinatorNotes(s.file).length, 0)
     for (const mode of ["channel", "prompt"]) {
       assert.deepEqual(handle(input, { ...env, JOB_BOARD_DELIVERY: mode }), { stdout: "" })
       assert.equal(coordinatorNotes(s.file).length, 0)
@@ -368,16 +381,18 @@ test("SessionStart: the coordinator notes its socket and replays what isn't acke
     assert.equal(context.hookEventName, "SessionStart")
     assert.match(context.additionalContext, /\[board answer\] card <id> .*the user pressed that button/)
     assert.match(context.additionalContext, /inbox ack <id>/)
-    assert.match(context.additionalContext, /2 not acked yet are being posted now/)
+    assert.match(context.additionalContext, /3 not acked yet are being posted now/)
     assert.equal(r.replay.note.session_id, "sess-9")
     assert.equal(coordinatorNoteFor(s.file, COORD).socket, live.path)
     // A compaction: same session, no replay.
     assert.equal(sessionStart(s.file, { ...input, source: "compact" }, env).replay, null)
 
     const done = await replayInbox(r.replay.file, r.replay.note)
-    assert.deepEqual(done, { sent: 2, error: "" })
-    await until(() => live.got.length === 1)
+    assert.deepEqual(done, { sent: 3, error: "" })
+    await until(() => live.got.length === 2)
     assert.deepEqual(live.texts()[0].split("\n").slice(1), [socketText(a), socketText(b)])
+    // The answer in a post of its own, starting with its marker.
+    assert.equal(live.texts()[1], `[board answer] card 7 (x · Pick): Go #${c.id}`)
     assert.equal(readPosts(s.file)[a.id].session, "sess-9")
     await live.close()
 
@@ -388,8 +403,9 @@ test("SessionStart: the coordinator notes its socket and replays what isn't acke
     assert.match(later.stdout, /SessionStart/)
     await new Promise((d) => setTimeout(d, 300))
     const again = await fakeSession(s.sock())
-    await until(() => again.got.length === 1)
+    await until(() => again.got.length === 2)
     assert.match(again.texts()[0], /^\[board inbox\] 2 messages not acked yet/)
+    assert.match(again.texts()[1], /^\[board answer\] card 7 /)
     await again.close()
   } finally {
     s.done()
@@ -439,18 +455,22 @@ test("the turn-start reminder: no inbox wait asked for while a coordinator note 
   const s = setup()
   try {
     s.message("[job finished] fix-x — done — one")
-    let text = inboxReminder(s.file, { workspace: "w1", env: {} })
+    const here = { HERDR_ENV: "1", HERDR_PANE_ID: COORD }
+    let text = inboxReminder(s.file, { workspace: "w1", env: here })
     assert.match(text, /No inbox watcher is running/)
     const live = await fakeSession(s.sock())
+    // Another pane's session noted in the workspace: not this coordinator's way.
+    s.note(live.path, { pane: "w1:p7" })
+    assert.match(inboxReminder(s.file, { workspace: "w1", env: here }), /No inbox watcher is running/)
     s.note()
-    text = inboxReminder(s.file, { workspace: "w1", env: {} })
+    text = inboxReminder(s.file, { workspace: "w1", env: here })
     assert.doesNotMatch(text, /inbox watcher|inbox wait/)
     assert.match(text, /board\.mjs" inbox ack <id>… \(or --all\)/)
     // With a channel too: still the CLI (it acks the same inbox).
     s.channel()
-    assert.match(inboxReminder(s.file, { workspace: "w1", env: {} }), /inbox ack <id>/)
+    assert.match(inboxReminder(s.file, { workspace: "w1", env: here }), /inbox ack <id>/)
     // The coordinator set to channel: the note isn't its way; the channel's ack tool, as in 0.9.0.
-    assert.match(inboxReminder(s.file, { workspace: "w1", env: { JOB_BOARD_DELIVERY: "channel" } }), /the job-board channel's ack tool/)
+    assert.match(inboxReminder(s.file, { workspace: "w1", env: { ...here, JOB_BOARD_DELIVERY: "channel" } }), /the job-board channel's ack tool/)
     await live.close()
   } finally {
     s.done()

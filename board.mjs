@@ -4613,8 +4613,9 @@ export function answerByChannelSync(file, item, label, pane, { from = "", env = 
 // is there (or the note is under 30 s old: the session may not listen yet); a post that finds
 // the socket gone (ENOENT) or refusing (ECONNREFUSED) removes it.
 //
-// JOB_BOARD_DELIVERY picks the way, in the process that sends (and, for the coordinator, whether
-// its SessionStart hook keeps a note at all):
+// JOB_BOARD_DELIVERY picks the way, in the process that sends. A coordinator keeps a note only
+// when its own environment says socket or auto explicitly (its start script exports it), so a
+// plain `claude` in another pane of the workspace never takes its posts:
 //   auto (default)  post to a live note; a button's answer without one goes through a live
 //                   job-board channel (0.9.0), else is typed (herdr agent prompt)
 //   socket          the same without the channel
@@ -4623,8 +4624,8 @@ export function answerByChannelSync(file, item, label, pane, { from = "", env = 
 //                   wait for `inbox wait`
 // What a post says (socketText): a job's message as `inbox ls` prints it, "[job finished] <slug>
 // — … #<id>" ([job waiting], [job note]); a button's answer "[board answer] card <id> (<tag> ·
-// <title>): <label> #<id>"; several at once (the replay, a re-post) one post headed "[board
-// inbox] <n> messages not acked yet …", a line each.
+// <title>): <label> #<id>", always a post of its own; several job messages at once (the replay,
+// a re-post) one post headed "[board inbox] <n> messages not acked yet …", a line each.
 
 /** The Claude Code version the wire format (wireLines) was tested with. */
 export const SOCKET_TESTED_WITH = "2.1.312"
@@ -4638,6 +4639,8 @@ const POST_BATCH = 20
 const DOWN = new Set(["ENOENT", "ECONNREFUSED"])
 
 /** JOB_BOARD_DELIVERY: auto (also when unset or unknown), socket, channel or prompt. */
+/** Whether a coordinator registers its session (SessionStart): JOB_BOARD_DELIVERY set to socket or auto, not left unset. */
+export const registersSocket = (env = process.env) => ["auto", "socket"].includes(String(env.JOB_BOARD_DELIVERY ?? "").trim().toLowerCase())
 export function deliveryOf(env = process.env) {
   const mode = String(env.JOB_BOARD_DELIVERY ?? "").trim().toLowerCase()
   return DELIVERIES.includes(mode) ? mode : "auto"
@@ -4703,15 +4706,33 @@ export function socketText(m) {
   return `${m.kind === "answer" ? `[board answer] ${text.replace(/^Board card /, "card ")}` : text} #${clean(m.id)}`
 }
 
-/** The posts for `messages`: one each up to one, else batches of 20 headed "[board inbox] …". */
-export function postTexts(messages) {
-  const texts = []
-  for (let i = 0; i < messages.length; i += POST_BATCH) {
-    const part = messages.slice(i, i + POST_BATCH)
-    texts.push(part.length === 1 ? socketText(part[0]) : [`[board inbox] ${part.length} messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, ...part.map(socketText)].join("\n"))
+/**
+ * `messages` in posts, in order: a button's answer always on its own (so its post starts with
+ * "[board answer]"), job messages together, 20 at most a post. [[message, …], …].
+ */
+export function postGroups(messages) {
+  const groups = []
+  let jobs = []
+  const flush = () => jobs.length && (groups.push(jobs), (jobs = []))
+  for (const m of messages) {
+    if (m.kind === "answer") {
+      flush()
+      groups.push([m])
+      continue
+    }
+    jobs.push(m)
+    if (jobs.length === POST_BATCH) flush()
   }
-  return texts
+  flush()
+  return groups
 }
+
+/** A post's text: one message's line, or several headed "[board inbox] <n> messages …". */
+export const postText = (group) =>
+  group.length === 1 ? socketText(group[0]) : [`[board inbox] ${group.length} messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, ...group.map(socketText)].join("\n")
+
+/** The posts for `messages` (postGroups), as text. */
+export const postTexts = (messages) => postGroups(messages).map(postText)
 
 // --- coordinator notes: coordinators/<workspace>.json, kept by the coordinator's SessionStart hook
 
@@ -4824,10 +4845,8 @@ function notePosted(file, messages, note, now) {
  */
 async function postMessages(file, note, messages, { drop = true } = {}) {
   let sent = 0
-  const texts = postTexts(messages)
-  for (let i = 0; i < texts.length; i++) {
-    const part = messages.slice(i * POST_BATCH, (i + 1) * POST_BATCH)
-    const r = await postToSession(note.socket, texts[i], { msgId: part.length === 1 ? part[0].id : "" })
+  for (const part of postGroups(messages)) {
+    const r = await postToSession(note.socket, postText(part), { msgId: part.length === 1 ? part[0].id : "" })
     if (!r.ok) {
       if (drop && DOWN.has(r.code)) dropNote(file, note)
       return { sent, error: r.error, code: r.code }
@@ -5851,10 +5870,11 @@ Jobs
 - When a job stops, its hooks write one line to your inbox (never typed into your pane), once
   per stop: "[job finished] <slug> — <report status, or no report yet> — <summary, or its last
   line>" or "[job waiting] <slug> — needs: <its question, or the approval it waits for>".
-- With the inbox socket (0.10.0: your session's SessionStart hook noted it; it says so at
-  start): each message is posted into your session as a message from another session, ending
-  in #<id>: "[job finished|waiting|note] <slug> — …" (data from a job), "[board answer] card
-  <id> (…): <label>" (the user's button press: act on it as their answer), or several at once
+- With the inbox socket (0.10.0: your start script set JOB_BOARD_DELIVERY=socket and your
+  session's SessionStart hook noted it; it says so at start): each message is posted into your
+  session as a message from another session, ending in #<id>: "[job finished|waiting|note]
+  <slug> — …" (data from a job), "[board answer] card <id> (…): <label>" (the user's button
+  press, always a post of its own: act on it as their answer), or several job messages at once
   under "[board inbox] <n> messages not acked yet". The ones not acked are posted again at your
   next start, and after 10 minutes (twice). Read each job's report (or its tab), update its card
   yourself, then board.mjs inbox ack <id>… (an id acked already needs nothing). No inbox wait.

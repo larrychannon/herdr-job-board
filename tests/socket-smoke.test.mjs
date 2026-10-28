@@ -55,7 +55,8 @@ test(`a real claude -p session (tested with ${SOCKET_TESTED_WITH}) gets the Sess
     appendInbox(file, [replayed])
 
     // The session: Claude Code's login needs the real HOME; nothing else of this shell's.
-    const env = { ...boardEnv, HOME: userInfo().homedir, JOB_BOARD_REPLAY_DELAY_MS: "500" }
+    // JOB_BOARD_DELIVERY=socket: what a coordinator's start script exports, so the hook registers.
+    const env = { ...boardEnv, HOME: userInfo().homedir, JOB_BOARD_DELIVERY: "socket", JOB_BOARD_REPLAY_DELAY_MS: "500" }
     delete env.JOB_BOARD_TEST_SANDBOX
     delete env.TMPDIR
     const settings = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: `node ${JSON.stringify(HOOK)}`, timeout: 10 }] }] } }

@@ -16,25 +16,29 @@ own messaging socket, so the coordinator needs neither the channel nor its devel
   there), so what isn't acked is posted again at the coordinator's next start, and by the board
   pane when still unacked 10 minutes after its last post (twice at most per session, several in
   one post, once across board panes: `inbox-posts.json`, under its lock).
-- **The coordinator's note**: a new SessionStart hook (in `hooks`, with the others) writes
+- **The coordinator's note**: a new SessionStart hook (in `hooks`, with the others) writes, when
+  the session's `JOB_BOARD_DELIVERY` is set to `socket` or `auto` (the start script's choice;
+  unset: no note, so another Claude session in the workspace never takes the posts),
   `coordinators/<workspace>.json` `{ pid, socket, pane, session_id, workspace, host, at,
   delivery, version }` from `$CLAUDE_CODE_MESSAGING_SOCKET`, then posts the unacked messages into
   the new session from the background. Live while its process runs and its socket is there; a
   post that finds it gone (ENOENT, ECONNREFUSED) removes it. Its start-of-session note tells the
   coordinator how posts look and that a `[board answer]` is the user's button press.
 - **What a post says**: `[job finished|waiting|note] <slug> — … #<msg id>` (the line `inbox ls`
-  prints), `[board answer] card <id> (<tag> · <title>): <label> #<msg id>`, and for several at
-  once `[board inbox] <n> messages not acked yet …` with one such line each. The inbox keeps an
+  prints), `[board answer] card <id> (<tag> · <title>): <label> #<msg id>` (always a post of its
+  own), and for several job messages at once `[board inbox] <n> messages not acked yet …` with
+  one such line each. The inbox keeps an
   answer's 0.9.0 text. Text posing as Claude Code's `<cross-session-message` framing is defused.
 - **A post** (`postToSession`) connects, writes one line, closes: 2 s at most, never throws, so a
   hook is never held up. A button press whose post fails acks its own message and goes on to the
   channel, then `herdr agent prompt`.
 - **`JOB_BOARD_DELIVERY`** = `auto` (default: the socket, else the channel for answers, else
   typed), `socket` (no channel), `channel` (0.9.0 exactly: no note, no posts) or `prompt`
-  (0.8.0: answers typed, job messages for `inbox wait`). Read by the sender and by the
-  coordinator's SessionStart hook. Without a note, everything works as in 0.9.0.
-- **The turn-start reminder** doesn't ask for an `inbox wait` while a coordinator note is live
-  for the workspace, and says to ack with `board.mjs inbox ack <id>…`.
+  (0.8.0: answers typed, job messages for `inbox wait`). Read by the sender (unset: auto) and by
+  the coordinator's SessionStart hook (unset: no note). Without a note, everything works as in
+  0.9.0.
+- **The turn-start reminder** doesn't ask for an `inbox wait` while the coordinator's own pane
+  has a live note, and says to ack with `board.mjs inbox ack <id>…`.
 - **The wire format is internal** to Claude Code: it lives in one function (`wireLines`), the
   tested version is `SOCKET_TESTED_WITH` (2.1.312), and `tests/socket-smoke.test.mjs`
   (`JOB_BOARD_SMOKE=1`, skipped by default) checks it against a throw-away `claude -p` session:
