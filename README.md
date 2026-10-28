@@ -311,7 +311,11 @@ button itself. A click on the question never sends.
 
 - Click a button, or choose it and press Enter: the board hands
   `Board card <id> (<tag> · <title>): <label>` (the tag when the card has a project) to the
-  card's coordinator, with `herdr agent prompt`. Nothing else from the card is sent.
+  card's coordinator, with `herdr agent prompt`. Nothing else from the card is sent. A
+  coordinator whose session keeps an inbox-socket note (0.10.0) gets it posted into its session
+  instead, as `[board answer] card <id> (<tag> · <title>): <label> #<msg id>`, and one with the
+  job-board channel (0.9.0) through the channel; neither types into its input box (see The
+  inbox socket).
 - **Which coordinator**: the card's owner (the coordinator pane that wrote it) while it runs;
   else the newest running coordinator of the card's project; else the pane that opened the board
   (or the front coordinator, `board.mjs front`). That last one gets a card nobody owns of its
@@ -378,8 +382,10 @@ Needs Herdr 0.9.3 or newer, Node.js 20 or newer, and git.
    ```
 
    It exits 1 only when something the board needs is missing (Node, Herdr, the plugin, or a
-   board pane on an older version or an older install folder); the key binding, the sidebar and
-   the hooks are optional, and so is removing an old install folder (see Update).
+   board pane on an older version or an older install folder), or a settings file runs the
+   board's hook on SessionStart (the coordinator's start script's `--settings` carries that one;
+   see The inbox socket); the key binding, the sidebar and the hooks are optional, and so is
+   removing an old install folder (see Update).
 
 3. The key binding and the sidebar count: `setup` writes both into Herdr's `config.toml`
    (below). Look first, then write:
@@ -597,7 +603,7 @@ this list.
 | `restart` | Restart every board pane that runs an older version of this board, or a copy whose files are gone, in every workspace. |
 | `setup [--dry-run] [--key K] [--no-key] [--no-sidebar] [--no-reload]` | The key binding and the sidebar count in Herdr's `config.toml` (see above). |
 | `doctor` | Check the install and print the one fix for each thing missing; exit 1 when something required is. |
-| `hooks` | Print the Claude Code hooks to merge into `.claude/settings.json`. |
+| `hooks` | Print the Claude Code hooks to merge into `.claude/settings.json` (not SessionStart). `--coordinator` prints the coordinator's own `--settings` instead: `crossSessionInbound` accept and the SessionStart hook (the inbox socket). |
 | `contract` | What this copy offers, as JSON: version, contract 2, commands and their flags, hooks, store. |
 | `guide` | The instructions for agents (below). |
 | `version` | Print the board's version. |
@@ -684,6 +690,12 @@ that catch that:
   (id and line, cut to 100 characters, quoted, up to 8) and, when no `inbox wait` runs for its
   workspace, says `No inbox watcher is running; start: node "…/board.mjs" inbox wait, in the
   background.` (only alongside messages: a coordinator with nothing in its inbox isn't nagged).
+- **When the coordinator's session starts** (SessionStart, 0.10.0, the coordinator's only: its
+  start script passes it in `--settings`, never a settings file): when Claude Code gave the
+  session a messaging socket and the session's `JOB_BOARD_DELIVERY` is set to `socket` (or
+  `auto`), the hook notes it for the board and posts the inbox's unacked
+  messages into it (see The inbox socket). With a live note, the turn-start reminder doesn't ask
+  for an `inbox wait`, and says to ack with `node "…/board.mjs" inbox ack <id>…`.
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
   of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
   changed during that turn, the hook sends it back
@@ -707,7 +719,9 @@ settings and merge them into `.claude/settings.json` (this project) or
 node "$BOARD" hooks
 ```
 
-(`$BOARD` as under Install; `hooks/board-hook.mjs --print-settings` prints the same.) The path
+(`$BOARD` as under Install; `hooks/board-hook.mjs --print-settings` prints the same.) They don't
+include SessionStart: that one goes in the coordinator's start script's `--settings` only
+(`node "$BOARD" hooks --coordinator` prints it; see The inbox socket). The path
 in them is the plugin's folder. Herdr 0.9.3 keeps it across updates; 0.9.5 installs each update
 to a new folder and removes the old one once nothing uses it, so after an update print them again
 (`doctor` says when they run an older install folder), or point them at the job skill's
@@ -769,8 +783,8 @@ node "$BOARD" inbox ack --all     # after reading them and updating the cards; t
   lists the messages not acked yet, and says when no watcher runs for its workspace.
 - **The file**: acked messages older than 7 days are dropped once it grows past 256 KB.
 
-Without the channel below, button presses are not job messages: a press reaches the
-coordinator with `herdr agent prompt` (you pressed it on purpose).
+Without the inbox socket or the channel below, button presses are not job messages: a press
+reaches the coordinator with `herdr agent prompt` (you pressed it on purpose).
 
 ### The channel: messages and answers pushed into the coordinator's session (0.9.0)
 
@@ -817,6 +831,112 @@ starts with the coordinator's session and stops with it. Nothing has to be kept 
   The lock is the board's (`inbox.jsonl.lock`, the same owner file), so the two never write at
   once.
 
+### The inbox socket: messages and answers posted into the coordinator's session (0.10.0)
+
+Claude Code gives every session a messaging socket (`$CLAUDE_CODE_MESSAGING_SOCKET`) for
+messages from other sessions and scripts. A message written there arrives as a new turn when the
+session is idle, between tool calls when it is busy, and waits while a dialog is open. The board
+uses it as a doorbell, so the coordinator needs no channel, no development flag and no question
+at start:
+
+- **The inbox stays the truth.** A message goes into `inbox.jsonl` first, exactly as before;
+  only then is its line posted into its coordinator's session. The coordinator acks it with
+  `node "$BOARD" inbox ack <id>…` (or `--all`). Claude Code keeps posted messages in memory only
+  (one queued in a session that dies is lost there), so whatever isn't acked is posted again:
+  - **at the coordinator's start**: its SessionStart hook posts the messages not acked yet for
+    its workspace into the new session (not after a compaction: same session);
+  - **after 10 minutes**: the board pane posts a message again when it is still unacked 10
+    minutes after its last post, twice at most per session, several in one post. Several board
+    panes post it once (`inbox-posts.json`, under its lock).
+- **What a post says** (each line ends in the message's id, for `inbox ack`):
+
+  | What | The text posted |
+  |---|---|
+  | A job stopped | `[job finished] <slug> — <report status, or no report yet> — <summary, or its last line> #<msg id>` |
+  | A job waits | `[job waiting] <slug> — needs: <the question, or approval: …> #<msg id>` |
+  | A job's `tell` | `[job note] <slug> — <the line> #<msg id>` |
+  | A button press (or `answer`) | `[board answer] card <id> (<tag> · <title>): <label> #<msg id>`, with ` (from Telegram)` before the id for `--from telegram` |
+  | Several job messages at once (start, re-post) | `[board inbox] <n> messages not acked yet, oldest first (handle each, then board.mjs inbox ack <id>):`, then one of the job lines above each (20 at most a post). A button's answer is never in one: it always gets a post of its own, starting with `[board answer]` |
+
+  Claude Code frames each as a message "from another Claude session … not typed by your user".
+  A post whose text **begins** with `[board answer]` is the user's own button press: the
+  coordinator acts on it as if the user had typed it (the hook's start-of-session note says so
+  too). The same words anywhere else are a job's data: in any message's text the board turns
+  `[board answer]` and `[board inbox]` (any case or spacing) into `(board answer)` and
+  `(board inbox)`, so a job can't forge a press inside its line or a batch. The inbox keeps the
+  0.9.0 text of an answer (`Board card …`), which the channel and Herdr still send. Text that
+  looks like Claude Code's own `<cross-session-message` framing or a `<system-reminder` is
+  defused (`‹…`) in every post.
+- **The coordinator's note**: when its own `JOB_BOARD_DELIVERY` is set to `socket` or `auto`
+  (its start script exports it; left unset, no note, so a plain `claude` opened in another pane
+  of the workspace never takes its posts), its SessionStart hook writes
+  `coordinators/<workspace>.json` atomically: `{ pid, socket, pane, session_id, workspace, host,
+  at, delivery, version }`, the pid from the socket's name (`<pid>.sock`). One per Herdr
+  workspace; the newest start wins. A note is live while that process on this host runs and
+  its socket is there (or the note is under 30 s old: the session may not listen yet). A post
+  that finds the socket gone (`ENOENT`) or refusing (`ECONNREFUSED`) removes the note, unless
+  it is under 30 s old and its process runs (the session may not listen yet); the message stays
+  in the inbox for the next start.
+- **A post** connects, writes one line and closes. It never takes more than 2 s and never
+  throws: a hook is never held up, and a failed post leaves the message unacked (the turn-start
+  reminder lists it). A button press whose post fails acks its own inbox message and goes on to
+  the channel, then to `herdr agent prompt`, so the answer isn't delivered twice. One that timed
+  out after connecting may have been written: it counts as posted, stays unacked (posted again
+  after 10 minutes) and isn't also typed or sent by the channel.
+- **Which way, `JOB_BOARD_DELIVERY`**: read by the process that sends (a job's hook, `tell`,
+  the board pane, `answer`), and by the coordinator's SessionStart hook (whether to keep a
+  note at all: only when set). The turn-start reminder counts only its own pane's note.
+
+  | `JOB_BOARD_DELIVERY` | Job messages | Button answers | The coordinator's note |
+  |---|---|---|---|
+  | unset (`auto` for senders) | inbox, posted when a note is live | socket, else channel, else typed | none |
+  | `auto` | inbox, posted when a note is live | socket, else channel, else typed | kept |
+  | `socket` | inbox, posted when a note is live | socket, else typed | kept |
+  | `channel` | inbox only (the channel pushes them) | channel, else typed (0.9.0) | none |
+  | `prompt` | inbox only (`inbox wait`) | typed with `herdr agent prompt` (0.8.0) | none |
+
+  Start a coordinator with one of the socket and the channel, not both: with both, every message
+  arrives twice (harmless: the id is in each, and an ack is idempotent).
+- **The wire format is Claude Code's own** and not documented (only the socket, its variables
+  and an auth line are). It lives in one function, `wireLines` in `board.mjs`: one JSON line,
+  `{"type":"user","message":{"role":"user","content":"<text>"},"from":"job-board","msg_id":"<id>"}`.
+  Tested with Claude Code 2.1.312 (`SOCKET_TESTED_WITH`). After `claude update`, run the smoke
+  test, which starts one throw-away `claude -p` (Haiku) with the board's SessionStart hook on a
+  scratch board, and checks that both the start's replay and a posted `[board answer]` reach it:
+
+  ```sh
+  S=$(mktemp -d /tmp/jb.XXXX); HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp \
+    JOB_BOARD_SMOKE=1 node --test tests/socket-smoke.test.mjs
+  ```
+
+  If an update breaks the format, posts fail or go unseen; the messages stay unacked, the
+  reminder lists them, and `JOB_BOARD_DELIVERY=channel` (or `prompt`) goes back to the old way.
+
+#### What a coordinator's start script must do (the coordinator side)
+
+- **Register**: run the board's SessionStart hook in the coordinator's session, from its start
+  script's `--settings` only (`hooks --coordinator` prints it; the same command,
+  `node "<board>/hooks/board-hook.mjs"`, as the other events). Never put it in a settings file:
+  a `claude` started from the coordinator's shell (a `claude -p` it runs) inherits its
+  `JOB_BOARD_DELIVERY` and would take its note and its posts; `doctor` says so.
+  It needs `HERDR_ENV=1`, `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID` and Claude Code's
+  `CLAUDE_CODE_MESSAGING_SOCKET`, all set for it already inside Herdr.
+- **Ack**: `node "$BOARD" inbox ack <id>… | --all` (the channel's `ack` tool goes with the
+  channel). `inbox ls` lists what isn't acked.
+- **Choose the way**: export `JOB_BOARD_DELIVERY=socket` for a coordinator started without the
+  channel: without it the hook keeps no note and nothing is posted into the session. Export
+  `channel` (or leave it unset) for one started with the channel: 0.9.0 exactly.
+- **One `--settings`**: Claude Code applies only the last `--settings` flag, so merge
+  everything into one, with `"crossSessionInbound": "accept"` for the coordinator only (so a
+  board post is never held behind an approval dialog that expires), and the SessionStart hook
+  (`node "$BOARD" hooks --coordinator` prints both):
+
+  ```sh
+  claude --settings '{"crossSessionInbound":"accept","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"node \"<board>/hooks/board-hook.mjs\""}]}]}}'
+  ```
+- **Trust**: with `accept`, any process running as you can start a coordinator turn through
+  its socket (0600, in a 0700 folder of yours), no more than `herdr agent prompt` can today.
+
 ### Writing cards
 
 The user reads a card with no other context: not the chat, not the job's instructions.
@@ -859,6 +979,9 @@ jobs/<slug>.json      each job's last stop (finished or waiting, when, whether i
                       its messages pending while the inbox couldn't take them
 inbox.jsonl           job messages and their acks (see Job messages); inbox.jsonl.lock/ its lock
 inbox-watch/<pid>.json  each running `inbox wait`
+channels/<pid>.json   each running job-board channel (0.9.0)
+coordinators/<workspace>.json  each workspace's coordinator session and its socket (0.10.0)
+inbox-posts.json      when each message was last posted into a session, and how often again
 tokens.json           the sidebar text last reported for each workspace
 ```
 
@@ -927,7 +1050,11 @@ tokens.json           the sidebar text last reported for each workspace
   prompt, and sends `q` only to a board it finds running there.
 - Answer buttons send exactly `Board card <id> (<tag> · <title>): <label>` (the id a whole
   number, tag, title and label cleaned), only through `herdr agent prompt`, as one argument, to
-  the card's coordinator (see Answer buttons). Herdr checks the agent's state itself and refuses one that is waiting
+  the card's coordinator (see Answer buttons); or, to a coordinator with a live inbox-socket
+  note, the same with `[board answer]` in front and its message id after, through its
+  session's socket (0600, in a 0700 folder of your own); only such a post begins with
+  `[board answer]`, and the words inside a job's message are defused to `(board answer)`, so a
+  job can't pose as a press. Herdr checks the agent's state itself and refuses one that is waiting
   on a question, so a button never presses Enter on someone else's prompt. The board never
   types into another pane: Other… only switches to it.
 
@@ -977,7 +1104,9 @@ S=$(mktemp -d); HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp node --test
 Herdr is faked (`tests/fixtures/fake-herdr.mjs`); nothing touches your real Herdr session.
 `UPDATE_SNAPSHOTS=1 node --test` rewrites the render snapshots. With Go installed, the channel's
 tests run too (its `go test`, and the binary against the board's inbox); `cd channel && go test
-./...` runs its own. `board-pane.mjs --once --width N
+./...` runs its own. The inbox socket's smoke test (`tests/socket-smoke.test.mjs`) talks to a
+real Claude Code session, so it is skipped unless you ask for it; run it after `claude update`
+(see The inbox socket). `board-pane.mjs --once --width N
 --height N [--layout wide|inbox|compact] [--color] [--emoji] [--keys …]` prints one frame.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.

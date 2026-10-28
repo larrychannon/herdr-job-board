@@ -17,7 +17,9 @@
 // palette (NO_COLOR turns them off), emoji only in the section headers (BOARD_EMOJI=0 turns them
 // off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also keeps
 // the sidebar's $board token current, and restarts itself with the installed copy when an update
-// rewrites its folder or Herdr installs a newer one elsewhere.
+// rewrites its folder or Herdr installs a newer one elsewhere. Every 30 s it posts again into a
+// coordinator's session the inbox messages it hasn't acked 10 minutes after their last post,
+// twice at most (board.mjs repostDue, 0.10.0).
 //
 // A Doing card whose agent is working shows a small ASCII bar bouncing beside "working"; every
 // other card stands still, so the motion says what is running. It ticks about 6 times a second,
@@ -93,6 +95,7 @@ import {
   readStops,
   renderBoard,
   repoName,
+  repostDue,
   reportToken,
   routeNote,
   screenDiff,
@@ -488,6 +491,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     }
     return `board ${now} is installed: this pane restarts with it${busy ? " once the details are closed and no button is chosen" : ""}`
   }
+  // The inbox socket (0.10.0): messages a coordinator hasn't acked 10 minutes after their last
+  // post are posted again (twice at most), looked for every 30 s, in the background.
+  let repostAt = 0
+  const repost = () => {
+    if (Date.now() - repostAt < 30_000) return
+    repostAt = Date.now()
+    repostDue(file, { env }).catch(() => {})
+  }
   let loading = false
   const refresh = async () => {
     if (loading) return
@@ -502,6 +513,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       data = await load(file, env)
       data.notice = checkUpdate() || legacyNotice(legacy) || importNotice(data.state)
       paint()
+      repost()
     } finally {
       loading = false
     }
