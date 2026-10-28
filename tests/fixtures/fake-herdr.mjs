@@ -61,7 +61,8 @@ if (key === "agent prompt" && process.env.FAKE_HERDR_DELAY_MS) Atomics.wait(new 
 if (key === "agent list") ok({ agents: state.agents || [], type: "agent_list" })
 if (key === "workspace report-metadata") ok({ type: "ok" })
 if (key === "pane get") pane(target) ? ok({ pane: pane(target), type: "pane_info" }) : fail(`pane ${target} not found`)
-if (key === "tab list") ok({ tabs: (state.tabs || []).filter((t) => t.workspace_id === flag("--workspace")), type: "tab_list" })
+// Like Herdr 0.9.5, `tab list` without --workspace lists every workspace's tabs.
+if (key === "tab list") ok({ tabs: (state.tabs || []).filter((t) => !flag("--workspace") || t.workspace_id === flag("--workspace")), type: "tab_list" })
 if (key === "pane list") ok({ panes: state.panes.filter((p) => p.workspace_id === flag("--workspace")), type: "pane_list" })
 if (key === "pane split") {
   const from = pane(flag("--pane"))

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.1 · unreleased
+
+A job that runs in another Herdr workspace than its coordinator's (its project's) shows its
+agent's live state again, and goes to Waiting on you by itself when it is blocked.
+
+- **Why**: jobs now open in their project's workspace (an ai-config job in ai-config's), while
+  their card keeps the workspace of the coordinator that wrote it. The board looked for a job's
+  agent in the card's workspace only, so such a card said `no agent` while its job was working,
+  and a job stuck on a prompt stayed in Doing.
+- **A job's agent** (`jobAgent`) is the one with the job's name in the card's workspace first
+  (else the board's), as before; when there is none there, the one with that name in any
+  workspace. So a namesake elsewhere no longer hides behind `no agent`, and the card's own
+  workspace still wins when both run one. The card's state, the move to Waiting on you, the
+  details panel, the sidebar count and the turn-start reminder of finished jobs all use it (the
+  reminder no longer counts a job working elsewhere as finished).
+- **Its tab**: the details panel names the tab from every workspace's tabs (`herdr tab list`
+  without `--workspace`), and `t` focuses the pane of the agent the card shows (`herdr agent
+  focus <pane>`) rather than an agent of that name.
+- Unchanged: a blocked agent that has no card still shows only in its own workspace's board;
+  messages and button answers go where they went; the card's `workspace` is still where it was
+  written.
+- Tests: the namesake test now checks that the card's own workspace wins, and new ones check a
+  job in another workspace through `ls` (working, blocked into Waiting, gone), through the pane
+  (Waiting, its tab's label, `t` to its pane) and through the reminder.
+
 ## 0.10.0 · unreleased
 
 Job messages and button answers are posted into the coordinator's session through Claude Code's

@@ -228,7 +228,8 @@ async function perform(action, ctx) {
   }
   if (action.type === "tab") {
     if (!entry.job) return "this card has no job, so no tab"
-    const error = await focusAgent(entry.job, ctx.env)
+    // The agent the card shows (its pane, in whatever workspace), else Herdr's by the job's name.
+    const error = await focusAgent(entry.agentPane || entry.job, ctx.env)
     return error ? `couldn't go to the tab: ${error}` : null
   }
   return null

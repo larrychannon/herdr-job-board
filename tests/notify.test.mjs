@@ -529,6 +529,13 @@ test("not reviewed yet without a report: an idle job after a finishing stop; not
     const agents = () => (asked++, JSON.parse(readFileSync(s.fake, "utf8")).agents)
     assert.match(unreviewedReminder(state, { "fix-x": readStop(s.file, "fix-x") }, { agents, now: at(30) }), /#1 "Fix the export: build"/)
     assert.equal(asked, 1)
+    // A job that runs in another workspace than its card's (0.10.1): its agent there counts, so
+    // a working one is not finished.
+    state.items.find((i) => i.job === "fix-x").workspace = "w1"
+    const elsewhere = (status) => () => [{ name: "fix-x", agent_status: status, workspace_id: "wZ", pane_id: "wZ:p3" }]
+    const stops = { "fix-x": readStop(s.file, "fix-x") }
+    assert.equal(unreviewedReminder(state, stops, { agents: elsewhere("working"), now: at(30), workspace: "w1" }), "")
+    assert.match(unreviewedReminder(state, stops, { agents: elsewhere("idle"), now: at(30), workspace: "w1" }), /#1 "Fix the export: build"/)
   } finally {
     s.done()
   }

@@ -609,14 +609,35 @@ test("board: the lock is taken back from a dead process, never from a live one",
   }
 })
 
-test("board: a Doing card shows its own workspace's agent, not a namesake elsewhere", () => {
+test("board: a Doing card shows its own workspace's agent before a namesake elsewhere", () => {
   const { base, done } = temp()
   try {
     const dir = repo(base)
     ok(dir, ["job-start", "search-ui", "--title", "Search filters: build"])
-    const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working", "w2")] })
+    const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working"), agent("search-ui", "blocked", "w2")] })
     const text = ok(dir, ["ls", "--width", "60"], { herdr })
-    assert.match(text, /1   Search filters: build +no agent {2}just now\n/)
+    assert.match(text, /DOING \(1\)[\s\S]*1   Search filters: build +working {2}just now\n/)
+    assert.match(text, /WAITING ON YOU \(0\)/)
+  } finally {
+    done()
+  }
+})
+
+test("board: a job that runs in another workspace (its project's) shows its agent there, and moves to Waiting when it is blocked (0.10.1)", () => {
+  const { base, done } = temp()
+  try {
+    const dir = repo(base)
+    ok(dir, ["job-start", "search-ui", "--title", "Search filters: build"])
+    let herdr = fakeHerdr(base, { agents: [agent("search-ui", "working", "w2")] })
+    let text = ok(dir, ["ls", "--width", "60"], { herdr })
+    assert.match(text, /DOING \(1\)[\s\S]*1   Search filters: build +working {2}just now\n/)
+    assert.doesNotMatch(text, /no agent/)
+    herdr = fakeHerdr(base, { agents: [agent("search-ui", "blocked", "w2")] })
+    text = ok(dir, ["ls", "--width", "60"], { herdr })
+    assert.match(text.split("DOING")[0], /WAITING ON YOU \(1\)[\s\S]*Search filters: build +blocked/)
+    // Gone from every workspace: no agent.
+    herdr = fakeHerdr(base, { agents: [agent("other", "working", "w2")] })
+    assert.match(ok(dir, ["ls", "--width", "60"], { herdr }), /1   Search filters: build +no agent {2}just now\n/)
   } finally {
     done()
   }
