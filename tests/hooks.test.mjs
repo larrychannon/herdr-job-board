@@ -70,9 +70,9 @@ test("asksUser: questions and requests for a decision, not code, quotes or rheto
 test("UserPromptSubmit: records the turn start and reminds of the Waiting cards", () => {
   const r = repo()
   try {
-    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Release notes: approve", "--ask", "Read the draft")
+    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Release notes: approve", "--ask", "Read the draft", "--allow-wording")
     r.board("2026-10-13T10:01:00Z", "add", "todo", "Export to CSV")
-    for (let i = 0; i < 9; i++) r.board("2026-10-13T10:02:00Z", "add", "waiting", `Question ${i}`, "--ask", "Answer")
+    for (let i = 0; i < 9; i++) r.board("2026-10-13T10:02:00Z", "add", "waiting", `Question ${i}`, "--ask", "Answer", "--allow-wording")
     const out = handle(prompt(r.base), HERDR, { now: new Date("2026-10-13T10:05:00Z") })
     const context = JSON.parse(out.stdout).hookSpecificOutput
     assert.equal(context.hookEventName, "UserPromptSubmit")
@@ -131,7 +131,7 @@ test("the reminder treats titles as data: cleaned, one line, cut, quoted; never 
 test("Stop: a question with no Waiting card added or changed this turn is blocked, once", () => {
   const r = repo()
   try {
-    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
+    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer", "--allow-wording")
     r.board("2026-10-13T10:00:00Z", "add", "todo", "Date range picker: build")
     handle(prompt(r.base), HERDR)
     const ask = "The mockup is approved.\n\nStart the date range picker build?"
@@ -161,13 +161,13 @@ test("Stop: a question with no Waiting card added or changed this turn is blocke
 test("Stop: adding, changing or moving a Waiting card this turn satisfies it; closing one doesn't", () => {
   const r = repo()
   try {
-    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
+    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer", "--allow-wording")
     r.board("2026-10-13T10:00:00Z", "add", "todo", "Date range picker: build")
     const ask = "Start the date range picker build?"
     const cases = [
-      ["added", () => r.board("2026-10-13T10:10:00Z", "add", "waiting", "Date range picker: start?", "--ask", "Say go")],
+      ["added", () => r.board("2026-10-13T10:10:00Z", "add", "waiting", "Date range picker: start?", "--ask", "Say go", "--allow-wording")],
       ["edited", () => r.board("2026-10-13T10:11:00Z", "edit", "1", "--ask", "Answer the new question")],
-      ["moved to Waiting", () => r.board("2026-10-13T10:12:00Z", "move", "2", "waiting", "--ask", "Say go")],
+      ["moved to Waiting", () => r.board("2026-10-13T10:12:00Z", "move", "2", "waiting", "--ask", "Say go", "--allow-wording")],
     ]
     for (const [what, act] of cases) {
       handle(prompt(r.base), HERDR)
@@ -194,7 +194,7 @@ test("Stop: adding, changing or moving a Waiting card this turn satisfies it; cl
 test("the hooks do nothing outside their scope: no Herdr, a worker, a subagent, no board, a broken board", () => {
   const r = repo()
   try {
-    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
+    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer", "--allow-wording")
     const ask = "Start the build?"
     const silent = (input, env, opts) => assert.equal(handle(input, env, opts).stdout, "", JSON.stringify(env))
     for (const env of [{}, { HERDR_ENV: "0" }, { ...HERDR, JOB_AGENT_ROLE: "worker" }, { ...HERDR, JOB_AGENT_ROLE: "deployer" }]) {
@@ -228,7 +228,7 @@ test("the hooks do nothing outside their scope: no Herdr, a worker, a subagent, 
 test("the hook script: stdin JSON in, Claude Code's JSON out; settings snippet; old turn records go", () => {
   const r = repo()
   try {
-    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer")
+    r.board("2026-10-13T10:00:00Z", "add", "waiting", "Old question", "--ask", "Answer", "--allow-wording")
     const env = { ...process.env, HERDR_ENV: "1", JOB_AGENT_ROLE: "", JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, HOME: HERDR.HOME }
     const run = (input, args = []) => spawnSync(process.execPath, [HOOK, ...args], { input: typeof input === "string" ? input : JSON.stringify(input), env, encoding: "utf8" })
     // An old record from another session is cleaned up on the next prompt.
@@ -297,11 +297,11 @@ test("job-report is idempotent with a real clock: one card, `updated` unchanged,
 
     // Waiting: repeats keep `updated` (so the Stop hook doesn't take them for an update) and
     // keep the coordinator's edits to the card.
-    real("job-start", "review", "--title", "Review PR #21", "--report", report)
+    real("job-start", "review", "--title", "Review PR #21", "--report", report, "--allow-wording")
     writeFileSync(report, JSON.stringify({ status: "done", needs_user: ["Merge PR #21"] }))
     real("job-report", "review", report, "--if-final")
     pause()
-    real("edit", "2", "--title", "PR #21: merge", "--ask", "Say merge", "--option", "Merge", "--suggest", "Merge")
+    real("edit", "2", "--title", "PR #21: merge", "--ask", "Say merge", "--option", "Merge", "--suggest", "Merge", "--allow-wording")
     const edited = r.items()[1]
     for (let i = 0; i < 2; i++) {
       pause()
@@ -341,10 +341,10 @@ test("job-report --if-final: what a wait script calls whenever the report change
       assert.equal(r.items()[0].column, "doing")
     }
     // The final report moves the card; calling again changes nothing.
-    writeFileSync(report, JSON.stringify({ status: "done", needs_user: ["Review and merge PR #21"] }))
+    writeFileSync(report, JSON.stringify({ status: "done", needs_user: ["Review and merge the search filters"] }))
     call()
     const once = r.items()[0]
-    assert.deepEqual([once.column, once.ask], ["waiting", "Review and merge PR #21"])
+    assert.deepEqual([once.column, once.ask], ["waiting", "Review and merge the search filters"])
     call()
     assert.deepEqual(r.items()[0], once, "idempotent")
     writeFileSync(report, JSON.stringify({ status: "failed", summary: "tests fail on CI" }))

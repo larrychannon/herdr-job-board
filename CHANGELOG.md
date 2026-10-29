@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.11.0 · unreleased
+
+The board checks a card's words before it writes them, so a card the user can't read on its
+own (a PR or build number instead of the thing's name, a question without answer buttons)
+never reaches the board.
+
+- **Why**: the rules for card text were written down many times (no PR, build or commit
+  numbers; one plain question with 2 to 4 buttons, one suggested) and still failed, because
+  nothing checked them. On one day a Waiting card asked "Review and merge PR #83, then deploy,
+  to fix production" (the job's `needs_user`, copied into the ask by `job-report`), two Waiting
+  cards had a question and no buttons until the user asked where the suggested answer was, and
+  a job's summary "PR #83 (build 674)" showed in the card's details. Before that: "58, merge it"
+  as an approval phrase, labels like `Go` / `Only SFC + RNM` / `Hold`, and a description full
+  of "#161 (7f96574, build 378)".
+- **The check** (`cardWording`): in the title, description, ask and button labels, no PR
+  numbers (`PR #83`, `pull request 12`), `#<digits>`, `build <digits>`, commit hashes (7 to 40
+  hex characters with a digit and a letter), approvals keyed by a number (`58, merge it`) or
+  version strings (`0.7.0`, `v8.5.1`; not a 4-part address). Links and card numbers
+  (`card 373`, `card #373`) are fine. A Waiting card with an ask has 2 to 4 buttons, one
+  suggested. A label is two words or more, without `+`, `/`, `&`, `next` / `then` /
+  `continue`, a step number, an option letter (`Only A and C`) or a code (`1P`, `M3`).
+- **Refused or warned**: every problem is refused (exit 2, nothing written, each problem and
+  its fix printed), except a version string in a description, which only warns: there it is
+  often the thing itself (the firmware a customer runs), while in a title, ask or label it is
+  shorthand. `--allow-wording` writes a card that fails anyway; the card keeps the lines it
+  allowed (`wording_ok`), so a later edit of something else, and `lint`, leave them alone
+  while they are there.
+- **Where**: `add`, `edit` (the whole card it leaves, not only the fields it wrote: a card is
+  fixed when it is touched), `move … waiting` (which now takes `--option` and `--suggest`, so
+  the question and its buttons go in one command) and `job-start`. `done`, `rm`, `order`,
+  `retag` and moves out of Waiting are not checked.
+- **`job-report` never refuses**: a wait script runs it and shows nobody its output. A
+  `needs_user` (or a blocked job's summary) with such numbers stays off the ask, which reads
+  "The job needs a decision from you: its coordinator is writing the question in plain words."
+  Every card it puts in Waiting (the job's own words, never buttons), and every report whose
+  summary names numbers, is also a `[job note]` in the coordinator's inbox (posted to its
+  session like any job message) and a line on stderr, naming the card and the one `edit`
+  that fixes it. A repeat of the same report sends nothing.
+- **The details panel** shows a report summary or need that names numbers under More… only
+  ("Its summary names PR, build or commit numbers, so it is under More… only.").
+- **`lint [--project P]`**: every open card that fails, each problem with its fix; read-only;
+  exit 1 when a card must be fixed. `doctor` says how many fail and points to it.
+- Tests: a new `wording.test.mjs` (the matchers on the real failures; add, edit, move and
+  job-start refusals with nothing written; `--allow-wording` and what the card remembers;
+  `job-report` keeping numbers off the ask and its note, once; the details panel; `lint`
+  read-only on old cards). Existing tests whose fixtures are about something else pass
+  `--allow-wording` where their cards fail the check; the `job-report` tests use plain words.
+
 ## 0.10.1 · unreleased
 
 A job that runs in another Herdr workspace than its coordinator's (its project's) shows its

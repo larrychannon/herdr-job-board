@@ -81,7 +81,7 @@ test("board: add, move, edit, done and rm; one board per repo, shared by its wor
     git(dir, "worktree", "add", "-q", wt, "-b", "feat/a")
 
     assert.match(ok(dir, ["add", "todo", "Build the range control", "--desc", "after the mockup"]), /^added 1 \(to do\): Build the range control/)
-    assert.match(ok(wt, ["add", "waiting", "Merge #12?", "--ask", "merge PR #12 after a look at :3000"]), /^added 2 \(waiting on you\)/)
+    assert.match(ok(wt, ["add", "waiting", "Merge #12?", "--ask", "merge PR #12 after a look at :3000", "--allow-wording"]), /^added 2 \(waiting on you\)/)
     assert.equal(ok(wt, ["path"]).trim(), fileOf(dir))
     assert.deepEqual(items(dir).map((i) => [i.id, i.column, i.title]), [
       [1, "todo", "Build the range control"],
@@ -90,7 +90,7 @@ test("board: add, move, edit, done and rm; one board per repo, shared by its wor
     assert.equal(items(dir)[1].ask, "merge PR #12 after a look at :3000")
 
     ok(dir, ["move", "1", "doing"])
-    ok(dir, ["edit", "1", "--desc", "on #12", "--job", "range"])
+    ok(dir, ["edit", "1", "--desc", "on #12", "--job", "range", "--allow-wording"])
     assert.match(ok(dir, ["done", "2"]), /2 → done: Merge #12\?/)
     let [one, two] = items(dir)
     assert.deepEqual([one.column, one.desc, one.job], ["doing", "on #12", "range"])
@@ -150,8 +150,8 @@ function seedDemo(dir) {
     ["Docs move (PR #14): merge", "The docs move to the shared site. No content changes.", "Say merge (after #12)", "09:45"],
     ["Deploy v1.4: go", "After #12 and #14 merge: tag v1.4 and deploy it to production.", "Say go once merged", "10:00"],
   ]
-  for (const [title, desc, ask, at] of waiting) add(["add", "waiting", title, "--desc", desc, "--ask", ask], `2026-10-13T${at}:00Z`)
-  add(["edit", "5", "--option", "Go", "--option", "Not now", "--suggest", "Go"], "2026-10-13T10:00:00Z")
+  for (const [title, desc, ask, at] of waiting) add(["add", "waiting", title, "--desc", desc, "--ask", ask, "--allow-wording"], `2026-10-13T${at}:00Z`)
+  add(["edit", "5", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording"], "2026-10-13T10:00:00Z")
   add(["job-start", "search-ui", "--title", "Search filters: build", "--desc", "The filter panel from the approved mockup, with saved filters per user."], "2026-10-13T10:05:00Z")
   add(["job-start", "docs-links", "--title", "Docs site: fix broken links", "--desc", "Check every link on the new docs site and fix the ones that 404."], "2026-10-13T10:28:00Z")
   const todo = [
@@ -282,7 +282,7 @@ test("board ls, piped with no --width (an agent reading it): the wide layout, ev
   try {
     const dir = repo(base)
     ok(dir, ["add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV."])
-    ok(dir, ["add", "waiting", "Deploy: approve", "--desc", "Ships the invoice page.", "--ask", "Say go"])
+    ok(dir, ["add", "waiting", "Deploy: approve", "--desc", "Ships the invoice page.", "--ask", "Say go", "--allow-wording"])
     const text = ok(dir, ["ls"])
     assert.match(text, /Let people download any table as CSV\./, "a To do card's description")
     assert.match(text, /Ships the invoice page\.\n {2}Needs you: Say go/)
@@ -298,7 +298,7 @@ test("board: a card shows the title, the description over up to 3 lines, and the
   try {
     const dir = repo(base)
     const long = "word ".repeat(60).trim()
-    ok(dir, ["add", "waiting", "Deploy v1.4: approve", "--desc", "Ships the new invoice page to production. Needs #12 and #14 merged first.", "--ask", "Say go"])
+    ok(dir, ["add", "waiting", "Deploy v1.4: approve", "--desc", "Ships the new invoice page to production. Needs #12 and #14 merged first.", "--ask", "Say go", "--allow-wording"])
     ok(dir, ["add", "todo", "Long one", "--desc", long])
     // ls opens every Waiting card under its row (compact at 60 columns) …
     const text = ok(dir, ["ls", "--width", "60"])
@@ -320,7 +320,7 @@ test("board: a blocked agent shows under Waiting, even when the board doesn't sa
   try {
     const dir = repo(base)
     ok(dir, ["job-start", "search-ui", "--title", "Search filters: build"])
-    ok(dir, ["job-start", "review", "--title", "Review PR #31"])
+    ok(dir, ["job-start", "review", "--title", "Review PR #31", "--allow-wording"])
     const herdr = fakeHerdr(base, {
       agents: [
         agent("search-ui", "blocked"),
@@ -355,7 +355,7 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     const report = join(base, "r.json")
     const write = (r) => writeFileSync(report, JSON.stringify(r))
     ok(dir, ["add", "todo", "Build range control"])
-    ok(dir, ["job-start", "range", "--id", "1", "--report", report, "--desc", "on #12"])
+    ok(dir, ["job-start", "range", "--id", "1", "--report", report, "--desc", "on #12", "--allow-wording"])
     assert.deepEqual(items(dir).map((i) => [i.id, i.column, i.job, i.report]), [[1, "doing", "range", report]])
 
     write({ status: "running", summary: "half way" })
@@ -364,10 +364,10 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     assert.match(running.stderr, /not final/)
     assert.equal(items(dir)[0].column, "doing")
 
-    write({ status: "done", summary: "built", needs_user: ["Review and merge PR #21", "Deploy: ./deploy.sh"] })
-    assert.match(ok(dir, ["job-report", "range"]), /1 → waiting on you: Build range control\n {2}ask: Review and merge PR #21\n {2}ask: Deploy/)
-    assert.deepEqual([items(dir)[0].column, items(dir)[0].ask], ["waiting", "Review and merge PR #21\nDeploy: ./deploy.sh"])
-    assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge PR #21\n {5}Needs you: Deploy: \.\/deploy\.sh\n/)
+    write({ status: "done", summary: "built", needs_user: ["Review and merge the range control", "Deploy: ./deploy.sh"] })
+    assert.match(ok(dir, ["job-report", "range"]), /1 → waiting on you: Build range control\n {2}ask: Review and merge the range control\n {2}ask: Deploy/)
+    assert.deepEqual([items(dir)[0].column, items(dir)[0].ask], ["waiting", "Review and merge the range control\nDeploy: ./deploy.sh"])
+    assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge the range control\n {5}Needs you: Deploy: \.\/deploy\.sh\n/)
 
     // A follow-up run of the same job gets its own item; the open question stays in Waiting.
     ok(dir, ["job-start", "range", "--title", "Range control: fixes", "--report", report])
@@ -521,7 +521,7 @@ test("board: no control characters reach a terminal, from the pane or the CLI", 
       return r
     }
     keep(board(dir, ["add", "todo", "日本語のタイトルがとても長いのでここで切れるはずです", "--desc", "説明もかなり長いので切れるはずです、たぶん"]))
-    keep(board(dir, ["add", "waiting", nasty, "--desc", nasty, "--ask", `line one ${nasty}\nline two`, "--option", `Go\u001b[2J`]))
+    keep(board(dir, ["add", "waiting", nasty, "--desc", nasty, "--ask", `line one ${nasty}\nline two`, "--option", `Go\u001b[2J`, "--allow-wording"]))
     keep(board(dir, ["edit", "2", "--title", nasty]))
     keep(board(dir, ["move", "2", "waiting"]))
     keep(board(dir, ["job-start", "evil", "--title", nasty]))

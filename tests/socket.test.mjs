@@ -124,7 +124,7 @@ function setup() {
   const board = (env, ...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
   let r = board(coordEnv, "job-start", SLUG, "--title", "Fix the export: build")
   assert.equal(r.status, 0, r.stderr)
-  r = board(coordEnv, "add", "waiting", "Card 304: pick a path", "--ask", "Which?", "--option", "Socket", "--option", "Fallback")
+  r = board(coordEnv, "add", "waiting", "Card 304: pick a path", "--ask", "Which?", "--option", "Socket", "--option", "Fallback", "--allow-wording")
   assert.equal(r.status, 0, r.stderr)
   const file = join(store, "board.json")
   const waiting = readBoard(file).items.find((i) => i.column === "waiting")

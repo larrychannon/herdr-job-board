@@ -105,7 +105,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     const ai = h.repo("ai-config")
     // The ai coordinator (wA:p1) asks; the sfc coordinator (w4:p6) opened the board.
     h.live("w4:p6", "wA:p1", "w4:p7")
-    h.ok(ai, ["add", "waiting", "Guard v5: approve", "--ask", "go?", "--option", "Go", "--option", "Not now"], h.at("wA:p1"))
+    h.ok(ai, ["add", "waiting", "Guard v5: approve", "--ask", "go?", "--option", "Go", "--option", "Not now", "--allow-wording"], h.at("wA:p1"))
     h.ok(sfc, ["add", "todo", "sfc card"], h.at("w4:p6"))
     let r = h.pane(sfc, "\x1b[C\r", "w4:p6")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "wA:p1", "Board card 1 (ai · Guard v5: approve): Go"]], "to its owner, not the pane's coordinator")
@@ -115,7 +115,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
 
     // The owner is gone, and no other ai coordinator runs: the first press warns, the second sends to w4:p6.
     // A new card goes on top of its section, so it is the first one selected.
-    h.ok(ai, ["add", "waiting", "Second question", "--option", "Yes"], h.at("wA:p1"))
+    h.ok(ai, ["add", "waiting", "Second question", "--option", "Yes", "--allow-wording"], h.at("wA:p1"))
     h.live("w4:p6")
     r = h.pane(sfc, "\x1b[C\r", "w4:p6")
     assert.equal(h.prompts().length, 0)
@@ -125,7 +125,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     assert.equal(h.card(3).sent.to, "sfc coordinator (w4:p6)")
 
     // No coordinator at all: couldn't send, nothing sent.
-    h.ok(ai, ["add", "waiting", "Third", "--option", "Ok"], h.at("wA:p1"))
+    h.ok(ai, ["add", "waiting", "Third", "--option", "Ok", "--allow-wording"], h.at("wA:p1"))
     h.live()
     r = h.pane(sfc, "\x1b[C\r\r", "w4:p6")
     assert.equal(h.prompts().length, 0)
@@ -134,7 +134,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     // The owner gone, another sfc coordinator running: an sfc card goes to it at once.
     h.live("w4:p7")
     h.ok(sfc, ["add", "todo", "x"], h.at("w4:p7"))
-    h.ok(sfc, ["add", "waiting", "sfc question", "--option", "Ship"], h.at("w4:p6"))
+    h.ok(sfc, ["add", "waiting", "sfc question", "--option", "Ship", "--allow-wording"], h.at("w4:p6"))
     h.live("w4:p7", "w4:p9")
     r = h.pane(sfc, "\x1b[C\r", "w4:p9")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w4:p7", "Board card 6 (sfc · sfc question): Ship"]])
@@ -149,8 +149,8 @@ test("answer: a label (any case), a button's number or free text; routed like a 
     const sfc = h.repo("sfc-integration")
     const ai = h.repo("ai-config")
     h.live("w4:p6", "wA:p1")
-    h.ok(sfc, ["add", "waiting", "magicwan v343 fleet rollout: approve the waves", "--option", "Go", "--option", "LON only first", "--option", "Not today"], h.at("w4:p6"))
-    h.ok(ai, ["add", "waiting", "Git access: pick", "--option", "Tokens"], h.at("wA:p1"))
+    h.ok(sfc, ["add", "waiting", "magicwan v343 fleet rollout: approve the waves", "--option", "Go", "--option", "LON only first", "--option", "Not today", "--allow-wording"], h.at("w4:p6"))
+    h.ok(ai, ["add", "waiting", "Git access: pick", "--option", "Tokens", "--allow-wording"], h.at("wA:p1"))
     h.ok(sfc, ["front"], h.at("w4:p6"))
     // The front (w4:p6) relays Telegram replies.
     assert.equal(h.ok(sfc, ["answer", "2", "tokens", "--from", "telegram"], h.at("w4:p6")).trim(), "sent to ai coordinator (wA:p1): Tokens")
@@ -160,7 +160,7 @@ test("answer: a label (any case), a button's number or free text; routed like a 
     assert.match(h.ok(sfc, ["answer", "1", "2"], h.at("w4:p6")), /^card 1 is this pane's \(sfc coordinator \(w4:p6\)\): act on it here: LON only first$/m)
     assert.equal(h.prompts().length, 1)
     // Free text, up to 300 characters.
-    h.ok(ai, ["add", "waiting", "Free", "--ask", "say"], h.at("wA:p1"))
+    h.ok(ai, ["add", "waiting", "Free", "--ask", "say", "--allow-wording"], h.at("wA:p1"))
     assert.match(h.ok(sfc, ["answer", "3", "keep as is, thanks"], h.at("w4:p6")), /^sent to ai coordinator \(wA:p1\): keep as is, thanks$/m)
     assert.equal(h.run(sfc, ["answer", "3", "x".repeat(301)], h.at("w4:p6")).status, 2)
     // The ai coordinator is gone: the front gets it only with --front.
@@ -315,7 +315,7 @@ test("orphans: an unowned card re-tagged to a project with no coordinator is the
     h.repo("ai-config")
     // A person (no Herdr) wrote the cards: nobody owns them. Card 2 was re-tagged to ai-config.
     h.ok(sfc, ["add", "todo", "sfc card"])
-    h.ok(sfc, ["add", "waiting", "Git access on the LXC: narrower tokens instead of Touch-ID: pick", "--ask", "pick one"])
+    h.ok(sfc, ["add", "waiting", "Git access on the LXC: narrower tokens instead of Touch-ID: pick", "--ask", "pick one", "--allow-wording"])
     h.ok(sfc, ["retag", "2", "ai-config"])
     assert.deepEqual([h.card(2).project, h.card(2).origin], ["ai-config", ""])
     // The sfc coordinator (w4:p6) opened the board: it is the front; no ai-config coordinator runs.
@@ -348,7 +348,7 @@ test("Stop counts a card this pane changed this turn, even one it doesn't own; i
     h.ok(ai, ["add", "waiting", "ai question"], h.at("wA:p1"))
     const env = { HERDR_ENV: "1", HERDR_PANE_ID: "w4:p6", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: h.fake, HOME: h.base }
     handle({ hook_event_name: "UserPromptSubmit", session_id: "s2", cwd: sfc, prompt: "hi" }, env)
-    h.ok(sfc, ["edit", "1", "--ask", "now?", "--project", "ai-config"], h.at("w4:p6"))
+    h.ok(sfc, ["edit", "1", "--ask", "now?", "--project", "ai-config", "--allow-wording"], h.at("w4:p6"))
     assert.equal(h.card(1).by, "w4:p6")
     assert.equal(h.card(1).origin, "wA:p1", "owned by its live coordinator: not claimed")
     assert.equal(handle({ hook_event_name: "Stop", session_id: "s2", cwd: sfc, stop_hook_active: false, last_assistant_message: "Now?" }, env).stdout, "")
@@ -422,7 +422,7 @@ test("answer: a bare number past the last button is refused; json says how many 
   try {
     const sfc = h.repo("sfc-integration")
     h.live("w4:p6")
-    h.ok(sfc, ["add", "waiting", "Pick", "--option", "A", "--option", "B"], h.at("w4:p6"))
+    h.ok(sfc, ["add", "waiting", "Pick", "--option", "A", "--option", "B", "--allow-wording"], h.at("w4:p6"))
     const r = h.run(sfc, ["answer", "1", "3"], h.at("w4:p6"))
     assert.equal(r.status, 2)
     assert.match(r.stderr, /card 1 has 2 buttons; 3 is none of them/)
@@ -439,7 +439,7 @@ test("open from a plain shell pane: it opens the board but can't take answers; f
     const app = h.repo("app")
     // wS:p1 is a plain shell (no agent); the only agent is a job's worker elsewhere.
     writeFileSync(h.fake, JSON.stringify({ agents: [{ name: "build", pane_id: "wS:p9", workspace_id: "wS" }], panes: [{ pane_id: "wS:p1", tab_id: "wS:t1", workspace_id: "wS", cwd: app }] }))
-    h.ok(app, ["add", "waiting", "Pick", "--option", "Go", "--job", "build"])
+    h.ok(app, ["add", "waiting", "Pick", "--option", "Go", "--job", "build", "--allow-wording"])
     h.ok(app, ["open"], h.at("wS:p1"))
     assert.equal(h.ok(app, ["front", "show"], h.at("wS:p1")).trim(), "(no front coordinator: the pane that last opened the board (wS:p1) runs no coordinator; board.mjs front, from a coordinator's pane, sets one)")
     const state = h.state()
@@ -459,7 +459,7 @@ test("a coordinator's project is its own pane's (Herdr's agent list), not the fo
     const two = h.repo("two")
     writeFileSync(h.fake, JSON.stringify({ agents: [{ pane_id: "wF:p1", workspace_id: "wF", cwd: two, interactive_ready: true }, { pane_id: "wA:p1", workspace_id: "wA", cwd: one, interactive_ready: true }] }))
     // Two's coordinator (wF:p1) writes from one's folder.
-    h.ok(one, ["add", "waiting", "Two's question", "--project", "two", "--option", "Go"], h.at("wF:p1"))
+    h.ok(one, ["add", "waiting", "Two's question", "--project", "two", "--option", "Go", "--allow-wording"], h.at("wF:p1"))
     assert.equal(h.state().coordinators["wF:p1"].project, "two")
     assert.equal(h.state().projects.two.workspace, "wF")
     // So an answer to its card names it right.

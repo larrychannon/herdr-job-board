@@ -57,8 +57,8 @@ function seed(t) {
       ids: { pr: "https://github.com/example/app/pull/21", branch: "feat/filters", commit: "abc1234" },
     }),
   )
-  t.board("2026-10-11T09:00:00Z", "add", "waiting", "Old question: pick a name", "--ask", "Reply with a name")
-  t.board("2026-10-13T10:00:00Z", "add", "waiting", "Billing fix (PR #12): review", "--desc", "Invoices round per line. Preview: http://localhost:3000/invoices", "--ask", "Try http://localhost:3000/invoices, then say merge", "--option", "Merge", "--option", "Not yet", "--suggest", "Merge")
+  t.board("2026-10-11T09:00:00Z", "add", "waiting", "Old question: pick a name", "--ask", "Reply with a name", "--allow-wording")
+  t.board("2026-10-13T10:00:00Z", "add", "waiting", "Billing fix (PR #12): review", "--desc", "Invoices round per line. Preview: http://localhost:3000/invoices", "--ask", "Try http://localhost:3000/invoices, then say merge", "--option", "Merge", "--option", "Not yet", "--suggest", "Merge", "--allow-wording")
   t.board("2026-10-13T10:05:00Z", "job-start", "search-ui", "--title", "Search filters: build", "--desc", "The filter panel from the approved mockup.", "--report", report)
   t.board("2026-10-13T10:06:00Z", "job-start", "docs-links", "--title", "Docs: fix links")
   t.board("2026-10-13T10:07:00Z", "add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV.")
@@ -249,7 +249,7 @@ function seedDetails(t) {
       job: "checkout-mockup",
       status: "done",
       summary:
-        "Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address and the payment step. Every 'before' is a cropped screenshot (build 52). Saved cards must not become editable until the preview bug is fixed.",
+        "Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address and the payment step. Every 'before' is a cropped screenshot of the live site. Saved cards must not become editable until the preview bug is fixed.",
       needs_user: [
         { question: "The saved-card preview drops the billing address and keeps none. Make saved cards editable anyway?", suggested_answer: "No. Fix the preview first." },
         { question: "Wording for the irreversible Delete card button?", suggested_answer: "Verb + card ending in caps: 'DELETE CARD 4242'." },
@@ -275,10 +275,10 @@ function seedDetails(t) {
   t.board("2026-10-13T03:00:00Z", "job-start", "checkout-mockup", "--title", "Checkout redesign mockup: approve", "--desc", "12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.", "--report", mockup)
   t.board("2026-10-13T03:00:00Z", "job-report", "checkout-mockup")
   t.board("2026-10-13T03:01:00Z", "edit", "1", "--ask", "Open the canvas, then OK all suggestions or comment", "--option", "OK all suggestions", "--option", "I'll comment", "--suggest", "OK all suggestions")
-  t.board("2026-10-13T02:43:00Z", "add", "waiting", "Coupons AND gift cards discount an order twice: fix?", "--desc", "Live bug: a coupon plus a gift card takes the discount twice. Don't sell gift cards with coupons until fixed.", "--ask", "Pick one", "--option", "Fix in #31", "--option", "Fix + hide coupons now", "--option", "Not now", "--suggest", "Fix in #31")
+  t.board("2026-10-13T02:43:00Z", "add", "waiting", "Coupons AND gift cards discount an order twice: fix?", "--desc", "Live bug: a coupon plus a gift card takes the discount twice. Don't sell gift cards with coupons until fixed.", "--ask", "Pick one", "--option", "Fix in #31", "--option", "Fix + hide coupons now", "--option", "Not now", "--suggest", "Fix in #31", "--allow-wording")
   t.board("2026-10-13T03:17:00Z", "edit", "2", "--desc", "Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.")
   t.board("2026-10-13T10:18:00Z", "job-start", "orders-ui", "--title", "Order history UI: build", "--desc", "The order list and filters from the approved mockup.", "--report", join(t.base, "orders-report.json"))
-  t.board("2026-10-13T08:00:00Z", "job-start", "csv-export", "--title", "CSV export on the Orders page (PR #48): try it, then merge", "--report", shipped)
+  t.board("2026-10-13T08:00:00Z", "job-start", "csv-export", "--title", "CSV export on the Orders page (PR #48): try it, then merge", "--report", shipped, "--allow-wording")
   t.board("2026-10-13T09:10:00Z", "job-report", "csv-export")
   for (const [i, title] of ["Export to PDF", "Nightly backup check", "Rotate the API keys"].entries()) t.board(`2026-10-13T07:0${i}:00Z`, "add", "todo", `TODO-MARK ${title}`, "--desc", "From the roadmap.")
   for (let i = 1; i <= 6; i++) {
@@ -788,7 +788,7 @@ test("mouse capture off (m): one column at any width, so a drag selects one card
   try {
     seed(t)
     const long = `Invoices round per line now, not per total. ${"Every line of this description has to be selectable in one drag. ".repeat(7)}The end of it.`
-    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A card whose title runs on well past the width of one row at one hundred and sixty columns, so it would be cut short with an ellipsis when it is drawn as one row of the inbox", "--desc", long, "--ask", "Read all of it, then say go", "--option", "Go")
+    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A card whose title runs on well past the width of one row at one hundred and sixty columns, so it would be cut short with an ellipsis when it is drawn as one row of the inbox", "--desc", long, "--ask", "Read all of it, then say go", "--option", "Go", "--allow-wording")
     const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
     let all = ""
     for (const [width, height] of [[160, 45], [200, 60]]) {
@@ -825,7 +825,7 @@ test("mouse capture off (m): one column at any width, so a drag selects one card
 test("mouse capture off (m), a card taller than its section: the cut line says Enter shows the rest, and the key line comes first (no message pushes it aside)", () => {
   const t = setup({ agents, tabs })
   try {
-    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A very long card", "--desc", "Word ".repeat(700).trim(), "--ask", "Read it")
+    t.board("2026-10-13T10:20:00Z", "add", "waiting", "A very long card", "--desc", "Word ".repeat(700).trim(), "--ask", "Read it", "--allow-wording")
     for (const [width, height] of [[160, 30], [120, 30]]) {
       const r = t.pane(["--width", String(width), "--height", String(height)], "m")
       assert.equal(r.status, 0, r.stderr)
@@ -845,7 +845,7 @@ test("mouse capture off (m), a card taller than its section: the cut line says E
 test("the live pane in a terminal: mouse capture off and on with m, OSC 52 only on c, all restored on exit", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
   const t = setup()
   try {
-    t.board(NOW, "add", "waiting", "Release notes: approve", "--desc", "Draft at https://docs.example/notes", "--ask", "Read it")
+    t.board(NOW, "add", "waiting", "Release notes: approve", "--desc", "Draft at https://docs.example/notes", "--ask", "Read it", "--allow-wording")
     const child = spawn("script", ["-qefc", `stty cols 88 rows 24; exec node ${JSON.stringify(PANE)} --board ${JSON.stringify(t.file)}`, "/dev/null"], { cwd: t.base, env: { ...t.env, HERDR_ENV: "0" } })
     let out = ""
     child.stdout.on("data", (d) => (out += d.toString("latin1")))
@@ -932,7 +932,7 @@ test("format characters (zero-width and the like) are stripped when stored and n
   assert.deepEqual(findUrls(`https://a.example/x\ufeffy and https://b.example/\u2060z`).map((u) => u.url), ["https://a.example/x", "https://b.example/"])
   const t = setup()
   try {
-    t.board(NOW, "add", "waiting", `Re${hidden}view`, "--desc", `See https://a.example/pa${hidden}th`, "--ask", `Say${hidden} go`, "--option", `G${hidden}o`)
+    t.board(NOW, "add", "waiting", `Re${hidden}view`, "--desc", `See https://a.example/pa${hidden}th`, "--ask", `Say${hidden} go`, "--option", `G${hidden}o`, "--allow-wording")
     const [item] = JSON.parse(readFileSync(t.file, "utf8")).items
     assert.equal(item.title, "Review")
     assert.equal(item.desc, "See https://a.example/path")
@@ -1232,7 +1232,7 @@ test("the live pane: the bar moves about 6 times a second rewriting only its lin
 test("copy: a card whose job is blocked copies without its hidden buttons", () => {
   const t = setup({ agents: [{ name: "namer", agent_status: "blocked", workspace_id: "w9", pane_id: "w9:p4", tab_id: "w9:t4" }], tabs })
   try {
-    t.board(NOW, "add", "waiting", "Pick a name", "--job", "namer", "--ask", "Choose one", "--option", "Alpha", "--option", "Beta", "--suggest", "Alpha")
+    t.board(NOW, "add", "waiting", "Pick a name", "--job", "namer", "--ask", "Choose one", "--option", "Alpha", "--option", "Beta", "--suggest", "Alpha", "--allow-wording")
     assert.deepEqual(decode52(t.pane([], "c").stdout), ["#1 Pick a name\n\n→ Choose one"])
     const card = { id: 1, title: "Pick a name", ask: "Choose one", column: "waiting", options: [{ label: "Alpha", suggested: true }, { label: "Beta" }] }
     assert.equal(copyPayload({ ...card, live: "" }).text, "#1 Pick a name\n\n→ Choose one\n\nbuttons: Alpha · Beta", "buttons on screen are copied")
@@ -1247,10 +1247,10 @@ test("copy: a card whose job is blocked copies without its hidden buttons", () =
 
 /** A board like the one that misled the user: a long question over 3 buttons and Other…, sent once. */
 function seedQuestion(t) {
-  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode).", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16")
+  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode).", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16", "--allow-wording")
   markSent(t.file, 1, "Approve, include #16", new Date("2026-10-13T10:08:00Z"))
-  t.board("2026-10-13T10:00:00Z", "add", "waiting", "Pick a name", "--ask", "Which name?", "--option", "Alpha", "--option", "Beta")
-  t.board("2026-10-13T10:10:00Z", "add", "waiting", "Docs move (PR #14): merge", "--ask", "Say merge (after #12)")
+  t.board("2026-10-13T10:00:00Z", "add", "waiting", "Pick a name", "--ask", "Which name?", "--option", "Alpha", "--option", "Beta", "--allow-wording")
+  t.board("2026-10-13T10:10:00Z", "add", "waiting", "Docs move (PR #14): merge", "--ask", "Say merge (after #12)", "--allow-wording")
 }
 // A click on the first line that has `text` (after the line that has `after`), from a plain screen.
 const clickOn = (screen, text, after = "") => {
@@ -1412,7 +1412,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
 
 /** A tall question card, and Doing and To do cards that leave it too little room in a short pane. */
 function seedShort(t) {
-  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16")
+  t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16", "--allow-wording")
   t.board("2026-10-13T10:05:00Z", "add", "doing", "Search filters: build", "--desc", "The filter panel from the approved mockup, saved per user.")
   t.board("2026-10-13T10:20:00Z", "add", "doing", "Docs site: fix links", "--desc", "Check every link on the new docs site and fix the 404s.")
   t.board("2026-10-13T10:29:00Z", "add", "todo", "Export to CSV", "--desc", "Let people download any table as CSV; three asked for it.")

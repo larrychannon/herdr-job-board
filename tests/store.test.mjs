@@ -241,7 +241,7 @@ test("projects, project set, retag, adopt and front", () => {
     const sfc = h.repo("sfc-integration")
     const ai = h.repo("ai-config")
     const fake = h.herdr([{ name: "coord", pane_id: "w4:p6", workspace_id: "w4" }])
-    h.ok(sfc, ["add", "waiting", "Approve", "--ask", "say go"], h.inHerdr(fake))
+    h.ok(sfc, ["add", "waiting", "Approve", "--ask", "say go", "--allow-wording"], h.inHerdr(fake))
     h.ok(sfc, ["add", "todo", "About ai-config"], h.inHerdr(fake))
     h.ok(ai, ["add", "todo", "Unowned"])
     let lines = h.ok(h.base, ["projects"], h.inHerdr(fake)).split("\n")
@@ -536,7 +536,7 @@ test("export --legacy writes a project's cards as a 0.4 board; a 0.4 reader take
   try {
     const sfc = h.repo("sfc-integration")
     const ai = h.repo("ai-config")
-    h.ok(sfc, ["add", "waiting", "Approve", "--ask", "go?", "--option", "Go"])
+    h.ok(sfc, ["add", "waiting", "Approve", "--ask", "go?", "--option", "Go", "--allow-wording"])
     h.ok(ai, ["add", "todo", "Other project"])
     h.ok(sfc, ["add", "todo", "Second"])
     const out = JSON.parse(h.ok(sfc, ["export", "--legacy"]))
@@ -646,7 +646,7 @@ test("upgrade path: a pane on a repo's 0.4 file (self-updated before the import)
     await pause(1500)
     assert.match(words(out), /Approve the waves/)
     // The first write in the repo brings the board in and renames the file.
-    h.ok(app, ["add", "waiting", "Second question", "--ask", "yes?"])
+    h.ok(app, ["add", "waiting", "Second question", "--ask", "yes?", "--allow-wording"])
     out = ""
     await pause(2500)
     // Only changed lines are repainted: the title (now the store's, with both questions) and the new card.

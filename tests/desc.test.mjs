@@ -89,7 +89,7 @@ test("descLines: paragraphs wrapped, items with a hanging indent, labels as head
 test("add and edit: real newlines and \\n stay; the details panel shows the parts", () => {
   const s = setup()
   try {
-    s.board("add", "waiting", "Card 304: build", "--desc", CARD_304, "--ask", "Merge?", "--option", "Merge", "--option", "Not now")
+    s.board("add", "waiting", "Card 304: build", "--desc", CARD_304, "--ask", "Merge?", "--option", "Merge", "--option", "Not now", "--allow-wording")
     s.board("add", "todo", "One-liner", "--desc", "Para one.\\n\\nPara two\\n- an item")
     const [a, b] = readBoard(s.file).items
     assert.equal(a.desc, cleanDesc(CARD_304))
@@ -115,7 +115,7 @@ test("add and edit: real newlines and \\n stay; the details panel shows the part
 test("ls: a Waiting card's description in full with its parts; other cards and rows the first paragraph, cut with …", () => {
   const s = setup()
   try {
-    s.board("add", "waiting", "Card 304: build", "--desc", CARD_304, "--ask", "Merge?", "--option", "Merge", "--option", "Not now")
+    s.board("add", "waiting", "Card 304: build", "--desc", CARD_304, "--ask", "Merge?", "--option", "Merge", "--option", "Not now", "--allow-wording")
     s.board("add", "doing", "A doing card", "--desc", CARD_304)
     s.board("add", "todo", "Short", "--desc", "Para one.\n\nPara two")
     for (const width of [100, 150]) {
