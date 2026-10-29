@@ -335,8 +335,8 @@ export function startReplay(replay, env = process.env) {
 export function blockReason(cli = BOARD_CLI) {
   return (
     "You asked the user something, but no Waiting card was added or updated on the job board this turn. " +
-    `Add one first: node ${quote(cli)} add waiting "<thing>: <action>" --desc "<what and why>" --ask "<exactly what to do>" ` +
-    '(with --option "<answer>" … --suggest "<answer>" when the answers are clear), or update the card that already ' +
+    `Add one first: node ${quote(cli)} add waiting "<thing>: <action>" --desc "<what and why>" --ask "<one plain question>" ` +
+    '--option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>" (2 to 4 buttons), or update the card that already ' +
     "asks it with edit <id>. If you aren't actually waiting on the user, say so in one line and stop."
   )
 }

@@ -7626,7 +7626,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
 /** Nudge the writer when a card won't make sense on its own (see README, "Writing cards"). */
 function hint(err, item) {
   if (!item.desc) err(`board: tip: add --desc "<what it is and why it matters>" (board.mjs edit ${item.id} --desc …)`)
-  if (item.column === "waiting" && !item.ask) err(`board: tip: add --ask "<exactly what the user should do>"`)
+  if (item.column === "waiting" && !item.ask) err(`board: tip: add the question and its buttons: board.mjs edit ${item.id} --ask "<one plain question>" --option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"`)
 }
 
 // A workspace's token is reported again after this long, even unchanged.
