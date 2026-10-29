@@ -334,22 +334,22 @@ test("options: cleaned, at most 4 of at most 24 characters, Waiting only; job pa
     const env = { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: join(base, ".git", "board-state"), HOME: join(base, ".git", "home"), JOB_BOARD_NOW: NOW.toISOString() }
     const run = (...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
     const items = () => JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8")).items
-    assert.equal(run("add", "waiting", "Ship it?", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
+    assert.equal(run("add", "waiting", "Ship it?", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording").status, 0)
     assert.deepEqual(items()[0].options, [{ label: "Go", suggested: true }, { label: "Not now" }])
     assert.equal(run("add", "todo", "x", "--option", "Go").status, 2, "buttons are for Waiting cards")
-    assert.equal(run("add", "waiting", "x", "--option", "a", "--option", "b", "--option", "c", "--option", "d", "--option", "e").status, 2)
+    assert.equal(run("add", "waiting", "x", "--option", "a", "--option", "b", "--option", "c", "--option", "d", "--option", "e", "--allow-wording").status, 2)
     assert.equal(run("edit", "1", "--suggest", "Not now").status, 0)
     assert.deepEqual(items()[0].options, [{ label: "Go" }, { label: "Not now", suggested: true }])
-    assert.equal(run("edit", "1", "--clear-options").status, 0)
+    assert.equal(run("edit", "1", "--clear-options", "--allow-wording").status, 0)
     assert.equal(items()[0].options, undefined)
     // A card a job reports on never keeps buttons, wherever they came from.
-    assert.equal(run("add", "waiting", "Job's card", "--job", "build", "--option", "Merge").status, 0)
+    assert.equal(run("add", "waiting", "Job's card", "--job", "build", "--option", "Merge", "--allow-wording").status, 0)
     const report = join(base, "r.json")
     writeFileSync(report, JSON.stringify({ status: "done", needs_user: ["Merge PR #21"] }))
     assert.equal(run("job-report", "build", report).status, 0)
     assert.equal(items()[1].options, undefined)
     assert.equal(run("job-start", "build", "--id", "2").status, 0)
-    assert.equal(run("job-start", "build", "--option", "Go").status, 2, "job-start takes no --option")
+    assert.equal(run("job-start", "build", "--option", "Go", "--allow-wording").status, 2, "job-start takes no --option")
     assert.equal(items()[1].options, undefined)
   } finally {
     rmSync(base, { recursive: true, force: true })
@@ -375,8 +375,8 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const typed = () => calls().filter((a) => a[1] === "send-text" || a[1] === "send-keys")
     const items = () => JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8")).items
     const title = `Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\``
-    const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go")
-    assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go").status, 0)
+    const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording")
+    assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording").status, 0)
 
     let r = pane("\x1b[C\r")
     assert.equal(r.status, 0, r.stderr)

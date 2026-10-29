@@ -33,7 +33,7 @@ function setup() {
   const coordEnv = { ...common, HERDR_PANE_ID: COORD }
   const otherEnv = { ...common, HERDR_PANE_ID: OTHER }
   const board = (env, ...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
-  const r = board(coordEnv, "add", "waiting", "Card 304: pick a path", "--ask", "Which?", "--option", "Channel", "--option", "Fallback")
+  const r = board(coordEnv, "add", "waiting", "Card 304: pick a path", "--ask", "Which?", "--option", "Channel", "--option", "Fallback", "--allow-wording")
   assert.equal(r.status, 0, r.stderr)
   const file = join(store, "board.json")
   const id = readBoard(file).items[0].id

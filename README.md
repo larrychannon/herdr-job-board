@@ -294,8 +294,8 @@ suggested one first:
 ```sh
 node board.mjs add waiting "Release notes: approve" \
   --desc "Draft notes for v1.4, written from the merged PRs." \
-  --ask "Read the draft, then answer" \
-  --option "Approve" --option "Needs changes" --suggest "Approve"
+  --ask "Read the draft: publish the notes as they are?" \
+  --option "Publish the notes" --option "Ask for changes" --suggest "Publish the notes"
 ```
 
 ```
@@ -577,8 +577,10 @@ this list.
 | Command | What it does |
 |---|---|
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
-| `move <ref> <column> [--ask A] [--desc D]` | Move a card. `<ref>` is its id or its job slug. |
+| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
@@ -628,9 +630,9 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    `--parent <A's id>` (`job-start` takes it too), so A waits on B and comes back as ready to
    resume when B is done.
 3. **You need the user** (a question, an approval, a merge):
-   `add waiting "<title>: <action>" --desc "<what and why>" --ask "<exactly what to do>"`, and
-   when the answers are clear, buttons for them, the suggested one first:
-   `--option "Go" --option "Not now" --suggest "Go"`. A pressed button arrives in your chat as
+   `add waiting "<title>: <action>" --desc "<what and why>" --ask "<one plain question>"` with
+   2 to 4 buttons, the suggested one first:
+   `--option "Merge the login fix" --option "Wait for the review" --suggest "Merge the login fix"`. A pressed button arrives in your chat as
    `Board card <id> (<tag> · <title>): <label>`, typed into your pane by Herdr; "Other…" means the
    user types the answer. When they have answered: `done <id>`, or `move`
    the card.
@@ -957,9 +959,44 @@ The user reads a card with no other context: not the chat, not the job's instruc
 | desc | – | `New sign-in screen with SSO buttons and a clearer error message. 3 small choices to confirm.` |
 | ask | `Pick the 3 choices` | `Open the mockup, reply ok or change` |
 
-When `job-report` moves a job to Waiting, rewrite its title and ask for the user:
-`edit <id> --title "…: approve" --ask "…"`. The CLI prints a tip when a card has no `--desc`,
-or a Waiting card no `--ask`.
+When `job-report` moves a job to Waiting, rewrite its title and ask for the user, with its
+buttons, in one edit: `edit <id> --title "…: approve" --ask "…" --option "…" --option "…"
+--suggest "…"`. The CLI prints a tip when a card has no `--desc`, or a Waiting card no `--ask`.
+
+#### The wording check (0.11.0)
+
+The rules above are checked, so a card that breaks them never reaches the board. `add`,
+`edit`, `move … waiting` and `job-start` check the whole card they leave (an edit of one field
+still has to leave the card right) and, when it fails, write nothing and print each problem
+with its fix (exit 2):
+
+```
+board: card 12 is not in plain words yet, so nothing was written:
+  - the ask says "PR #83", a PR number: name the thing instead ("the login page fix", "the new Cost page")
+  - its buttons: no answer buttons: a Waiting card with a question needs 2 to 4, one suggested: --option "<verb + thing>" …
+```
+
+| What | Where | Refused or warned |
+|---|---|---|
+| PR numbers (`PR #83`, `pull request 12`), `#161`, `build 674`, commit hashes (`7f96574`), an approval keyed by a number (`58, merge it`) | title, description, ask, button labels | refused |
+| version strings (`0.7.0`, `v8.5.1`) | title, ask, button labels | refused |
+| version strings | description | warned: there it is often the thing itself (the firmware a customer runs) |
+| a question (`--ask`) on a Waiting card without 2 to 4 buttons, or none suggested | Waiting cards | refused |
+| a label of one word (`Go`, `Hold`), with `+`, `/` or `&`, `next` / `then` / `continue`, a step number (`steps 3–5`), an option letter (`Only A and C`) or a code (`1P`, `M3`) | button labels | refused |
+
+Links (`https://…/pull/83`) and card numbers (`card 373`) are fine. When the exact text is
+what the user needs, `--allow-wording` writes it; the card remembers what was allowed
+(`wording_ok`), so a later edit of something else and `lint` leave it alone while it is
+there.
+
+`job-report` never refuses (a wait script runs it, and nobody sees its output). A
+`needs_user` or `summary` that names numbers stays off the ask: the card asks "The job needs a
+decision from you: its coordinator is writing the question in plain words." The details panel
+shows such a summary or need only under More…. Every card it puts in Waiting (the job's own
+words, no buttons), and every report that names numbers, is also a `[job note]` in the
+coordinator's inbox, naming the card and the one `edit` that fixes it.
+
+`lint` lists the open cards that fail, for cards written before the check.
 
 ## The store
 
