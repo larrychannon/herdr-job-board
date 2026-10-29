@@ -192,15 +192,19 @@ itself out again at once.
 | `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); a card taller than its section says `card cut off: Enter shows the rest in its details`; the key line starts `selecting text: m gives the mouse and the columns back` |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
 | mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
+| `?` | show every key under the title (wrapped, in place of the key line); `?` again or `Esc` hides the list |
 | `q`, `r` | quit; redraw |
 
-The key line at the bottom shows the main keys and the mouse mode (`mouse: board` or
-`mouse: select`), plus a short message after `c`, `t` or `m`.
+The key line sits right under the title, at every width, and nothing is pinned to the pane's
+last row: a terminal that keeps its last row in view (a phone's, in Collie) would otherwise
+scroll the cards at the top out of sight. It shows the main keys and the mouse mode
+(`mouse: board` or `mouse: select`), plus a short message after `c`, `t` or `m`. Where none of
+its forms fits (a phone), it reads `? keys · q quit`, and `?` shows the rest.
 
 ### Card details
 
 `Enter` (or a double click) opens the selected card over the lower half of the pane. The panel
-covers everything from the middle down to the key line: nothing of the board shows through it,
+covers everything from the middle down to the pane's last row: nothing of the board shows through it,
 and a rule closes it at the bottom ("── end of card 1 ──", or "── ↓ 12 more lines ──" while
 there is more to scroll). It reads top to bottom:
 
@@ -590,6 +594,7 @@ this list.
 | `tell "<line>"` | From a job's pane: put `[job note] <its slug> — <line>` in its coordinator's inbox (see Job messages). Its own job only (the slug is the pane's Herdr agent name); not for a coordinator. |
 | `inbox wait [--timeout S]` | A coordinator's: wait until its inbox has messages not acked yet (at once when it has some), print them one a line, `[job finished] <slug> — <status> — <summary> #<id>`, and exit 0; exit 124 after S seconds. Run it in the background (see Job messages). |
 | `inbox ls [--all]` | This coordinator's messages not acked yet (`--all`: the acked ones too, marked `(acked)`). |
+| `inbox ls --stray` | The messages not acked in a workspace where no coordinator ever wrote to the board (a job's own workspace, say), with their workspace. The turn-start reminder counts them. Handle any that is yours, then `inbox ack <id>…`. |
 | `inbox ack <id>… \| --all` | Mark messages handled (`#` before an id is fine). They stay in the inbox until acked. |
 | `front [show]` | This coordinator pane gets the answers no other coordinator can take, and holds Telegram (default: the pane that last opened the board). |
 | `adopt <id>…` / `adopt --project P --gone` | This coordinator pane owns these cards (`--gone`: P's open cards whose owner pane is gone). |
@@ -597,7 +602,7 @@ this list.
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
 | `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, and `waiting_on` (the open ids under it) when it has any. |
-| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else a new one, in W's repo). `--parent` as for `add`. |
+| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, else that job's To do or Doing card, else its Waiting card, else a new one, in W's repo). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
 | `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
@@ -639,25 +644,32 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
 4. **A job starts**: a job is an agent you started in another pane under a Herdr agent name
    (`herdr agent start <slug> …`) that ends by writing a JSON report.
    `job-start <slug> --worktree <its worktree> --title "…" --desc "…" --report <report path>`
-   (the card goes to the worktree's project). The pane then shows that
+   (the card goes to the worktree's project). A further round of the same job (a new prompt to
+   the same agent) is `job-start <slug> --id <its card> --report <the new report path>` again:
+   the card goes back to Doing and points at the new report. The pane then shows that
    agent's live state, and moves the card under Waiting while the agent is blocked.
 5. **Its report lands**: `job-report <slug>`. The report is JSON like:
 
    ```json
-   { "status": "done", "summary": "one or two sentences", "needs_user": ["Review and merge PR #21"] }
+   { "status": "done", "summary": "one or two sentences", "needs_user": ["Merge the search filters fix?"], "notes": ["The old export still runs nightly."] }
    ```
 
-   - `done` with no `needs_user` → Done.
+   - `done` with no `needs_user` → Done. `notes` (things the user should know, no decision)
+     never become the card's question; the details show them under "For your information".
    - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `Needs you:` line each). An
      entry may be text or an object such as `{ "question": "…", "suggested_answer": "…" }`.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
+   - A card with open cards under it (`--parent`: its checks, its sub-tasks) is never closed or
+     made a question by a report: it stays in Doing with the report stored on it, and you get a
+     `[job note]` naming the report's status and the open cards. Move or edit it once they are done.
 
    A script that waits for the report can do this for you: call
    `job-report <slug> <report> --if-final` whenever the report file changes. It does nothing
    until the report is final. Calling it again with the same report changes nothing: no second
    card, no new `updated` time, and edits you made to the card since stay. A report rewritten
-   with a different outcome moves the same card again. A follow-up report (the job briefed again
+   with a different outcome or summary moves the same card again (a partial `done` the job
+   later finishes is not lost). A follow-up report (the job briefed again
    without `job-start`, after its card was done, or read by a restarted coordinator) uses the
    job's most recent card: one your pane owns or in your workspace, else a Done one. A report
    that needs nothing from you leaves a Done card as it is (`<id> stays done`); one that does
@@ -667,7 +679,8 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    it: `[job finished] search-ui — done — <the report's summary>` (`no report yet` and its last
    line when it stopped without a final report), or `[job waiting] search-ui — needs: <its
    question>` (also for a permission prompt in its tab: `needs: approval: …`). Look at the
-   report or the tab, update the card yourself, `inbox ack` the message and start the wait
+   report or the tab, update the card yourself (the line goes to the card's owner even when
+   `job-report` already moved the card to Done), `inbox ack` the message and start the wait
    again. A job can also send a line of its own: `board.mjs tell "<line>"` from its pane arrives
    as `[job note] <slug> — <line>`. A Doing card whose job finished and that nobody changed for
    10 minutes since shows **job finished — not reviewed yet** (amber), and the turn-start

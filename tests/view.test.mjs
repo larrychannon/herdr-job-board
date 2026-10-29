@@ -189,7 +189,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     assert.match(panel, /\nSearch filters: build\n {2}Doing for 25 min\n/)
     assert.match(panel, /What it is\n {2}Sentence 1 of a long description/)
     assert.match(r.stdout, /── ↓ \d+ more lines ─+\n/, "longer than the panel: the closing rule says how much more")
-    assert.match(r.stdout.trimEnd().split("\n").at(-1), /^Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit$/)
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit$/)
     // Scroll to the end: the job, the report in words, More… and the times.
     r = t.pane([], "\t\rG")
     assert.match(r.stdout, /From the job\n {2}Job search-ui is working · 25 min · its tab: search-ui \(press t\)/)
@@ -210,7 +210,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     // Esc closes it.
     r = t.pane([], "\t\r\x1b")
     assert.doesNotMatch(r.stdout, /── card/)
-    assert.match(r.stdout.trimEnd().split("\n").at(-1), /^Tab section/)
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Tab section/)
     // Missing and garbled reports.
     rmSync(report)
     assert.match(t.pane([], "\t\rG").stdout, /What the job reported\n {2}Nothing yet: the job hasn't written its report\./)
@@ -230,7 +230,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     r = t.pane([], "\x1b[B\r")
     assert.match(r.stdout, /── card 2/)
     assert.match(r.stdout, /What you need to do\n {2}Question: Try http:\/\/localhost:3000\/invoices, then say merge\n {2}\[ Merge ✓ \] {2}\[ Not yet \] {2}\[ Other… \]/)
-    assert.match(r.stdout.trimEnd().split("\n").at(-1), /←→ choose/)
+    assert.match(r.stdout.trimEnd().split("\n")[1], /←→ choose/)
   } finally {
     t.done()
   }
@@ -334,12 +334,12 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
           screen.pop()
           assert.equal(screen.length, height)
           const top = screen.findIndex((l) => /^── card \d/.test(l))
-          assert.equal(top, height / 2, `${card} at ${width}: the panel starts half way down`)
-          const bottom = screen.length - 2
-          assert.match(screen[bottom], /^── (end of card \d+|↓ \d+ more lines?) ─+$/, `${card} at ${width}: the closing rule, just above the key line`)
+          assert.equal(top, height / 2 + 1, `${card} at ${width}: the panel starts half way down (under the key line at the top)`)
+          const bottom = screen.length - 1
+          assert.match(screen[bottom], /^── (end of card \d+|↓ \d+ more lines?) ─+$/, `${card} at ${width}: the closing rule, on the bottom row`)
           assert.equal([...screen[bottom]].length, width, "the closing rule spans the pane")
           assert.equal([...screen[top]].length, width, "and so does the top one")
-          assert.match(screen.at(-1), /^Esc /)
+          assert.match(screen[1], /^Esc /, "the key line under the title")
           for (const line of screen.slice(top, bottom + 1)) {
             assert.doesNotMatch(line, /TODO-MARK|DONE-MARK|DOING \(|TO DO \(|DONE \(|DONE · |WAITING ON YOU|↓ \d+ more$/, `${card} at ${width}: column text in the panel: ${line}`)
           }
@@ -350,10 +350,10 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
     const state = JSON.parse(readFileSync(t.file, "utf8"))
     const view = buildView(state, null, { now: new Date(NOW) })
     const opened = renderBoard(view, { width: 88, height: 30, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {}, detail: { key: "#2", offset: 0 } } })
-    assert.deepEqual([opened.regions.detail.top, opened.regions.detail.bottom], [16, 29])
+    assert.deepEqual([opened.regions.detail.top, opened.regions.detail.bottom], [17, 30])
     const rows = opened.text.split("\n")
     assert.equal(rows.length, 30)
-    assert.match(rows[28], /^── (end of card 2|↓ \d+ more lines?) ─+$/)
+    assert.match(rows[29], /^── (end of card 2|↓ \d+ more lines?) ─+$/)
   } finally {
     t.done()
   }
@@ -459,7 +459,7 @@ test("a Waiting card whose job is blocked shows no buttons, so none can be chose
     const panel = t.pane(["--width", "120", "--height", "60"], "\r").stdout
     assert.match(panel, /What you need to do\n {2}Needs you: Open the canvas, then OK all suggestions or comment\n\n/, "the ask, and no buttons under it")
     assert.match(panel, /Job checkout-mockup is blocked: it needs you in its tab/)
-    assert.doesNotMatch(panel.trimEnd().split("\n").at(-1), /←→/)
+    assert.doesNotMatch(panel.trimEnd().split("\n")[1], /←→/)
     // End to end through the pane and the fake Herdr: → Enter and o, on the board and in the panel.
     for (const keys of ["\x1b[C\r", "\r\x1b[C\r", "\r\x1b[C\x1b[C\r", "\ro", "o"]) t.pane(["--width", "120", "--height", "60"], keys)
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || (a[1] === "focus" && a[2] === "w9:p1"))), [])
@@ -690,7 +690,7 @@ test("copy: c again copies the card's next link, round to the first; a new card 
     seedDetails(t)
     const canvas = "https://canvas.example/boards/checkout-v2"
     const pr = "https://github.com/example/app/pull/57"
-    const last = (r) => r.stdout.trimEnd().split("\n").at(-1)
+    const last = (r) => r.stdout.trimEnd().split("\n")[1]
     // Card 1 has two links (the report's Design canvas, then PR #57): c, c, c copies 1, 2, 1.
     let r = t.pane(["--width", "120"], "ccc")
     assert.deepEqual(decode52(r.stdout), [canvas, pr, canvas])
@@ -756,7 +756,7 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
     r = t.pane([], "t")
     assert.match(r.stdout, /this card has no job, so no tab/)
     // m flips the footer's mouse mode (the pane also switches mouse reporting; see the pty test).
-    assert.match(t.pane([], "m").stdout.trimEnd().split("\n").at(-1), /^selecting text: m mouse back/)
+    assert.match(t.pane([], "m").stdout.trimEnd().split("\n")[1], /^selecting text: m mouse back/)
   } finally {
     t.done()
   }
@@ -808,8 +808,8 @@ test("mouse capture off (m): one column at any width, so a drag selects one card
       const flat = lines.map((l) => l.trim()).join(" ")
       assert.ok(flat.includes(long), `${width}x${height}: the whole description`)
       assert.ok(flat.includes("drawn as one row of the inbox"), "the whole title")
-      assert.ok(!lines.slice(0, lines.length - 1).some((l) => l.replace("Other…", "").includes("…")), "nothing cut with …")
-      assert.match(lines.at(-1), /m gives the mouse and the columns back/, "the key line says how to get back")
+      assert.ok(!lines.filter((_, i) => i !== 1).some((l) => l.replace("Other…", "").includes("…")), "nothing cut with …")
+      assert.match(lines[1], /m gives the mouse and the columns back/, "the key line says how to get back")
       all += `===== m (mouse capture off) · ${width}x${height} =====\n${text}`
       // m again: the columns are back.
       assert.match(t.pane(size, "mm").stdout, /DOING \(2\) +TO DO \(1\)/)
@@ -831,7 +831,7 @@ test("mouse capture off (m), a card taller than its section: the cut line says E
       assert.equal(r.status, 0, r.stderr)
       assert.match(r.stdout, /↓ card cut off: Enter shows the rest in its details/, `${width}x${height}`)
       assert.doesNotMatch(r.stdout, /open it for the rest/)
-      const keys = r.stdout.trimEnd().split("\n").at(-1)
+      const keys = r.stdout.trimEnd().split("\n")[1]
       assert.match(keys, /^selecting text: m gives the mouse and the columns back/, `${width}x${height}: ${keys}`)
       assert.doesNotMatch(keys, /…/)
       // Enter: the details show the card, and scroll (the rest is there).
@@ -1320,7 +1320,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
     // Wide, where every card shows its question (at 120, and at 88 too); the inbox below.
     for (const [width, layout] of [[120], [88, "wide"]]) {
       const draw = (scroll) => renderBoard(view, { width, height: 60, interactive: true, now: new Date(NOW), layout, scroll })
-      const lastLine = (d) => d.text.split("\n").at(-1)
+      const lastLine = (d) => d.text.split("\n")[1]
       const click = (d, hit, at = 0) => handleInput(d.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at }, d)
       let drawn = draw({ selected: "todo", anchors: {} })
       assert.doesNotMatch(lastLine(drawn), /Enter to send/, `${width}: no hint before a button is chosen`)
@@ -1379,7 +1379,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
       let r = click(drawn, drawn.askHits[0])
       assert.deepEqual([r.action, r.scroll.card, r.scroll.button], [null, "#1", 0], "chosen, not sent")
       drawn = draw(r.scroll)
-      assert.match(drawn.text.split("\n").at(-1), /^Enter to send/)
+      assert.match(drawn.text.split("\n")[1], /^Enter to send/)
       assert.deepEqual(handleInput(drawn.scroll, { type: "key", name: "enter" }, drawn).action, { type: "send", id: 1, key: "#1", label: "Approve, include #16" })
       // ↓ opens the next card: card 2's first button (no --suggest) by a click on its question.
       drawn = draw(handleInput(draw().scroll, { type: "key", name: "down" }, draw()).scroll)
@@ -1395,7 +1395,7 @@ test("a click on the question chooses the suggested button (or the first) and sa
     const click = clickOn(t.pane(size).stdout, "Question: Approve")
     const r = t.pane(size, click + click.replace(/M$/, "m"))
     assert.match(r.stdout, /< Approve, include #16 ✓ >/)
-    assert.match(r.stdout.trimEnd().split("\n").at(-1), /^Enter to send/)
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Enter to send/)
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && (a[1] === "prompt" || a[1] === "focus")), [], "no prompt, no focus")
     // Enter after it: card 1 was answered already, so it asks first, as any press does.
     assert.match(t.pane(size, `${click}\r`).stdout.replace(/\n {2}/g, " "), /send again\? "Approve, include #16" was sent already/)
@@ -1437,7 +1437,7 @@ test("short panes (wide 120x20 and 88x20, compact 60x14 and 95x14 opened with Sp
     for (const { width, height, layout, scroll: start } of SHORT) {
       const size = `${width}x${height}`
       const draw = (scroll) => renderBoard(view, { width, height, layout, interactive: true, now: new Date(NOW), scroll })
-      const lastLine = (d) => d.text.split("\n").at(-1)
+      const lastLine = (d) => d.text.split("\n")[1]
       const mine = (d, panel = false) => d.buttons.filter((b) => b.key === "#1" && !b.panel === !panel)
       let drawn = draw({ ...start, anchors: {} })
       // The precondition: the question on screen, none of its buttons, and a line that says the card goes on.
@@ -1558,7 +1558,7 @@ test("the details' key line fits at 80 and 88 columns with a button chosen (shor
     for (const width of [80, 88, 100, 120]) {
       for (const button of [0, 3]) {
         const drawn = renderBoard(view, { width, height: 40, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {}, card: "#1", button, detail: { key: "#1", offset: 0 } } })
-        const keys = drawn.text.split("\n").at(-1)
+        const keys = drawn.text.split("\n")[1]
         assert.match(keys, button ? /^Enter to answer in the chat · / : /^Enter to send · /, `${width}`)
         assert.doesNotMatch(keys, /…/, `${width}: not cut`)
         assert.match(keys, /Esc/)

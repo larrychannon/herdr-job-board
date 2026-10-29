@@ -187,9 +187,10 @@ test("a click on the strip shows that project; on all, every one", () => {
   const t = setup()
   try {
     const lines = t.pane(95, 40).stdout.split("\n")
-    const strip = lines[1]
+    // The strip is the third row, under the title and the key line.
+    const strip = lines[2]
     const x = (word) => [...strip.slice(0, strip.indexOf(word))].length + 1
-    const click = (cx) => `\x1b[<0;${cx};2M\x1b[<0;${cx};2m`
+    const click = (cx) => `\x1b[<0;${cx};3M\x1b[<0;${cx};3m`
     assert.match(t.pane(95, 40, click(x(" ai 1") + 2)).stdout, /^Job board · ai-config · 1 needs you/m)
     assert.match(t.pane(95, 40, click(x("herdr") + 1)).stdout, /^Job board · herdr-job-board/m)
     assert.match(t.pane(95, 40, `p${click(x("all") + 1)}`).stdout, /^Job board · all projects/m)

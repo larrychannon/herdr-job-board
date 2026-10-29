@@ -179,7 +179,7 @@ test("the details: a double click on the question, or a triple click on a lower 
   // (b) wide 130x44, 12 cards: a double click on card 12's row opens its details, whose buttons land under the pointer.
   const b = drawer(recheckBoard(12, 0), 130, 44)
   d = settle(b, { selected: "waiting", card: "#11" })
-  const y = 29
+  const y = 30
   const x = 10
   r = handleInput(d.scroll, { type: "click", x, y, at: 0 }, d)
   d = b(r.scroll)

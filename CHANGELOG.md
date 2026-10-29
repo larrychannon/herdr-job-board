@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.12.0 · unreleased
+
+A job's rounds stay on its card, and its messages reach the coordinator that owns the card;
+the board pane's key line moves to the top.
+
+- **Why**: on one busy day seven "job finished" messages went to a workspace no coordinator
+  reads, among them a review's "fix first" verdict, which then sat unseen for three hours. Each
+  was sent after the wait script had already moved the job's card to Done, and the message only
+  looked for open cards. The same day a review wrote a partial `done` ("QA still running") that
+  closed its card early, and the real verdict, written over it later, was never applied; a job
+  whose card waited on its child check had an FYI turned into the card's question, and another
+  round closed the card while the check was still open; and a follow-up round on a Waiting
+  card made a second card titled with the job's slug.
+- **Messages for a Done card**: a job's stop and its `tell` lines use the job's newest card in
+  any column when it has no open one, so they go to that card's owner, with the report's status
+  and summary instead of "no report yet".
+- **Messages nobody reads**: the coordinator's turn-start reminder counts the messages not acked
+  in a workspace where no coordinator ever wrote to the board (`w8: 7`), with the first few;
+  `inbox ls --stray` lists them all, and `inbox ack <id>` acks any of them.
+- **A new round on the same card**: `job-start <slug>` without `--id` now takes the job's Waiting
+  card when it has no To do or Doing one (the ask and buttons go, as with `--id`), instead of
+  making a new card titled with the slug.
+- **Rewritten reports apply again**: the outcome a card remembers (`reported`) includes the
+  report's summary, so a final report rewritten with a new summary moves the card again. Keys
+  written before 0.12.0 (without the summary) still count, so a repeat of an old report keeps
+  the coordinator's edits.
+- **Cards with open cards under them**: `job-report` never closes such a card, and never puts it
+  in Waiting. It stays in Doing (moved there if it was elsewhere) with the report stored on it,
+  and the coordinator gets one `[job note]` with the report's status, what it asks, and the
+  open cards' ids. Once they are done, the next report applies as usual.
+- **`notes`**: a report's FYIs (`"notes": ["…"]`) never become the card's question; the card's
+  details show them under "For your information". `needs_user` is for decisions only.
+- **The key line at the top**: the pane's key line is drawn right under the title at every
+  width, never on the last row. In a terminal that keeps its last row in view (a phone's, in
+  Collie), a key line at the bottom scrolled the cards at the top out of sight. Where none of
+  its forms fits, it reads `? keys · q quit`; the new `?` key shows every key there, wrapped,
+  until `?` or `Esc`. The rows below move down one line, and the details panel now runs to the
+  last row.
+
 ## 0.11.0 · unreleased
 
 The board checks a card's words before it writes them, so a card the user can't read on its

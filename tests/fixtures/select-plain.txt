@@ -1,5 +1,6 @@
 ===== m (mouse capture off) · 160x45 =====
 Job board · all projects · 3 need you                                                                                                                      10:30
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  1 ! Old question: pick a name                                                                                                                            2 days
@@ -43,9 +44,9 @@ DONE · 1 today ▸
 
 
 
-selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
 ===== m (mouse capture off) · 200x60 =====
 Job board · all projects · 3 need you                                                                                                                                                              10:30
+selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  1 ! Old question: pick a name                                                                                                                                                                    2 days
@@ -104,4 +105,3 @@ DONE · 1 today ▸
 
 
 
-selecting text: m gives the mouse and the columns back · ↑↓ card · Space open · Tab section · c copy · q quit
