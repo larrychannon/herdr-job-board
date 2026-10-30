@@ -293,7 +293,7 @@ test("Each answer: a list naming buttons the card no longer has: edit refused na
     const before = s.hash()
     let r = s.run("edit", "1", "--option", "Drop the typed press", "--option", "Keep it open", "--suggest", "Drop the typed press")
     assert.equal(r.status, 2)
-    assert.match(r.stderr, /the description says "Close this card", its "Each answer:" list names a button the card doesn't have: make the description's "Each answer:" list name the buttons as they are now, one line each \("Drop the typed press", "Keep it open"\), in the same edit as the buttons/)
+    assert.match(r.stderr, /the description says "Close this card", its "Each answer:" list names a button the card doesn't have: make the description's "Each answer:" list name the buttons as they are now, one line each \("Drop the typed press", "Keep it open"\), as "- <label>: …", "- <label> = …" or "- <label> → …", in the same edit as the buttons/)
     assert.match(r.stderr, /the button "Drop the typed press": it has no line in the description's "Each answer:" list/)
     assert.equal(s.hash(), before)
     // An edit of only the description that drops a button's line: refused too.
@@ -318,6 +318,28 @@ test("Each answer: a list naming buttons the card no longer has: edit refused na
     assert.equal(s.hash(), hash, "lint writes nothing")
     // --allow-wording lets it through, as for any other problem.
     s.ok("edit", "1", "--title", "Typed press idea: drop or wait", "--allow-wording")
+  } finally {
+    s.done()
+  }
+})
+
+test("Each answer: lists that do match the buttons pass, whatever their dash, quotes or bold; a line for any answer is no button's; a refusal names the forms read", () => {
+  const s = setup()
+  try {
+    const buttons = ["--option", "Merge it now", "--option", "Ship it: today", "--suggest", "Merge it now"]
+    s.ok("add", "waiting", "Login fix: merge", "--ask", "Merge the login fix?", ...buttons)
+    for (const list of [
+      "- Merge it now — I merge it.\n- Ship it: today – it goes out today.",
+      '- "Merge it now": I merge it.\n- "Ship it: today": it goes out today.',
+      "- **Merge it now**: I merge it.\n- **Ship it: today** = it goes out today.\n- Either way: you get a note.",
+    ]) {
+      const r = s.run("edit", "1", "--desc", `What: the login fix.\n\nEach answer:\n${list}`)
+      assert.equal(r.status, 0, `${list}\n${r.stderr}`)
+    }
+    assert.deepEqual(answerLabels("Each answer:\n- **Merge it now**: x\n- Either way: y", ["Merge it now"]), ["Merge it now"])
+    const r = s.run("edit", "1", "--desc", "Each answer:\n- Merge it now: x\n- Ship it tomorrow: y")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /as "- <label>: …", "- <label> = …" or "- <label> → …"/)
   } finally {
     s.done()
   }

@@ -1158,19 +1158,32 @@ export function labelProblems(label) {
   return out
 }
 
+// A line for whatever is pressed ("- Either way: …") is no button's.
+const ANY_ANSWER = /^(?:either way|any answer|whichever|whatever|in any case|in both cases|both|all of them|then|after any(?: answer)?)$/i
+// Quotes or bold (**…**, __…__) around a label are not part of it.
+const unwrap = (text) => clean(text).replace(/^(?:\*\*|__)(.+?)(?:\*\*|__)$/, "$1").replace(/^["“'‘](.+?)["”'’]$/, "$1").trim()
+
 /**
- * The labels a description's "Each answer:" list gives, one bullet line per button, the label
- * ending at the first " = ", ": " or " → " ("- Close this card: drop the idea."). [] without
- * such a list; an inline "Each answer: A = …" sentence isn't read.
+ * The labels a description's "Each answer:" list gives, one bullet line per button ("- Close this
+ * card: drop the idea."). A line that starts with one of `buttons` (quotes or bold around it
+ * allowed) is that button's, whatever follows; any other line's label ends at the first
+ * " = ", ": ", " → ", "->" or a spaced em or en dash. A line for any answer ("- Either way: …") is left out. [] without such a list; an
+ * inline "Each answer: A = …" sentence isn't read.
  */
-export function answerLabels(desc) {
+export function answerLabels(desc, buttons = []) {
   const m = /(?:^|\n)[ \t]*Each answer:[ \t]*\r?\n((?:[ \t]*[-*•][ \t]+[^\n]*(?:\r?\n|$))+)/i.exec(asText(desc ?? ""))
   if (!m) return []
-  return m[1]
-    .split("\n")
-    .map((line) => /^[ \t]*[-*•][ \t]+(.+?)(?:[ \t]+(?:=|→|->)[ \t]|:[ \t]|:?$)/.exec(line.trimEnd())?.[1])
-    .map((label) => clean(label ?? ""))
-    .filter(Boolean)
+  const known = [...buttons].map((b) => clean(b)).filter(Boolean).sort((a, b) => b.length - a.length)
+  const out = []
+  for (const line of m[1].split("\n")) {
+    const body = /^[ \t]*[-*•][ \t]+(.+)$/.exec(line.trimEnd())?.[1]
+    if (!body) continue
+    const bare = clean(body).replace(/^(?:\*\*|__)/, "").replace(/^["“'‘]/, "")
+    const button = known.find((b) => bare.toLowerCase().startsWith(b.toLowerCase()) && !/^[\p{L}\p{N}]/u.test(bare.slice(b.length)))
+    const label = button || unwrap(/^(.+?)(?:[ \t]+(?:=|→|->|—|–)[ \t]|:[ \t]|:?$)/.exec(clean(body))?.[1] ?? "")
+    if (label && !ANY_ANSWER.test(label)) out.push(label)
+  }
+  return out
 }
 
 /**
@@ -1179,12 +1192,12 @@ export function answerLabels(desc) {
  * "stale": an edit is refused, lint warns. Only a card with buttons is checked.
  */
 function answerListProblems(item, options) {
-  const listed = answerLabels(item.desc)
+  const listed = answerLabels(item.desc, options.map((o) => o.label))
   if (!listed.length || !options.length) return []
   const key = (l) => clean(l).toLowerCase().replace(/[.!?]+$/, "")
   const buttons = new Set(options.map((o) => key(o.label)))
   const lines = new Set(listed.map(key))
-  const fix = `make the description's "Each answer:" list name the buttons as they are now, one line each (${options.map((o) => `"${clean(o.label)}"`).join(", ")}), in the same edit as the buttons`
+  const fix = `make the description's "Each answer:" list name the buttons as they are now, one line each (${options.map((o) => `"${clean(o.label)}"`).join(", ")}), as "- <label>: …", "- <label> = …" or "- <label> → …", in the same edit as the buttons`
   return [
     ...listed.filter((l) => !buttons.has(key(l))).map((l) => ({ field: "description", text: l, why: `its "Each answer:" list names a button the card doesn't have`, fix, level: "stale" })),
     ...options.filter((o) => !lines.has(key(o.label))).map((o) => ({ field: `button "${o.label}"`, text: "", why: `it has no line in the description's "Each answer:" list`, fix, level: "stale" })),
