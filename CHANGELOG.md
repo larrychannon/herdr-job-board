@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.13.0 · unreleased
+
+A status line per card, kept in step with its family.
+
+- **Why**: on one day the coordinator updated cards by hand from its notes about fifteen times
+  and kept slipping: a parent still said "review running" after its review card was done, a
+  card said "waiting for merge" after the merge, and nothing told it. A card's description is
+  what the thing is; where the work stands changes many times a day and needs its own line.
+- **`now <ref> "<where it stands>"`**: the card's status line, shown at the top of the card,
+  its details and `ls` ("Now: merged, waiting for your deploy OK"). It is written on the card's
+  lineage too (the cards above it and every open card under it, not its siblings) unless
+  `--only`; `--clear` removes it. `--event merge|deploy|…` notes that event on the lineage
+  first, so the lines written with it are current and any written before are not. The words
+  are checked like a card's (no PR, build or commit numbers; `--allow-wording` as for cards).
+- **Out of date**: an event on a card (a job's report, the card done, top cards included, the
+  card back out of Done, an `--event`) puts the lines above it, under it and its own written
+  before it out of date; a sub-card added or removed (`add --parent`, `edit --parent` /
+  `--no-parent`, `rm` of an open card) does that to the lines above it. A sibling's news never
+  does, so two jobs side by side under one card keep their true "a job is working on it". The
+  card then says `Now (out of date: card done on #3 since): …` in amber, its row says `status
+  out of date`, the coordinator's turn reminder lists
+  its own such cards, and its Stop hook blocks once per card and event while a card it owns has
+  one (after the Waiting-card check, which keeps its place). Cards without a line, and Done
+  cards, are never out of date, so boards from before change nothing.
+- **job-report** writes the job's card's line itself ("the job finished: its report is ready to
+  check", "… needs your answer", "the job is blocked and needs you", "the job failed: read its
+  report") and notes a `job report` event on its family.
+- A status line or event is not a Waiting card update for the Stop hook's question check.
+- **`inbox get <id>`**: one inbox message as JSON, acked or not, so a script can check that a
+  board press it was given is a real answer on its card (the job skill's `ship.mjs` does).
+
 ## 0.12.0 · unreleased
 
 A job's rounds stay on its card, and its messages reach the coordinator that owns the card;

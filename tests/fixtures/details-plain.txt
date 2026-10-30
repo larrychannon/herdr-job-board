@@ -4,12 +4,13 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next lin
 
 ▸ WAITING ON YOU (2)
 1▸Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
-  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
-  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
-  Question: Open the canvas, then OK all suggestions or        Question: Pick one
-    comment                                                    [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Not now ]  [ Other… ]                       7 h 47 min
+  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
+  'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
+  answer.                                                      Question: Pick one
+  Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+    comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
 DOING (1)                                                    TO DO (3)
 3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
@@ -18,10 +19,10 @@ DOING (1)                                                    TO DO (3)
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
                                                                From the roadmap.
 
-                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
+  Now: the job finished and needs your answer
 
   What it is
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.
@@ -36,8 +37,7 @@ Checkout redesign mockup: approve
   What the job reported
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
   has 12 boards, before and after, e.g. Cart, Address and the payment step.
-  Needs you:
-── ↓ 10 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+── ↓ 11 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 120 columns =====
 Job board · all projects                                                                                           10:30
@@ -45,12 +45,13 @@ Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 
 ▸ WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2▸Coupons AND gift cards discount an order twice: fix?
-  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
-  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
-  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
-  Question: Open the canvas, then OK all suggestions or        Question: Pick one
-    comment                                                    [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Not now ]  [ Other… ]                       7 h 47 min
+  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
+  'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
+  answer.                                                      Question: Pick one
+  Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+    comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
 DOING (1)                                                    TO DO (3)
 3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
@@ -59,7 +60,6 @@ DOING (1)                                                    TO DO (3)
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
                                                                From the roadmap.
 
-                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
 ── card 2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -86,12 +86,13 @@ Esc close · ↑↓ scroll · c copy · t go to tab · q quit
 
 WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
-  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
-  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
-  Question: Open the canvas, then OK all suggestions or        Question: Pick one
-    comment                                                    [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Not now ]  [ Other… ]                       7 h 47 min
+  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
+  'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
+  answer.                                                      Question: Pick one
+  Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+    comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
 ▸ DOING (1)                                                  TO DO (3)
 3▸Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
@@ -100,7 +101,6 @@ WAITING ON YOU (2)
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
                                                                From the roadmap.
 
-                                                             7 TODO-MARK Rotate the API keys                 3 h 28 min
 ── card 3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -127,12 +127,13 @@ Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab
 
 WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  12 before/after boards on the design canvas (page            Live bug: a coupon plus a gift card takes the discount
-  'Checkout v2'). 6 small choices, each with a suggested       twice (e.g. order 1042 paid 0.00 incl. shipping);
-  answer.                                                      refunds then go negative. Both stay wrong until fixed. …
-  Question: Open the canvas, then OK all suggestions or        Question: Pick one
-    comment                                                    [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
-  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]       [ Not now ]  [ Other… ]                       7 h 47 min
+  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
+  'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
+  answer.                                                      Question: Pick one
+  Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
+    comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
+  [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
 DOING (1)                                TO DO (3)                                ▸ DONE (7) ▾
 3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4▸CSV export on the Orders page (PR
@@ -141,7 +142,6 @@ DOING (1)                                TO DO (3)                              
   approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
                                            From the roadmap.         3 h 29 min
                                                                                   12 DONE-MARK shipped thing 5     05:40
-                                         7 TODO-MARK Rotate the API keys
 ── card 4 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
   Done at 09:10
@@ -168,6 +168,7 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab �
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸ 1 ! Checkout redesign mockup: approve                                       7 h 30 min
+      Now: the job finished and needs your answer
       12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
       each with a suggested answer.
       Question: Open the canvas, then OK all suggestions or comment
@@ -182,10 +183,10 @@ TO DO (3) ───────────────────────�
   6   TODO-MARK Nightly backup check                                          3 h 29 min
   7   TODO-MARK Rotate the API keys                                           3 h 28 min
 
-DONE · 7 today ▸
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
+  Now: the job finished and needs your answer
 
   What it is
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
@@ -200,8 +201,7 @@ Checkout redesign mockup: approve
 
   What the job reported
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
-  'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address
-── ↓ 13 more lines ─────────────────────────────────────────────────────────────────────
+── ↓ 14 more lines ─────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
