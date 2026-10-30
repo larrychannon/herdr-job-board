@@ -584,8 +584,9 @@ const ALWAYS_ASK = [
   /\bdelet(?:e|es|ed|ing)\b[^.\n]*\b(?:branch(?:es)?|database|bucket|records?|users?)\b/i,
 ]
 // A title whose action (after its last ": ", else the whole title) starts with a deploy, merge or
-// release: "App: merge the fix", "Release v2". Not a name: "Release Notes Manager: build the export".
-const STARTS_RISKY = /^\s*(?:deploy(?:s|ing)?|merg(?:e|es|ing)|releas(?:e|es|ing))\b/i
+// release: "App: merge the fix", "Release v2". Not a name ("Release Notes Manager: build the
+// export") nor release notes ("Firmware 8.5: release notes for the fixed bugs").
+const STARTS_RISKY = /^\s*(?:deploy(?:s|ing)?\b|merg(?:e|es|ing)\b|releas(?:e|es|ing)\b(?!\s+notes?\b))/i
 const asksAlways = (title, desc) => {
   const t = String(title ?? "")
   const action = t.includes(": ") ? t.slice(t.lastIndexOf(": ") + 2) : t

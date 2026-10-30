@@ -6153,7 +6153,7 @@ export function markStart(file, id, on = true, now = new Date()) {
     if (on) item.start = startSig(item)
     else delete item.start
     item.updated = now.toISOString()
-    return on ? `card ${id} is in the Queue, marked start without asking: the coordinator starts its job when there is room` : `card ${id} stays queued; the coordinator asks before starting it`
+    return on ? `card ${id} is in the Queue: it starts without asking when there is room` : `card ${id} stays in the Queue: asked before it starts`
   }, now)
 }
 

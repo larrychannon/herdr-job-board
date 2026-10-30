@@ -145,7 +145,7 @@ test("details: s (or its button) queues a To do card marked start without asking
   try {
     const file = join(dir, "board.json")
     writeFileSync(file, JSON.stringify(s))
-    assert.match(markStart(file, 3, true, NOW), /card 3 is in the Queue, marked start without asking/)
+    assert.match(markStart(file, 3, true, NOW), /card 3 is in the Queue: it starts without asking when there is room/)
     Object.assign(card, JSON.parse(readFileSync(file, "utf8")).items.find((i) => i.id === 3))
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -533,12 +533,12 @@ test("markStart (the pane's s): queues a To do card marked, marks and unmarks a 
     r.board("2026-10-30T10:00:00Z", "add", "queue", "Build stamp: check the version is stamped correctly at merge")
     r.board("2026-10-30T10:00:00Z", "add", "doing", "Search: build the filters")
     const card = (id) => r.items().find((i) => i.id === id)
-    assert.match(markStart(r.file, 1, true, NOW), /card 1 is in the Queue, marked start without asking/)
+    assert.match(markStart(r.file, 1, true, NOW), /card 1 is in the Queue: it starts without asking when there is room/)
     assert.deepEqual([card(1).column, startMarked(card(1))], ["queue", true])
     assert.deepEqual(r.queued(), [2, 1], "it goes last, as u does")
-    assert.match(markStart(r.file, 2, true, NOW), /card 2 is in the Queue, marked/)
+    assert.match(markStart(r.file, 2, true, NOW), /card 2 is in the Queue: it starts without asking/)
     assert.ok(startMarked(card(2)))
-    assert.match(markStart(r.file, 2, false, NOW), /card 2 stays queued; the coordinator asks before starting it/)
+    assert.match(markStart(r.file, 2, false, NOW), /card 2 stays in the Queue: asked before it starts/)
     assert.equal(startMarked(card(2)), false)
     assert.equal(markStart(r.file, 3, true, NOW), null, "a Doing card isn't marked")
     // No option sets it from the command line: neither a coordinator nor a job can.
@@ -618,7 +618,11 @@ test("hooks: a marked card is still a question when its title starts with Deploy
     ["Build stamp: check the version is stamped correctly at merge", ""],
     ["Docs: explain how the release works", "Mentions production and the deploy script."],
     ["Release Notes Manager: build the export", ""],
+    ["Firmware 8.5: release notes for the fixed bugs", ""],
+    ["Release notes for the 8.5 firmware", ""],
   ]
+  // Release notes are writing, not a release: never asked, marked or not.
+  for (const t of ["Firmware 8.5: release notes for the fixed bugs", "Release notes for the 8.5 firmware"]) assert.ok(!needsYes(t), t)
   for (const [t, d] of started) {
     assert.ok(!needsYes(t, d, true), `${t} / ${d}`)
   }
@@ -632,6 +636,36 @@ test("hooks: a marked card is still a question when its title starts with Deploy
     assert.match(reason, /#1 "Roles: tidy them"/)
     assert.match(reason, /The user marked it "start without asking", but its title starts with a deploy, merge or release, or it asks for access, IAM, secrets, settings or deleting data, which the mark never covers: move it to Waiting/)
     assert.doesNotMatch(reason, /job-open/)
+  } finally {
+    r.done()
+  }
+})
+
+test("the pane: t, Tab to To do, Enter, s queues the card marked; the Queue shows it with », and s again in its details takes the mark off", () => {
+  const r = repo()
+  try {
+    r.board("2026-10-30T10:00:00Z", "add", "todo", "Magic WAN: check the tunnel counts", "--desc", "Read-only: compare the counts with the live data.")
+    r.board("2026-10-30T10:00:00Z", "add", "queue", "Release notes: check the export columns")
+    const pane = (keys) => {
+      const w = spawnSync(process.execPath, [join(ROOT, "board-pane.mjs"), "--once", "--width", "100", "--height", "40", "--layout", "inbox", "--keys", keys], {
+        cwd: r.dir,
+        env: { ...process.env, HERDR_ENV: "1", HERDR_WORKSPACE_ID: "w9", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: r.fake, JOB_BOARD_FILE: "", JOB_BOARD_HOME: r.state, HOME: r.home, JOB_BOARD_NOW: "2026-10-30T10:10:00Z", TZ: "UTC", NO_COLOR: "1" },
+        encoding: "utf8",
+      })
+      assert.equal(w.status, 0, w.stderr)
+      return w.stdout
+    }
+    let out = pane("t\t\t\t\rs")
+    assert.match(out, /card 1 is in the Queue: it starts without asking when there is room/)
+    assert.match(out, /QUEUE \(2\) ▾[^\n]*\n +2 {3}Release notes: check the export columns[^\n]*\n +1 » Magic WAN: check the tunnel counts +starts without asking/)
+    assert.match(out, /── card 1[\s\S]*In the Queue since just now · starts without asking[\s\S]*Back to To do \(u\)\n {2}Ask before starting \(s\)/)
+    assert.deepEqual(r.queued(), [2, 1])
+    assert.ok(startMarked(r.items().find((i) => i.id === 1)))
+    // Tab to the Queue, down to card 1, Enter, s: the mark is off; the card stays queued.
+    out = pane("\t\t\x1b[B\rs")
+    assert.match(out, /card 1 stays in the Queue: asked before it starts/)
+    assert.equal(startMarked(r.items().find((i) => i.id === 1)), false)
+    assert.deepEqual(r.queued(), [2, 1])
   } finally {
     r.done()
   }
