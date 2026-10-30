@@ -55,6 +55,7 @@
 //   inbox ls --stray        the unacked messages no coordinator reads: for a workspace where no
 //                           coordinator ever wrote (0.12.0); handle each, then ack it by id
 //   inbox ack <id>… | --all mark messages handled; they stay in the inbox until acked
+//   inbox get <id>          one message as JSON (acked or not): its kind, card, label, time
 //   front [show]            this coordinator pane gets the answers no other coordinator can take
 //                           (by default: the pane that last opened the board)
 //   projects                every project: tag, colour, open cards, folder, coordinators
@@ -87,16 +88,18 @@
 //                           unreadable or non-final report is a quiet no-op (exit 0), for wait
 //                           scripts that call it whenever the report file changes. It also writes
 //                           the card's status line ("the job finished: its report is ready to
-//                           check") and notes a "job report" event on the card's family (0.13.0)
+//                           check") and notes a "job report" event above and under the card (0.13.0)
 //   now <ref> "<where it stands>" [--only] [--event KIND] | now <ref> --clear [--only]
 //                           the card's status line, shown at the top of the card ("Now: merged,
 //                           waiting for your deploy OK"), apart from its description; written on
-//                           its family too (its top card and every open card under that) unless
-//                           --only. --event (merge, deploy, …) notes that event on the family
-//                           first. A family's events (a job report, a card under it done, an
-//                           --event) make a line written before them out of date: the card says
-//                           "status out of date", the coordinator's turn reminder lists it, and
-//                           its Stop hook blocks once while one of its own cards has one (0.13.0)
+//                           its lineage too (the cards above it and every open card under it, not
+//                           its siblings) unless --only. --event (merge, deploy, …) notes that
+//                           event on the lineage first. An event on a card (a job report, done,
+//                           back out of Done, an --event) makes the lines above it, under it and
+//                           its own written before it out of date; a sub-card added or removed
+//                           does that to the lines above it. The card says "status out of
+//                           date", the coordinator's turn reminder lists it, and its Stop hook
+//                           blocks once while one of its own cards has one (0.13.0)
 //   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
 //                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
 //                           of the repos under $HOME) into the one board. Ids are kept when free,
@@ -1283,6 +1286,8 @@ function addItem(state, column, title, opts, now, who = {}) {
   setOptions(item, opts)
   if (opts.parent !== undefined) setParent(state, item, opts.parent)
   state.items.push(item)
+  // A new card under a card: the lines above it didn't count it (0.13.0).
+  if (item.parent != null) noteAbove(state, item.parent, "sub-card added", item, now)
   return item
 }
 
@@ -1295,6 +1300,7 @@ function moveItem(state, item, column, now, woke = []) {
   clearReady(item)
   if (item.column !== column) {
     const closing = column === "done" && item.column !== "done"
+    const reopening = item.column === "done" && column !== "done"
     item.order = topOf(state, column, item)
     item.column = column
     item.since = at
@@ -1306,8 +1312,13 @@ function moveItem(state, item, column, now, woke = []) {
     if (closing) {
       const parent = wakeParent(state, item, now)
       if (parent) woke.push(parent)
-      // Its family's status lines were written before this card was done (0.13.0).
-      if (item.parent != null) noteEvent(state, item, "card done", now)
+      // The lines above and under it were written before it was done (0.13.0); a top card's
+      // too, for the cards still open under it.
+      noteEvent(state, item, "card done", now)
+    } else if (reopening) {
+      // A card back out of Done: its own line ("live and checked") is history now, and so are
+      // the lines above it that counted it done.
+      noteEvent(state, item, "card reopened", now)
     }
   }
   item.updated = at
@@ -1326,8 +1337,14 @@ function editItem(state, item, opts, now) {
   if (opts.job !== undefined) item.job = clean(opts.job)
   if (opts.report !== undefined) item.report = resolve(opts.report)
   setOptions(item, opts)
+  const before = item.parent
   if (opts.parent !== undefined) setParent(state, item, opts.parent)
   if (opts["no-parent"]) delete item.parent
+  // An open card moved under another card, or out from under one: the lines above say so no more.
+  if (item.parent !== before && item.column !== "done") {
+    if (before != null) noteAbove(state, before, "sub-card removed", item, now)
+    if (item.parent != null) noteAbove(state, item.parent, "sub-card added", item, now)
+  }
   clearReady(item)
   item.updated = now.toISOString()
   return item
@@ -1510,10 +1527,13 @@ export const idList = (ids) => ids.map((id) => `#${id}`).join(", ")
 //
 // A card's status line (`now`: { text, at, by }) says where its work stands, apart from its
 // description, and shows at the top of the card. A card's family is its top card (the parent of
-// its parents) and every card under it. An event in the family (a job's report, a card under it
-// done, a merge or a deploy written with `now --event`) is noted on each card of it (`event`:
-// { kind, at }); a status line written before the family's last event is stale: the turn
-// reminder lists it, and the coordinator's Stop hook blocks once while one of its own is.
+// its parents) and every card under it; its lineage is the card, the cards above it and the cards
+// under it, without its siblings. An event on a card (a job's report, done, back out of Done, a
+// merge or a deploy written with `now --event`) is noted on its lineage (`event`: { kind, at,
+// card }); a sub-card added or removed only on the cards above it. A status line written before
+// its card's last event is stale: the turn reminder lists it, and the coordinator's Stop hook
+// blocks once while one of its own is. A sibling's news never puts a line out of date: two jobs
+// side by side under one card each keep a true "a job is working on it".
 
 const STATUS_MAX = 200
 const EVENT_KIND = /^[a-z][a-z -]{0,30}$/
@@ -1533,10 +1553,40 @@ export function familyOf(state, item) {
   return out
 }
 
-/** Note an event (`kind`, e.g. "job report", "card done", "merge", "deploy") on the card's family. */
-export function noteEvent(state, item, kind, now) {
+/**
+ * The card's lineage: the card, the cards above it (its parent, theirs, up to the top) and every
+ * card under it. Not its siblings: a sibling's work doesn't change what this card's line says.
+ */
+export function lineageOf(state, item, { down = true } = {}) {
+  const byId = new Map(state.items.map((i) => [i.id, i]))
+  const out = [item]
+  const ids = new Set([item.id])
+  for (let up = byId.get(item.parent); up && !ids.has(up.id); up = byId.get(up.parent)) (ids.add(up.id), out.push(up))
+  if (!down) return out
+  for (let n = 0, under = [item]; n < under.length; n++) for (const c of state.items) if (c.parent === under[n].id && !ids.has(c.id)) (ids.add(c.id), under.push(c), out.push(c))
+  return out
+}
+
+/**
+ * Note an event (`kind`, e.g. "job report", "card done", "merge", "deploy") on the card's lineage
+ * (0.13.0): the card, the cards above it and the cards under it, never its siblings. With
+ * `down: false` only the card and the cards above it (a sub-card added or removed).
+ */
+export function noteEvent(state, item, kind, now, { down = true } = {}) {
   const event = { kind, at: now.toISOString(), card: item.id }
-  for (const i of familyOf(state, item)) i.event = event
+  for (const i of lineageOf(state, item, { down })) i.event = event
+  return event
+}
+
+/**
+ * Note an event about `child` on card `parentId` and the cards above it, not under it (0.13.0):
+ * a sub-card added or removed changes what its parent waits on, not what its siblings do.
+ */
+export function noteAbove(state, parentId, kind, child, now) {
+  const parent = state.items.find((i) => i.id === parentId)
+  if (!parent) return null
+  const event = { kind, at: now.toISOString(), card: child.id }
+  for (const i of lineageOf(state, parent, { down: false })) i.event = event
   return event
 }
 
@@ -1566,14 +1616,15 @@ export function statusProblems(text) {
 }
 
 /**
- * Write a status line on `item`, and on its family unless `only`; with `event`, note that event on
- * the family first (so the lines written now are not stale, and the others are). Returns the
- * cards it wrote.
+ * Write a status line on `item`, and on its open lineage unless `only` (the cards above it and
+ * under it, not its siblings: a finished sibling keeps its own line); with `event`, note that
+ * event on the lineage first (so the lines written now are not stale, and the others are).
+ * Returns the cards it wrote.
  */
 export function setStatus(state, item, text, { only = false, event = "", by = "" } = {}, now = new Date()) {
   const line = clean(text).slice(0, STATUS_MAX)
   if (event) noteEvent(state, item, event, now)
-  const cards = only ? [item] : familyOf(state, item).filter((i) => i === item || i.column !== "done")
+  const cards = only ? [item] : lineageOf(state, item).filter((i) => i === item || i.column !== "done")
   for (const i of cards) {
     if (line) i.now = { text: line, at: now.toISOString(), ...(by ? { by } : {}) }
     else delete i.now
@@ -7452,6 +7503,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         let woke = null
         const item = change((s) => {
           const it = owned(s, findItem(s, rest[0], me))
+          // An open card gone from under its parent: the lines above it counted it (0.13.0).
+          if (it.parent != null && it.column !== "done") noteAbove(s, it.parent, "sub-card removed", it, now)
           s.items = s.items.filter((i) => i !== it)
           // Its children are for nothing now; its parent may have nothing open left.
           for (const c of s.items) if (c.parent === it.id) delete c.parent
@@ -7560,7 +7613,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // The coordinator's side of the job messages: wait for them, list them, ack them.
         only(opts, command)
         const [sub, ...ids] = rest
-        if (!["wait", "ls", "ack"].includes(sub)) throw usage("usage: board.mjs inbox wait [--timeout S] | inbox ls [--all | --stray] | inbox ack <id>… | inbox ack --all")
+        if (!["wait", "ls", "ack", "get"].includes(sub)) throw usage("usage: board.mjs inbox wait [--timeout S] | inbox ls [--all | --stray] | inbox ack <id>… | inbox ack --all | inbox get <id>")
         if (me.role) throw usage(`the inbox is the coordinator's; a ${me.role} writes to it with its hooks and tell`)
         if (sub !== "ls" && opts.all && sub !== "ack") throw usage(`inbox ${sub} does not take --all`)
         if (sub !== "wait" && opts.timeout !== undefined) throw usage(`inbox ${sub} does not take --timeout`)
@@ -7573,6 +7626,17 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           if (!(seconds >= 0)) throw usage("--timeout takes seconds, e.g. --timeout 600")
           const pollMs = Number(env.JOB_BOARD_INBOX_POLL_MS) > 0 ? Number(env.JOB_BOARD_INBOX_POLL_MS) : 5000
           return waitInbox(file, { scope, timeoutMs: seconds * 1000, pollMs, out, pane: me.pane })
+        }
+        if (sub === "get") {
+          // One message as JSON, acked or not, any workspace's (0.13.0): how ship.mjs checks that
+          // the board press it was given is a real answer on the card it ships.
+          if (ids.length !== 1 || opts.all || opts.stray) throw usage("usage: board.mjs inbox get <id>")
+          const id = ids[0].replace(/^#/, "")
+          const { messages, acked } = readInbox(file)
+          const m = messages.find((x) => x.id === id)
+          if (!m) throw new Error(`no message #${clean(id)} in the inbox`)
+          raw(JSON.stringify({ ...m, acked: acked.get(m.id) || "" }, null, 2).replace(/[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`))
+          return 0
         }
         if (sub === "ls") {
           if (ids.length) throw usage("usage: board.mjs inbox ls [--all | --stray]")

@@ -51,14 +51,18 @@ function family(t) {
   t.ok("2026-10-30T10:00:00Z", "add", "todo", "Export to CSV", "--desc", "Another thing.")
 }
 
-test("now: written on the card and its open family; --only the card alone; --clear; another family untouched", () => {
+test("now: written on the card and its open lineage (not its siblings); --only the card alone; --clear; another family untouched", () => {
   const t = setup()
   try {
     family(t)
     const out = t.ok("2026-10-30T10:01:00Z", "now", "2", "built, the review is running")
-    assert.match(out, /^2 now: built, the review is running \(also #1, #3\)/)
-    for (const id of [1, 2, 3]) assert.equal(t.item(id).now.text, "built, the review is running")
+    assert.match(out, /^2 now: built, the review is running \(also #1\)$/m)
+    for (const id of [1, 2]) assert.equal(t.item(id).now.text, "built, the review is running")
+    assert.equal(t.item(3).now, undefined, "a sibling keeps its own line")
     assert.equal(t.item(4).now, undefined)
+    // From the top card: every open card under it.
+    t.ok("2026-10-30T10:01:30Z", "now", "1", "built, the review is running")
+    assert.equal(t.item(3).now.text, "built, the review is running")
     t.ok("2026-10-30T10:02:00Z", "now", "3", "waiting for the review first", "--only")
     assert.equal(t.item(3).now.text, "waiting for the review first")
     assert.equal(t.item(1).now.text, "built, the review is running")
@@ -89,7 +93,7 @@ test("now: the wording check refuses numbers (nothing written); --allow-wording;
   }
 })
 
-test("stale: a job report, a card under it done, and an --event put older family lines out of date; writing again clears it", () => {
+test("stale: a job report, a card under it done, and an --event put older lines above and under it out of date (not a sibling's); writing again clears it", () => {
   const t = setup()
   try {
     family(t)
@@ -102,7 +106,7 @@ test("stale: a job report, a card under it done, and an --event put older family
     assert.equal(t.item(2).column, "done")
     assert.equal(t.item(2).now.text, "the job finished: its report is ready to check")
     assert.equal(statusStale(t.item(1)), true)
-    assert.equal(statusStale(t.item(3)), true)
+    assert.equal(statusStale(t.item(3)), false, "a sibling's report doesn't touch this card's line")
     assert.equal(statusStale(t.item(2)), false, "a Done card is never stale")
     assert.equal(t.item(1).event.kind, "job report")
     t.ok("2026-10-30T10:06:00Z", "now", "1", "reviewed, ready to merge")
@@ -124,6 +128,113 @@ test("stale: a job report, a card under it done, and an --event put older family
     assert.equal(t.item(5).now.text, "deploying")
     // A card with no line, or a card outside the family, is never stale.
     assert.equal(statusStale(t.item(4)), false)
+  } finally {
+    t.done()
+  }
+})
+
+test("stale: a sibling's done or report leaves a sub-card's line alone; the parent's is flagged", () => {
+  const t = setup()
+  try {
+    family(t)
+    t.ok("2026-10-30T10:01:00Z", "now", "2", "a job is working on it", "--only")
+    t.ok("2026-10-30T10:01:00Z", "now", "3", "a job is working on it", "--only")
+    t.ok("2026-10-30T10:01:00Z", "now", "1", "waiting on the review and the docs", "--only")
+    t.ok("2026-10-30T10:02:00Z", "done", "3")
+    assert.equal(statusStale(t.item(2)), false, "the sibling's line is still true")
+    assert.equal(statusStale(t.item(1)), true)
+    assert.equal(t.item(1).event.kind, "card done")
+  } finally {
+    t.done()
+  }
+})
+
+test("stale: a top card done flags the open cards under it; a card back out of Done flags its own line", () => {
+  const t = setup()
+  try {
+    family(t)
+    t.ok("2026-10-30T10:01:00Z", "now", "2", "a job is working on it", "--only")
+    t.ok("2026-10-30T10:02:00Z", "done", "1")
+    assert.equal(statusStale(t.item(2)), true)
+    assert.equal(t.item(2).event.kind, "card done")
+    // Card 4 (apart) is live and checked, then reopened.
+    t.ok("2026-10-30T10:03:00Z", "now", "4", "app live and checked")
+    t.ok("2026-10-30T10:04:00Z", "done", "4")
+    assert.equal(statusStale(t.item(4)), false)
+    t.ok("2026-10-30T10:05:00Z", "move", "4", "doing")
+    assert.equal(statusStale(t.item(4)), true)
+    assert.equal(t.item(4).event.kind, "card reopened")
+  } finally {
+    t.done()
+  }
+})
+
+test("stale: a sub-card added or removed (add, edit --parent / --no-parent, rm) flags the lines above it, not its siblings'", () => {
+  const t = setup()
+  try {
+    family(t)
+    const write = (at) => {
+      t.ok(at, "now", "1", "waiting on the sub-card", "--only")
+      t.ok(at, "now", "3", "a job is working on it", "--only")
+    }
+    write("2026-10-30T10:01:00Z")
+    t.ok("2026-10-30T10:02:00Z", "add", "todo", "Login fix deploy: run", "--parent", "1", "--desc", "Deploy it.")
+    assert.equal(statusStale(t.item(1)), true)
+    assert.equal(t.item(1).event.kind, "sub-card added")
+    assert.equal(statusStale(t.item(3)), false)
+    write("2026-10-30T10:03:00Z")
+    t.ok("2026-10-30T10:04:00Z", "rm", "5")
+    assert.equal(statusStale(t.item(1)), true)
+    assert.equal(t.item(1).event.kind, "sub-card removed")
+    assert.equal(statusStale(t.item(3)), false)
+    write("2026-10-30T10:05:00Z")
+    t.ok("2026-10-30T10:06:00Z", "edit", "4", "--parent", "1")
+    assert.equal(t.item(1).event.kind, "sub-card added")
+    assert.equal(statusStale(t.item(1)), true)
+    write("2026-10-30T10:07:00Z")
+    t.ok("2026-10-30T10:08:00Z", "edit", "4", "--no-parent")
+    assert.equal(t.item(1).event.kind, "sub-card removed")
+    assert.equal(statusStale(t.item(1)), true)
+    // A Done card removed is tidying, not news.
+    write("2026-10-30T10:09:00Z")
+    t.ok("2026-10-30T10:10:00Z", "done", "2")
+    t.ok("2026-10-30T10:11:00Z", "now", "1", "the review is done", "--only")
+    t.ok("2026-10-30T10:12:00Z", "rm", "2")
+    assert.equal(statusStale(t.item(1)), false)
+  } finally {
+    t.done()
+  }
+})
+
+test("stale: a sub-card's line then its Done (ship's finish order: done first, then the line) leaves the parent current", () => {
+  const t = setup()
+  try {
+    family(t)
+    t.ok("2026-10-30T10:01:00Z", "done", "2")
+    t.ok("2026-10-30T10:01:00Z", "now", "2", "app live and checked", "--event", "deploy")
+    assert.equal(t.item(1).now.text, "app live and checked")
+    assert.equal(statusStale(t.item(1)), false)
+    assert.equal(t.item(2).column, "done")
+  } finally {
+    t.done()
+  }
+})
+
+test("inbox get: one message as JSON, acked or not; an unknown id fails; a worker can't", () => {
+  const t = setup()
+  try {
+    family(t)
+    const inbox = join(t.state, "inbox.jsonl")
+    writeFileSync(inbox, [JSON.stringify({ id: "mvub01", at: "2026-10-30T10:01:00Z", slug: "", kind: "answer", card: 1, project: "", workspace: "w1", owner: "", pane: "", key: "", to: PANE, label: "Deploy it", text: "Board card 1: Deploy it" }), JSON.stringify({ ack: ["mvub01"], at: "2026-10-30T10:02:00Z", by: PANE })].join("\n") + "\n")
+    const m = JSON.parse(t.ok("2026-10-30T10:03:00Z", "inbox", "get", "mvub01"))
+    assert.equal(m.kind, "answer")
+    assert.equal(m.card, 1)
+    assert.equal(m.label, "Deploy it")
+    assert.equal(m.acked, "2026-10-30T10:02:00Z")
+    assert.notEqual(t.run("2026-10-30T10:03:00Z", "inbox", "get", "nope").status, 0)
+    assert.equal(t.run("2026-10-30T10:03:00Z", "inbox", "get").status, 2)
+    const worker = spawnSync(process.execPath, [BOARD, "inbox", "get", "mvub01"], { cwd: t.base, env: { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: t.state, HOME: join(t.base, ".git", "home"), JOB_AGENT_ROLE: "worker" }, encoding: "utf8" })
+    assert.equal(worker.status, 2, worker.stdout)
   } finally {
     t.done()
   }
@@ -173,7 +284,7 @@ test("hooks: the reminder lists stale cards; Stop blocks once per card and event
     const first = JSON.parse(handle(stop, env).stdout)
     assert.equal(first.decision, "block")
     assert.match(first.reason, /#1 "Login fix: build"/)
-    assert.doesNotMatch(first.reason, /#2 /, "card 2 is stale too, but not this pane's")
+    assert.doesNotMatch(first.reason, /#2 /, "card 2 is a sibling of #3: not stale, and not this pane's")
     // Once per card and event: the next stop passes, in this turn and the next.
     assert.equal(handle(stop, env).stdout, "")
     handle(prompt, env)
