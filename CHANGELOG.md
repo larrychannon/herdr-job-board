@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.15.0 · unreleased
+
+Queue and start: a card you mark starts without the word check. A job's report never makes a card.
+
+- **Why**: of five cards queued in one evening, four came back as questions, two only because of
+  a word in their text (a read-only check that said "live", a title that said "merge" in
+  passing). And late job reports made cards titled with the job's short name: one from a check
+  job opened by hand (no card carried it), one that came after `job-close` had unlinked the
+  job's card.
+- **Queue and start**: `s` in a To do card's details, or a click on its new `Queue and start`
+  button, puts it in the Queue (last, like `u`) marked **start without asking**. On a queued
+  card `s` marks it (`Start without asking`) or takes the mark off (`Ask before starting`). A
+  marked card shows `»` before its title and `starts without asking` in the Queue (also in
+  `ls`), and its details say `In the Queue for 5 min · starts without asking`. `?` lists `s`.
+- **The Stop hook and a marked card**: handed over to start now, without the keyword check, and
+  with the same rules (never merge, deploy, release, write live data or change settings, IAM or
+  permissions because a card is queued). Still handed over as a question even when marked:
+  - any part of the title (split at `: `, ` — `, ` – `, ` - `) that starts with deploy,
+    redeploy, merge, release, ship, publish, push, roll out, cut a release, tag, promote, go
+    live, delete, drop, purge, wipe or truncate (`Merge: login fix: final tidy`, `App — merge
+    the fix`, `Push the fix to main`); release or publish notes are writing and never asked;
+  - a title or description that asks for access, IAM, permissions, secrets, credentials, keys,
+    settings or DNS, or deletes branches, databases, buckets, records or users (as in 0.14.0);
+  - one that destroys data (drop, purge, wipe, truncate, remove, `rm -rf` + tables, buckets,
+    backups, data…), force-pushes or `reset --hard`, or mentions ssh or deploy keys, tokens,
+    `sudo` or the config for production or live.
+  The turn reminder marks such cards `(marked start without asking)`. Marking a card that was
+  handed over and didn't start hands it over again. These are keyword checks: the user still
+  reads the card before marking it.
+- **Only the user sets the mark**: only the pane writes it (`markStart`); no command-line option
+  does (`--start` is an unknown option), so neither a job nor the coordinator can. `import` and
+  `restore` never bring it in: every card they bring in loses the mark, and a queued one lands in
+  To do (only the user queues). A worker can run neither `import` nor `restore <backup>` (exit
+  2; listing the backups still works). The mark holds a hash of the card's title, description,
+  project and time in the Queue. An edit of the title or description, or a retag, removes it
+  for good (an edit back doesn't bring it back), and so does a move out of the Queue. A reorder
+  doesn't. Unmarked cards are handed over exactly as in 0.14.0.
+- **A report never makes a card** (`job-report`): when no card carries the job, the report goes
+  on the card that carried it before (an unlinked card now keeps the old slug in `former_jobs`;
+  else the card with the same report file; else the card in the job skill's record of the job,
+  `job-skill/jobs/<slug>.json` or its newest `<slug>.closed-*.json`), never on one linked to
+  another job since (nor a card from the record that a later job used and was unlinked from). A
+  `failed` or `blocked` report reopens that card: Waiting, with the reason as its question (no
+  buttons) and the status line `the job failed: it reported after it was closed; read its
+  report`, unless open cards under it hold it. Any other report leaves it where it is (a Done
+  card stays Done), with the report and the status line `the job reported after it was closed:
+  read its report`. Either way the coordinator gets a `[job note]` with the job's status,
+  summary, what it asks, and the card. With no such
+  card on the board (none at all, or only in the archive), no card is made, not even from the
+  archive: the `[job note]` gives the status, summary and report path. A repeat of the same
+  report changes nothing and sends no second note.
+
 ## 0.14.0 · unreleased
 
 Jobs ask with buttons, cards keep their titles, a press that can't run says so, a card under
