@@ -1,0 +1,37 @@
+{
+  "//": "Config for the job skill (~/.claude/skills/job). Read on every call by .claude/hooks/job-guard.mjs and by the job scripts. Keys starting with // are notes. Re-running /job init adds new keys and never changes your values.",
+  "version": 1,
+  "//default_branch": "The branch PRs go into. Pushing to it (and to main / master) is always reserved for the deployer.",
+  "default_branch": "main",
+  "//pr_tool": "How jobs open PRs: gh | bitbucket-pr | none. Detected from the origin remote.",
+  "pr_tool": "gh",
+  "//role_env": "The env var that carries a job's role into its tab: worker | deployer. Unset means the coordinator.",
+  "role_env": "JOB_AGENT_ROLE",
+  "//reserved_commands": "This project's deploy / release / merge commands. Only a deployer job, or the coordinator when the user asks, may run them. Each entry is {\"pattern\": <JS regex>, \"what\": <label>}. The hook anchors a pattern at a command position (after sudo / env / nohup / timeout / bash and VAR=x prefixes), so `grep \"x deploy\"` or an echo that mentions it still passes. {REST} stands for the rest of the same command, e.g. \"aws\\\\b{REST}\\\\becs\\\\s+update-service\\\\b\". Always reserved, without listing: pushing to the default branch, gh pr merge, glab mr merge, and PR-merge API calls.",
+  "reserved_commands": [
+    {
+      "pattern": "herdr\\s+plugin\\s+install\\b",
+      "what": "install the board plugin on this machine"
+    }
+  ],
+  "//coordinator_commits": "true lets the coordinator itself (not its subagents, not workers) edit files and run git commit / merge / pull / rebase here and in this repo's worktrees, inside Herdr, without a job or `here:`. For a repo the coordinator keeps itself, such as a home coordinator's ~/work. Read from the main checkout's job.json. Other job repos stay guarded by their own job.json. /job init never turns it on.",
+  "coordinator_commits": false,
+  "//worktree_links": "Gitignored files and dirs that ~/.claude/skills/job/scripts/worktree-link-local.sh links from the main checkout into a job worktree, e.g. .env, node_modules, .venv. Paths are relative to the repo root.",
+  "worktree_links": [],
+  "//ports": "Port bases for parallel jobs: label or env var name -> base. Job N gets base+N for every entry, with the first N >= 1 where all are free. Example: {\"dev\": 3100, \"PLAYWRIGHT_PORT\": 3200}.",
+  "ports": {},
+  "//heavy_commands": "Commands that load the machine (full builds, the full test suite, browser tests). Briefs tell workers to run them through ~/.claude/skills/job/scripts/with-heavy-lock.sh, one at a time per repo.",
+  "heavy_commands": [
+    "node --test"
+  ],
+  "//max_active_jobs": "How many of this repo's jobs may run at once: job agents working in its checkouts, in any Herdr workspace, whose job has no final report yet. Raise it on a bigger machine.",
+  "max_active_jobs": 2,
+  "//max_dev_servers": "How many jobs may run a dev server (on their `ports`) at once. At the limit, a job that needs one waits, or goes without; its brief says which.",
+  "max_dev_servers": 2,
+  "//min_free_mb": "Don't start a job, or a dev server, while the machine has less memory available than this, in MB (Linux MemAvailable; macOS free + inactive pages). Close finished job tabs first. ~/.claude/skills/job/scripts/mem-check.mjs checks it.",
+  "min_free_mb": 2048,
+  "//ship_routine": "What a build job does before its commit, pasted into every brief: free text, or a path to the doc that defines it (changelog, PR rules; the build number only without build_stamp, since with it the merge sets the number and PRs never bump it). Empty = commit, push and open a PR with pr_tool.",
+  "ship_routine": "Commit, push and open a PR with gh (title and body per ~/ai-config/docs/pr-writing.md). Tests: S=$(mktemp -d); HOME=$S/home XDG_STATE_HOME=$S/state TMPDIR=$S/tmp JOB_BOARD_HOME=$S/board node --test (tests/guard.mjs refuses the real HOME). Never run board.mjs, the plugin or any test against the live board: no real HOME, XDG_STATE_HOME, JOB_BOARD_HOME or TMPDIR, cwd only inside scratch copies, no `herdr plugin action invoke` in the user's panes. Never restore or migrate live board files yourself: report it. No deploy and no plugin install: the board is installed after the merge.",
+  "//ship": "Optional. How ~/.claude/skills/job/scripts/ship.mjs merges, releases, deploys and verifies this repo, written from its own runbook. Without it ship.mjs uses a built-in preset by folder name (release-notes-manager, sfc-integration, ai-config, herdr-job-board), else merges only (gh or bb-merge by pr_tool). Keys, each overriding the preset's: preset (a preset's name), merge (gh | bb-merge), aws ({VAR: value}; {repo} is the main checkout), release (targets that need a release PR first), default_targets, targets ({name: {deploy: [step], verify: [step]}}), install, verify_install. A step is {\"cmd\": [..], \"cwd\": \"worktree\" | \"repo\", \"what\": label} or a check: {\"check\": \"http\", \"url\"} | {\"check\": \"ecs-rollout\", \"cluster\", \"service\"}. ship.mjs <repo> <card> plan prints the result.",
+  "//build_stamp": "Off unless you add a build_stamp key. With it, PRs never touch the build number or the changelog: each adds one fragment <fragments>/<branch-with-dashes>.md (\"### Fixed\" then \"- **Title** (build {build}, date): …\"), and ~/.claude/skills/job/scripts/bb-merge.mjs <repo> <PR> merges the PR, then writes ONE commit on default_branch through the Bitbucket API: the number in `file` + 1 (the line matching `line`, capture group = the number), every fragment folded under `section` in `changelog`, the fragments deleted. It refuses a PR that changes that line or the changelog, except a branch starting with `release_branches` that only renames the section heading to \"## [X.Y.Z] - date\". A PR without a fragment gets a warning, or is refused with require_fragment. Only file is required; the rest default to this example: {\"file\": \"src/lib/build-version.ts\", \"line\": \"^export const APP_BUILD = (\\\\d+);\", \"changelog\": \"CHANGELOG.md\", \"section\": \"## [Unreleased]\", \"fragments\": \"changelog.d\", \"placeholder\": \"{build}\", \"release_branches\": \"release/\", \"require_fragment\": false}"
+}
