@@ -1032,6 +1032,7 @@ board: card 12 is not in plain words yet, so nothing was written:
 | version strings | description | warned: there it is often the thing itself (the firmware a customer runs) |
 | a question (`--ask`) on a Waiting card without 2 to 4 buttons, or none suggested | Waiting cards | refused |
 | a label of one word (`Go`, `Hold`), with `+`, `/` or `&`, `next` / `then` / `continue`, a step number (`steps 3–5`), an option letter (`Only A and C`) or a code (`1P`, `M3`) | button labels | refused |
+| an `Each answer:` list (one `- <label>: …` line per button; `=` or `→` work too) that names a button the card doesn't have, or misses one it has (the buttons changed, the list didn't) | description of a card with buttons | refused; `lint` warns. Change the buttons and the list in one edit |
 
 Links (`https://…/pull/83`) and card numbers (`card 373`) are fine. When the exact text is
 what the user needs, `--allow-wording` writes it; the card remembers what was allowed
