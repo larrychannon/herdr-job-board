@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1 · unreleased
+
+The answer list in a card's description matches its buttons.
+
+- **Why**: an edit changed a card's buttons and kept its description's "Each answer:" list
+  naming the old ones, so the card explained buttons it no longer had.
+- **The check**: the wording check now reads that list (one `- <label>: …` line per button;
+  `=` or `→` work too) on a card with buttons. A line naming a button the card doesn't have, or
+  a button with no line, refuses `add`, `edit`, `move … waiting` and `job-start`, with the label
+  named; `lint` lists it as a warning (exit 0). Change the buttons and the list in the same
+  edit; `--allow-wording` lets it through as for any other problem.
+
 ## 0.13.0 · unreleased
 
 A status line per card, kept in step with its family.
@@ -30,12 +42,6 @@ A status line per card, kept in step with its family.
 - A status line or event is not a Waiting card update for the Stop hook's question check.
 - **`inbox get <id>`**: one inbox message as JSON, acked or not, so a script can check that a
   board press it was given is a real answer on its card (the job skill's `ship.mjs` does).
-- **An answer list that matches the buttons**: a card whose buttons were changed by an edit kept
-  its description's "Each answer:" list naming the old ones. The wording check now reads that
-  list (one `- <label>: …` line per button; `=` or `→` work too) on a card with buttons: a line
-  naming a button the card doesn't have, or a button with no line, refuses `add`, `edit`, `move
-  … waiting` and `job-start`, with the label named; `lint` lists it as a warning. Change the
-  buttons and the list in the same edit.
 
 ## 0.12.0 · unreleased
 

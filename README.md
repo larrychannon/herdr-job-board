@@ -1012,7 +1012,7 @@ When `job-report` moves a job to Waiting, rewrite its title and ask for the user
 buttons, in one edit: `edit <id> --title "…: approve" --ask "…" --option "…" --option "…"
 --suggest "…"`. The CLI prints a tip when a card has no `--desc`, or a Waiting card no `--ask`.
 
-#### The wording check (0.11.0)
+#### The wording check (0.11.0; the answer list 0.13.1)
 
 The rules above are checked, so a card that breaks them never reaches the board. `add`,
 `edit`, `move … waiting` and `job-start` check the whole card they leave (an edit of one field
