@@ -1901,7 +1901,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
     // A card ready to resume shows how long since it got ready.
     if (entry.ready) entry.age = now - new Date(entry.ready)
-    // Its status line, out of date when its family changed since it was written (0.13.0).
+    // Its status line, out of date when a card above or under it changed since it was written (0.13.0).
     entry.stale = statusStale(item)
     if (item.column === "done") {
       if (new Date(item.since) >= startOfDay) view.doneToday.push(doneDays ? { ...entry, when: shortTime(item.since, now) } : entry)
@@ -2676,7 +2676,7 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   if (blocked) status = [{ t: "blocked", s: "blocked" }]
   else if (entry.ready && column !== "done") status = [{ t: readyText(entry), s: "ready" }]
   else if (column === "doing" && entry.unreviewed) status = [{ t: UNREVIEWED_TEXT, s: "unreviewed" }]
-  // A status line older than its family's last event (0.13.0).
+  // A status line older than its card's last event (0.13.0).
   else if (entry.stale && column !== "done") status = [{ t: STALE_ROW_TEXT, s: "unreviewed" }]
   // A parent waiting on other cards says so where the state goes, unless its own agent works.
   else if (waitText(entry) && column !== "done" && entry.live !== "working") status = [{ t: waitText(entry), s: "title" }]
@@ -6361,12 +6361,13 @@ Writing cards
 
 Status lines (0.13.0)
 - now <id> "<where it stands>": the card's status line, at the top of the card ("Now: merged,
-  waiting for your deploy OK"), apart from its description. It is written on the card's family
-  too (its top card and every open card under it) unless --only; --event merge|deploy|… notes
-  that event on the family first. job-report writes the job's card's line itself.
-- A family's events (a job's report, a card under it done, an --event) put any line written
-  before them out of date: the card says "status out of date", your turn reminder lists it, and
-  the Stop hook blocks once while a card you own has one. Write the line again (now <id> …).
+  waiting for your deploy OK"), apart from its description. It is written on the cards above
+  it and every open card under it too (not its siblings) unless --only; --event
+  merge|deploy|… notes that event there first. job-report writes the job's card's line itself.
+- An event on a card (a job's report, done, back out of Done, an --event) puts the lines above
+  it, under it and its own written before it out of date; a sub-card added or removed, the
+  lines above it. The card says "status out of date", your turn reminder lists it, and the
+  Stop hook blocks once while a card you own has one. Write the line again (now <id> …).
 
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
@@ -7877,7 +7878,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         return postInbox(file, [note], { env, now }).then(() => 0)
       }
       case "now": {
-        // A card's status line, and its family's unless --only (0.13.0).
+        // A card's status line, and its lineage's unless --only (0.13.0).
         only(opts, command)
         if (opts.clear ? rest.length !== 1 : rest.length !== 2) throw usage('usage: board.mjs now <id|job> "<where it stands>" [--only] [--event merge|deploy|…] [--project P]  or  board.mjs now <id|job> --clear [--only]')
         const text = opts.clear ? "" : clean(rest[1])
