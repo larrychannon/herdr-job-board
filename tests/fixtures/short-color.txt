@@ -1,6 +1,6 @@
 ===== as drawn · 120x21 wide =====
 [1mJob board · all projects[0m                                                                                           [2m10:30[0m
-[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+[2mTab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit[0m
 
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
 [1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m          [2m7 h 16 min[0m
@@ -10,7 +10,7 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
 [2m↓ card cut off: open it for the rest[0m
 
-[1;34mDOING (2)[0m                                                    [1mTO DO (3)[0m
+[1;34mDOING (2)[0m                                                    [1mTO DO (3) ▾[0m
 [2m2 [0m[1mSearch filters: build[0m                             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                                      [2m1 min[0m
   The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
   user.                                                        it.
@@ -44,7 +44,7 @@
 
 ===== as drawn · 88x21 wide =====
 [1mJob board · all projects[0m                                                           [2m10:30[0m
-[2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
+[2mTab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit[0m
 
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m
 [1m1▸[0m[1mRelease v1.4: all reviewed, approve?[0m                                        [2m7 h 16 min[0m
@@ -54,7 +54,7 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
 [2m↓ card cut off: open it for the rest[0m
 
-[1;34mDOING (2)[0m                                    [1mTO DO (3)[0m
+[1;34mDOING (2)[0m                                    [1mTO DO (3) ▾[0m
 [2m2 [0m[1mSearch filters: build[0m             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                      [2m1 min[0m
   The filter panel from the approved           Let people download any table as CSV;
   mockup, saved per user.                      three asked for it.
@@ -88,7 +88,7 @@
 
 ===== as drawn · 60x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                      [2m10:30[0m
-[2mTab · ↑↓ · Space peek · Enter · c copy · d done · q[0m
+[2mTab · ↑↓ · Space peek · Enter · t to do · d done · q[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m───────────────────────────────────────[0m
 [1m▸[0m[1;7m1[0m [1;33m![0m [1mRelease v1.4: all reviewed, approve?[0m         [2m7 h 16 min[0m
      All PRs reviewed OK: #12 invoice rounding, #14 docs
@@ -98,7 +98,7 @@
 [2m↓ card cut off: open it for the rest[0m
 [1;34mDOING (2)[0m [34m──────────────────────────────────────────────────[0m
 [2m↓ 2 more[0m
-[1mTO DO (3)[0m [2m──────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m
 
@@ -120,7 +120,7 @@
 
 ===== as drawn · 95x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                                                         [2m10:30[0m
-[2mTab · ↑↓ · Space peek · Enter · c copy · d done · mouse: board · q[0m
+[2mTab · ↑↓ · Space peek · Enter · c copy · t to do · d done · mouse: board · q[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m──────────────────────────────────────────────────────────────────────────[0m
 [1m▸[0m[1;7m1[0m [1;33m![0m [1mRelease v1.4: all reviewed, approve?[0m                                            [2m7 h 16 min[0m
      All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export
@@ -130,7 +130,7 @@
 [2m↓ card cut off: open it for the rest[0m
 [1;34mDOING (2)[0m [34m─────────────────────────────────────────────────────────────────────────────────────[0m
 [2m↓ 2 more[0m
-[1mTO DO (3)[0m [2m─────────────────────────────────────────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m───────────────────────────────────────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m
 

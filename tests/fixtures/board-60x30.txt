@@ -1,5 +1,5 @@
 all · 5 need you                                       10:30
-Tab · ↑↓ · Space peek · Enter · c copy · d done · q
+Tab · ↑↓ · Space peek · Enter · t to do · d done · q
 ▸ WAITING ON YOU (5) ───────────────────────────────────────
 ▸ 1 ! Login page redesign: approve                2 h 20 min
   2 ! Search filters mockup: approve              1 h 30 min
@@ -9,7 +9,7 @@ Tab · ↑↓ · Space peek · Enter · c copy · d done · q
 DOING (2) ──────────────────────────────────────────────────
   6   Search filters: build                  working  25 min
   7   Docs site: fix broken links             working  2 min
-TO DO (4) ──────────────────────────────────────────────────
+TO DO (4) ▾ ────────────────────────────────────────────────
   8   Export to CSV                                    1 min
   9   Dark mode                                        1 min
  10   Pick next: onboarding or settings                1 min

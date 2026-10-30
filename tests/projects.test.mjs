@@ -93,8 +93,9 @@ function setup(board = mockBoard(), agents = null) {
     JSON.stringify({ agents: agents ?? [{ pane_id: "w4:p6", workspace_id: "w4", agent_status: "idle", interactive_ready: true }, { name: "board-v5-plan", pane_id: "w4:p20", workspace_id: "w4", agent_status: "working" }] }),
   )
   const env = { ...process.env, HOME: base, JOB_BOARD_HOME: store, JOB_BOARD_NOW: NOW.toISOString(), TZ: "UTC", NO_COLOR: "1", HERDR_ENV: "1", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: herdr, HERDR_WORKSPACE_ID: "w4", HERDR_PANE_ID: "w4:p6", BOARD_EMOJI: "0" }
+  // To do open (t): these tests look at its cards; its fold has tests of its own.
   const pane = (width, height, keys = "", extra = []) =>
-    spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height), "--origin", "w4:p6", "--frame", "0", "--keys", keys, ...extra], { cwd: base, env, encoding: "utf8" })
+    spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height), "--origin", "w4:p6", "--frame", "0", "--keys", `t${keys}`, ...extra], { cwd: base, env, encoding: "utf8" })
   const ls = (...args) => spawnSync(process.execPath, [BOARD, "ls", ...args], { cwd: base, env, encoding: "utf8" })
   return { base, env, herdr, pane, ls, done: () => rmSync(base, { recursive: true, force: true }) }
 }
@@ -158,7 +159,7 @@ test("what the views say: the strip, the title's counts, filtered headers, the o
     assert.match(all, /^ {13}answers go to: sfc coordinator \(w4:p6\)$/m)
     assert.match(all, /^ 211   herdr Job board 0\.5\.0, one board for all projects: plan +working \[= {3}\] +3 min$/m)
     assert.match(all, /^ 200   home  3CX SSL certificate/m)
-    assert.match(all, /p project · d done/)
+    assert.match(all, /t to do · p project · d done/)
 
     const sfc = t.pane(95, 40, "p").stdout
     assert.match(sfc, /^Job board · sfc-integration · 3 need you  \(\+1 in other projects\) +11:57$/m)
@@ -167,7 +168,8 @@ test("what the views say: the strip, the title's counts, filtered headers, the o
     assert.match(sfc, /DOING \(0 · \+1 other\) · nothing running here/)
     assert.match(sfc, /TO DO \(6 · \+4 other\)/)
     assert.doesNotMatch(sfc, /204|211|206/)
-    assert.match(sfc, /p next project · P all · d done/)
+    // 95 columns: the long line with "p next project" no longer fits beside t, so the short one.
+    assert.match(sfc, /t to do · p (?:next project|proj) · P all · d done/)
 
     // ai, opened (compact, Space): no ai-config coordinator runs, so a press asks first.
     const ai = t.pane(60, 30, "pp ").stdout

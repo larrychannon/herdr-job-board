@@ -10,9 +10,9 @@
 // pane's size: from 120 cells wide, WAITING ON YOU across the top and DOING | TO DO in two
 // columns below; from 70, the inbox (the sections stacked, one row a card, the selected card
 // open under its row); under 70 cells or 24 rows, compact (rows only; Space opens the selected
-// one). DONE (today) is folded to one line ("DONE · 3 today ▸"; d or a click opens it, newest
-// first, and folds it again). A card: the title, the description over up to 3 lines, for
-// Waiting the ask and its buttons, and the age; Doing shows its agent's live status from
+// one). TO DO and DONE (today) are folded to one line each ("TO DO · 12 ▸", "DONE · 3 today ▸";
+// t or d, or a click, opens it, Done newest first, and folds it again). A card: the title, the
+// description over up to 3 lines, for Waiting the ask and its buttons, and the age; Doing shows its agent's live status from
 // `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour
 // palette (NO_COLOR turns them off), emoji only in the section headers (BOARD_EMOJI=0 turns them
 // off); whole http(s) URLs are terminal hyperlinks (OSC 8) showing the URL itself. It also keeps
@@ -37,13 +37,15 @@
 //   in the details          ↑ ↓ PgUp PgDn g G scroll; ← → choose one of the card's buttons and
 //                           Enter presses it; with no button chosen, Enter or f shows or hides
 //                           More… (the rest of the job's report), and Enter closes the details
-//                           when there is no More…; o is Other…; Esc closes them
+//                           when there is no More…; o is Other…; t goes to the job's tab
+//                           (herdr agent focus); Esc closes them
 //   c                       copy the card's first link, or its text (OSC 52); c again copies its
 //                           next link, round to the first; a new card or opening or closing
 //                           its details starts at the first again
-//   d, click on Done's line open Done (a third column); d or a click on its header folds it.
+//   t, click on To do's line open To do (a column beside Doing); t or a click on its header
+//                           folds it. Folded, Tab skips it. The choice holds while the pane runs
+//   d, click on Done's line open Done (a column); d or a click on its header folds it.
 //                           Folded, Tab skips it. The choice holds while the pane runs
-//   t                       go to the job's tab (herdr agent focus)
 //   m                       mouse capture off and on (off: the terminal selects text; the board
 //                           draws one column, the inbox, at any width, the open card whole)
 //   p, P, click on the strip with several projects on the board: p shows the next project's
@@ -196,7 +198,7 @@ function compose(data, file, env, layout, origin = "") {
 /**
  * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
  * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
- * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t switches to the job's tab. m switches mouse capture off and on. Resolves to
+ * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab. m switches mouse capture off and on. Resolves to
  * the footer message, if any.
  */
 async function perform(action, ctx) {

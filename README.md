@@ -52,20 +52,15 @@ Job board · my-app · 3 need you                                               
   4   Search filters: build                                              working [=   ]  25 min
   5   Docs site: fix broken links                                                   idle  2 min
 
-📋 TO DO (4) ──────────────────────────────────────────────────────────────────────────────────
-  6   Export to CSV                                                                       1 min
-  7   Dark mode                                                                           1 min
-  8   Pick next: onboarding or settings                                                   1 min
-  9   Upgrade the test runner                                                             1 min
-
+📋 TO DO · 4 ▸
 🏁 DONE · 1 today ▸
 
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
 ```
 
 | Pane | Layout |
 |---|---|
-| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), DOING and TO DO in two columns below; an empty Doing folds to one line over To do |
+| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), DOING below, and TO DO and DONE folded to a line each under it (opened, each a column beside Doing); an empty Doing folds to one line over them |
 | 70 to 119 columns | **inbox**, as above: the sections stacked, one row a card (`id`, `!` for a card that waits on you, the title, the agent's state, the age), the selected card open; an empty section folds to its header ("DOING (0) · nothing running") |
 | under 70 columns, or under 24 rows | **compact**: the same rows, no blank lines, a shorter key line; `Space` opens the selected card under its row (a peek), `Enter` its details |
 
@@ -140,9 +135,14 @@ itself out again at once.
   DOING (1) ──────────────────────────────────────────────────
    1   Node health: goes live after… ready to resume  just now
   ```
+- **TO DO** is folded to one line, `TO DO · 12 ▸`, so Waiting and Doing get the room. `t` or a
+  click on that line opens it (its cards under `TO DO (12) ▾`; a column beside Doing in the
+  wide layout); `t` or a click on its header folds it again. Folded, `Tab` skips it. A card
+  that moves into To do while it is folded doesn't open it. The choice holds until the pane
+  closes; it always starts folded.
 - **DONE** is folded to one line, `DONE · 3 today ▸`, so it takes no room. `d` or a click on
   that line opens it (today's finished cards, newest first, with the time they finished, under
-  `DONE (3) ▾`; a third column in the wide layout); `d` or a click on its header folds it
+  `DONE (3) ▾`; a column in the wide layout); `d` or a click on its header folds it
   again. Folded, `Tab` skips it. The choice holds until the pane closes; it always starts
   folded.
 - In the wide layout Waiting gets about half the height; with nothing waiting it shrinks to one
@@ -184,21 +184,21 @@ itself out again at once.
 
 | | |
 |---|---|
-| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); Done only while it is open |
+| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); To do and Done only while open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows. In the inbox the selected card is open under its row |
 | `Shift+↑` `Shift+↓` | move the selected card one place up or down in its section, and save it (To do, Doing, Waiting; not Done). In a view of one project (`p`) it steps over that project's cards; the key line says `card 3 moved up`, or that it can't go further |
 | `Space` | in the inbox and compact layouts: open or close the selected card under its row (the inbox opens it by itself, compact doesn't) |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
 | `o` | Other… on a card with buttons |
-| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `Esc` closes them |
+| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `Esc` closes them |
 | `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
-| `d` | open Done (a third column) or fold it back to its one line; a click on the line, or on the open header, does the same |
+| `t` | open To do (a column beside Doing) or fold it back to its one line; a click on the line, or on the open header, does the same. In a card's details `t` goes to the job's tab |
+| `d` | open Done (a column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
-| `t` | go to the job's tab |
 | `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); a card taller than its section says `card cut off: Enter shows the rest in its details`; the key line starts `selecting text: m gives the mouse and the columns back` |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
-| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
+| mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on To do's or Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `?` | show every key under the title (wrapped, in place of the key line); `?` again or `Esc` hides the list |
 | `q`, `r` | quit; redraw |
 

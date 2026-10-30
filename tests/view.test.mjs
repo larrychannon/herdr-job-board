@@ -39,8 +39,9 @@ function setup({ agents = [], tabs = [] } = {}) {
     idOrder(join(root, "store", "board.json"))
     return r
   }
+  // To do opened first (t): these tests were written for it open; the fold has tests of its own.
   const pane = (args = [], keys = "") =>
-    spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "40", "--origin", "w9:p1", ...args, "--keys", keys], { cwd: base, env, encoding: "utf8" })
+    spawnSync(process.execPath, [PANE, "--once", "--width", "88", "--height", "40", "--origin", "w9:p1", ...args, "--keys", `t${keys}`], { cwd: base, env, encoding: "utf8" })
   const log = () => JSON.parse(readFileSync(herdr, "utf8")).log ?? []
   return { base, env, board, pane, log, file: join(root, "store", "board.json"), done: () => rmSync(root, { recursive: true, force: true }) }
 }
@@ -210,7 +211,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     // Esc closes it.
     r = t.pane([], "\t\r\x1b")
     assert.doesNotMatch(r.stdout, /── card/)
-    assert.match(r.stdout.trimEnd().split("\n")[1], /^Tab section/)
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit/, "the board's key line again (at 88 without the mouse mode)")
     // Missing and garbled reports.
     rmSync(report)
     assert.match(t.pane([], "\t\rG").stdout, /What the job reported\n {2}Nothing yet: the job hasn't written its report\./)
@@ -705,9 +706,9 @@ test("copy: c again copies the card's next link, round to the first; a new card 
     assert.deepEqual(decode52(t.pane([], "\rcc\x1b\x1b[Ac").stdout), [canvas, pr, canvas], "the same in the details; closing them starts over")
     assert.deepEqual(decode52(t.pane([], "\rc\x1b\x1b[A\rc").stdout), [canvas, canvas], "closed and opened again between presses")
     // The long key line says so on such a card, where it fits; the short ones stay short.
-    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next link) · d done · m mouse: board · q quit")
-    assert.equal(last(t.pane(["--width", "88"])), "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit")
-    assert.equal(last(t.pane(["--width", "120"], "\x1b[B")), "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit", "a card without links: as before")
+    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next link) · t to do · d done · m mouse: board · q quit")
+    assert.equal(last(t.pane(["--width", "88"])), "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit")
+    assert.equal(last(t.pane(["--width", "120"], "\x1b[B")), "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit", "a card without links: as before")
   } finally {
     t.done()
   }
@@ -738,7 +739,7 @@ test("copy: one link and no link copy as before, each press the same", () => {
   }
 })
 
-test("mouse: a click selects a card, a double click opens it; t goes to the job's tab", () => {
+test("mouse: a click selects a card, a double click opens it; t in its details goes to the job's tab", () => {
   const t = setup({ agents, tabs })
   try {
     seed(t)
@@ -752,10 +753,10 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
     assert.doesNotMatch(r.stdout, /── card/)
     r = t.pane([], click + click)
     assert.match(r.stdout, /── card 5 /, "a double click opens it")
-    // t: Herdr's agent focus for the job's pane (the agent the card shows), as argv.
-    t.pane([], "\tt")
+    // t in the details: Herdr's agent focus for the job's pane (the agent the card shows), as argv.
+    t.pane([], "\t\rt")
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "w9:p5"])
-    r = t.pane([], "t")
+    r = t.pane([], "\rt")
     assert.match(r.stdout, /this card has no job, so no tab/)
     // m flips the footer's mouse mode (the pane also switches mouse reporting; see the pty test).
     assert.match(t.pane([], "m").stdout.trimEnd().split("\n")[1], /^selecting text: m mouse back/)
@@ -764,7 +765,7 @@ test("mouse: a click selects a card, a double click opens it; t goes to the job'
   }
 })
 
-test("a job that runs in another workspace than its card's: Waiting when its agent there is blocked, its tab's label, t to its pane (0.10.1)", () => {
+test("a job that runs in another workspace than its card's: Waiting when its agent there is blocked, its tab's label, t in its details to its pane (0.10.1)", () => {
   const elsewhere = [...agents, { name: "vault-tidy", agent_status: "blocked", workspace_id: "wA", pane_id: "wA:p6", tab_id: "wA:t5", interactive_ready: true }]
   const t = setup({ agents: elsewhere, tabs: [...tabs, { tab_id: "wA:t5", label: "vault tidy", workspace_id: "wA" }] })
   try {
@@ -778,7 +779,7 @@ test("a job that runs in another workspace than its card's: Waiting when its age
     assert.match(r.stdout.split("DOING")[0], /WAITING ON YOU \(1\)[\s\S]*Vault: tidy[\s\S]*blocked/)
     assert.doesNotMatch(r.stdout, /no agent/)
     assert.match(t.pane([], "\r").stdout, /Job vault-tidy is blocked: it needs you in its tab[\s\S]*its tab: vault tidy \(press t\)/)
-    t.pane([], "t")
+    t.pane([], "\rt")
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "wA:p6"])
   } finally {
     t.done()
@@ -804,7 +805,8 @@ test("mouse capture off (m): one column at any width, so a drag selects one card
       const text = r.stdout.slice(MOUSE_OFF.length)
       const lines = text.trimEnd().split("\n")
       // One column: every section header starts its own line, and no line holds two cards' text.
-      for (const head of ["WAITING ON YOU", "DOING", "TO DO"]) assert.match(text, new RegExp(`^▸? ?${head} \\(\\d+\\) ─+$`, "m"), `${width}x${height}: ${head} across the width`)
+      // (To do, open, says so: ▾.)
+      for (const head of ["WAITING ON YOU", "DOING", "TO DO"]) assert.match(text, new RegExp(`^▸? ?${head} \\(\\d+\\)${head === "TO DO" ? " ▾" : ""} ─+$`, "m"), `${width}x${height}: ${head} across the width`)
       assert.ok(!lines.some((l) => /DOING.*TO DO|Export to CSV.*Nightly|Billing fix.*Old question/.test(l)), "no two columns on a line")
       // The selected card is open whole: the title wraps, every word of the description is there.
       const flat = lines.map((l) => l.trim()).join(" ")
@@ -1006,14 +1008,15 @@ function seedMotion(t) {
 const BAR = /\[[ =]{4}\]/g
 const barsOf = (text) => text.match(BAR) ?? []
 
-test("board snapshots: Done folded (default) and open, Doing with working and idle cards; 120 and 88 columns; colour on and off; the bar's frame injected", () => {
+test("board snapshots: To do and Done folded (default), To do open (t), both open (t d), Doing with working and idle cards; 120 and 88 columns; colour on and off; the bar's frame injected", () => {
   const t = setup({ agents: motionAgents, tabs })
   try {
     seedMotion(t)
     for (const [name, flags] of [["board-motion-plain.txt", []], ["board-motion-color.txt", ["--color"]]]) {
       let all = ""
       for (const width of [120, 88]) {
-        for (const [label, keys, frame] of [["Done folded · frame 0", "", 0], ["Done open (d) · frame 3", "d", 3]]) {
+        // The pane helper opens To do first (t): "t" again folds it, as the pane starts.
+        for (const [label, keys, frame] of [["To do and Done folded (default) · frame 0", "t", 0], ["To do open (t), Done folded · frame 0", "", 0], ["To do and Done open (t d) · frame 3", "d", 3]]) {
           const r = t.pane(["--width", String(width), "--height", "40", "--frame", String(frame), ...flags], keys)
           assert.equal(r.status, 0, r.stderr)
           all += `===== ${label} · ${width} columns =====\n${r.stdout}`
@@ -1046,8 +1049,8 @@ test("board snapshots: Done folded (default) and open, Doing with working and id
     {
       const state = JSON.parse(readFileSync(t.file, "utf8"))
       const view = buildView(state, motionAgents, { now: new Date(NOW), workspace: "w9" })
-      const text = renderBoard(view, { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 0, layout: "wide", scroll: { selected: "waiting", anchors: {}, doneOpen: true } }).text
-      assert.deepEqual(barsOf(text), [WORKING_FRAMES[0]], "wide at 88 with Done open: one bar")
+      const text = renderBoard(view, { width: 88, height: 40, interactive: true, now: new Date(NOW), frame: 0, layout: "wide", scroll: { selected: "waiting", anchors: {}, todoOpen: true, doneOpen: true } }).text
+      assert.deepEqual(barsOf(text), [WORKING_FRAMES[0]], "wide at 88 with To do and Done open: one bar")
       assert.match(text, / {2}working, report done(?! \[)/, "the words, without the bar")
     }
     // Colour: the bar is the working green; NO_COLOR or no --color, plain text.
@@ -1428,10 +1431,10 @@ function seedShort(t) {
 // layout in a short pane (pinned with --layout: the pane draws compact under 24 rows), and
 // compact with the selected row open (Space), the card cut under its question.
 const SHORT = [
-  { width: 120, height: 21, layout: "wide", keys: "", scroll: { selected: "todo" } },
-  { width: 88, height: 21, layout: "wide", keys: "", scroll: { selected: "todo" } },
-  { width: 60, height: 15, keys: " ", scroll: { selected: "waiting", open: true } },
-  { width: 95, height: 15, keys: " ", scroll: { selected: "waiting", open: true } },
+  { width: 120, height: 21, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
+  { width: 88, height: 21, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
+  { width: 60, height: 15, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
+  { width: 95, height: 15, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
 ]
 
 test("short panes (wide 120x21 and 88x21, compact 60x15 and 95x15 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
@@ -1505,7 +1508,7 @@ test("short panes (wide 120x21 and 88x21, compact 60x15 and 95x15 opened with Sp
     let partial = null
     for (const width of [120, 88, 60]) {
       for (let height = 14; height <= 40 && !partial; height++) {
-        const d = renderBoard(partView, { width, height, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {} } })
+        const d = renderBoard(partView, { width, height, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {}, todoOpen: true } })
         const seen = new Set(d.buttons.filter((b) => b.key === "#1").map((b) => b.index))
         if (seen.size > 0 && seen.size < 4) partial = { width, height, seen }
       }
@@ -1513,7 +1516,7 @@ test("short panes (wide 120x21 and 88x21, compact 60x15 and 95x15 opened with Sp
     assert.ok(partial, "a size with some of the buttons on screen")
     {
       const draw = (scroll) => renderBoard(partView, { width: partial.width, height: partial.height, interactive: true, now: new Date(NOW), scroll })
-      let drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1 })
+      let drawn = draw({ selected: "waiting", anchors: {}, card: "#1", button: -1, todoOpen: true })
       for (let i = 0; i < 6; i++) {
         const r = handleInput(drawn.scroll, { type: "key", name: "right" }, drawn)
         assert.ok(partial.seen.has(r.scroll.button), `${partial.width}x${partial.height}: → chose ${r.scroll.button}, on screen are ${[...partial.seen]}`)

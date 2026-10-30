@@ -128,12 +128,13 @@ test("ls: a Waiting card's description in full with its parts; other cards and r
       const doing = out.slice(out.indexOf("A doing card"))
       assert.doesNotMatch(doing.split("\n").slice(0, 4).join("\n"), /Why:/)
     }
-    // The pane's rows (inbox layout, nothing selected): no Why: anywhere, the first paragraph cut.
+    // The pane's rows (inbox layout, nothing selected, To do open): no Why: anywhere, the first
+    // paragraph cut.
     const state = readBoard(s.file)
     const view = buildView(state, [], { now: new Date(NOW) })
-    const screen = renderBoard(view, { width: 90, height: 40, color: false, now: new Date(NOW), interactive: true, layout: "inbox" }).text
+    const screen = renderBoard(view, { width: 90, height: 40, color: false, now: new Date(NOW), interactive: true, layout: "inbox", scroll: { todoOpen: true } }).text
     assert.doesNotMatch(screen, /Why:|What changes:/)
-    const wide = renderBoard(view, { width: 160, height: 50, color: false, now: new Date(NOW), interactive: true, layout: "wide" }).text
+    const wide = renderBoard(view, { width: 160, height: 50, color: false, now: new Date(NOW), interactive: true, layout: "wide", scroll: { todoOpen: true } }).text
     assert.doesNotMatch(wide, /Why:|What changes:/)
     assert.match(wide, /Para one\. …/)
   } finally {

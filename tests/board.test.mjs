@@ -174,13 +174,15 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     const dir = repo(base, "my-app")
     seedDemo(dir)
     const herdr = fakeHerdr(base, { agents: [agent("search-ui", "working"), agent("docs-links", "working")] })
+    // To do open (t): these snapshots show its cards; its fold has tests of its own.
     const frame = (width, height, cwd = dir, keys = "") => {
-      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height), "--keys", keys], { cwd, env: envFor({ herdr }), encoding: "utf8" })
+      const r = spawnSync(process.execPath, [PANE, "--once", "--width", String(width), "--height", String(height), "--keys", `t${keys}`], { cwd, env: envFor({ herdr }), encoding: "utf8" })
       assert.equal(r.status, 0, r.stderr)
       const lines = r.stdout.replace(/\n$/, "").split("\n")
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
       assert.equal(lines.length, height, `exactly ${height} lines`)
-      assert.equal(lines[1], width >= 82 ? "Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit" : "Tab · ↑↓ · Space peek · Enter · c copy · d done · q", "the key hint is right under the title, never the last line")
+      assert.match(lines[1], /^Tab\b.* · t to do · d done · .*\bq(?: quit)?$/, "the key hint, with t and d, is right under the title, never the last line")
+      if (width >= 120) assert.equal(lines[1], "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
@@ -195,6 +197,10 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
       if (width >= 120) assert.equal(text.split("\n").at(-3), "DONE · 1 today ▸")
       else assert.match(text, /\n 11   Upgrade the test runner +1 min\n(?:\n)?DONE · 1 today ▸\n/)
       assert.doesNotMatch(text, /Nightly backup check|DONE \(/)
+      // To do folded (the pane's default; t twice here): one line, its cards gone.
+      const todoFolded = frame(width, height, dir, "t")
+      assert.match(todoFolded, /^TO DO · 4 ▸\nDONE · 1 today ▸$/m)
+      assert.doesNotMatch(todoFolded, /Upgrade the test runner|TO DO \(/)
       // d opens it: today's cards, with the time they finished.
       const open = frame(width, height, dir, "d")
       assert.match(open, /DONE \(1\) ▾[\s\S]*12 (?:✓ )?Nightly backup check/, "Done: today's cards")
@@ -237,13 +243,13 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     // Doing with nothing in it folds to its header, and To do has the width.
     assert.equal(quiet[5], "DOING (0) · nothing running")
     assert.equal(quiet[6], "")
-    assert.match(quiet[7], /^TO DO \(1\)$/)
+    assert.match(quiet[7], /^TO DO \(1\) ▾$/)
     assert.equal(quiet.at(-3), "DONE · 0 today ▸", "right above the empty last row")
     // The inbox folds every empty section to its header, with a rule.
     const calmInbox = frame(88, 30, calm).split("\n")
     assert.deepEqual(
       calmInbox.slice(3, 11).map((l) => l.replace(/ ─+$/, " ─")),
-      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "DOING (0) · nothing running ─", "", "TO DO (1) ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
+      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "DOING (0) · nothing running ─", "", "TO DO (1) ▾ ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
     )
   } finally {
     done()

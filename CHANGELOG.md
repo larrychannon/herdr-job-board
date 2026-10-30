@@ -2,8 +2,8 @@
 
 ## 0.14.0 · unreleased
 
-Jobs ask with buttons, cards keep their titles, a press that can't run says so, and a card
-under a deploy says it waits for the deploy.
+Jobs ask with buttons, cards keep their titles, a press that can't run says so, a card under
+a deploy says it waits for the deploy, and To do folds like Done.
 
 - **Why**: in one day the coordinator got eleven notes to rewrite a job's question before the
   card had buttons; four cards were renamed to their job's short name ("daily-review-1030");
@@ -39,6 +39,13 @@ under a deploy says it waits for the deploy.
   deploy card says `deploys 2`, `Deploys: …`, and `add`/`edit`/`job-start --parent` print
   `#417 deploys #410, #415`. Any other parent keeps `for #N …` and `waiting on N`: there the
   parent does wait for its parts. The held-report lines of `job-report` follow the same words.
+- **To do folds like Done**: the pane starts with TO DO folded to one line, `TO DO · 12 ▸`
+  (above `DONE · 3 today ▸`), so Waiting and Doing get the room. `t` or a click on the line opens
+  it (`TO DO (12) ▾`, a column beside Doing in the wide layout); `t` or a click on its header
+  folds it again. Folded, Tab skips it, and a card that moves into To do doesn't open it; the
+  choice holds while the pane runs. `t` used to go to the selected card's job tab from the
+  board: it still does in a card's details (`Enter`, then `t`). `ls` shows To do whole, as
+  before. The key line and `?` list `t to do`.
 
 ## 0.13.1 · unreleased
 

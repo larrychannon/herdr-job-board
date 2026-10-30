@@ -1,6 +1,6 @@
 ===== nothing chosen · 120 columns =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -18,7 +18,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 
 DOING (0) · nothing running
 
-TO DO (0)
+TO DO (0) ▾
 nothing
 
 
@@ -59,7 +59,7 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 
 DOING (0) · nothing running
 
-TO DO (0)
+TO DO (0) ▾
 nothing
 
 
@@ -100,7 +100,7 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 
 DOING (0) · nothing running
 
-TO DO (0)
+TO DO (0) ▾
 nothing
 
 
@@ -141,7 +141,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 
 DOING (0) · nothing running
 
-TO DO (0)
+TO DO (0) ▾
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -164,7 +164,7 @@ Release v1.4: all reviewed, approve?
 
 ===== nothing chosen · 88 columns =====
 Job board · all projects · 3 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
@@ -179,7 +179,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
 
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
+TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
 
@@ -220,7 +220,7 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
+TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
 
@@ -261,7 +261,7 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
+TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
 
@@ -302,7 +302,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
-TO DO (0) · nothing to do ──────────────────────────────────────────────────────────────
+TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
 

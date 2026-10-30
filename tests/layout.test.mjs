@@ -37,7 +37,9 @@ function board({ waiting = 4, doing = 1, todo = 8, done = 2 } = {}) {
   return { version: 1, next_id: id, items, panes: {} }
 }
 const agents = [{ name: "job-0", agent_status: "working", workspace_id: "w9" }]
-const draw = (state, opts = {}) => renderBoard(buildView(state, opts.agents ?? agents, { now: NOW, workspace: "w9" }), { width: 95, height: 40, interactive: true, now: NOW, frame: 0, ...opts })
+// To do open unless a test folds it (scroll.todoOpen false): these tests measure its cards.
+const draw = (state, opts = {}) =>
+  renderBoard(buildView(state, opts.agents ?? agents, { now: NOW, workspace: "w9" }), { width: 95, height: 40, interactive: true, now: NOW, frame: 0, ...opts, scroll: { todoOpen: true, ...opts.scroll } })
 
 test("layoutOf: wide from 120 columns, the inbox from 70, compact under 70 columns or under 24 rows", () => {
   for (const [w, h, want] of [
@@ -63,7 +65,7 @@ test("every size from 40x15 to 200x60: exactly the pane's lines, none wider, and
   const total = { waiting: view.waiting.length, doing: view.doing.length, todo: view.todo.length }
   for (let width = 40; width <= 200; width += 5) {
     for (const height of [15, 20, 23, 24, 30, 40, 60]) {
-      for (const scroll of [{}, { selected: "todo" }, { doneOpen: true }, { selected: "waiting", open: true }]) {
+      for (const scroll of [{}, { selected: "todo" }, { doneOpen: true }, { selected: "waiting", open: true }, { todoOpen: false }, { todoOpen: false, doneOpen: true }]) {
         for (const color of [false, true]) {
           const d = draw(state, { width, height, color, emoji: color, scroll: { selected: "waiting", anchors: {}, ...scroll } })
           const lines = d.text.split("\n")
@@ -72,9 +74,10 @@ test("every size from 40x15 to 200x60: exactly the pane's lines, none wider, and
           assert.equal(lines.at(-1), "", `${size}: the last row is empty (a phone's terminal keeps it in view)`)
           for (const l of lines) assert.ok(textWidth(plain(l)) <= width, `${size}: wider than ${width}: ${plain(l)}`)
           if (!scroll.doneOpen) assert.ok(lines.some((l) => plain(l).includes("DONE · 2 today ▸")), `${size}: Done's folded line`)
+          if (scroll.todoOpen === false) assert.ok(lines.some((l) => plain(l).includes("TO DO · 8 ▸")), `${size}: To do's folded line`)
           if (color) continue
           // Each section: the cards on screen plus "↑ N above" and "↓ N more" are all of them.
-          for (const s of ["waiting", "doing", "todo"]) {
+          for (const s of ["waiting", "doing", ...(scroll.todoOpen === false ? [] : ["todo"])]) {
             const r = d.regions[s]
             if (!r) continue
             const region = lines.slice(r.top - 1, r.bottom).map((l) => l.slice(0, r.right))
@@ -160,11 +163,15 @@ test("empty sections fold to one line that says so; the wide layout folds an emp
   const open = plain(draw(state, { agents: [], scroll: { doneOpen: true } }).text)
   assert.match(open, /^DONE \(0\) ▾ · nothing finished today ─+$/m)
   const empty = plain(draw(board({ waiting: 1, doing: 1, todo: 0, done: 0 })).text)
-  assert.match(empty, /^TO DO \(0\) · nothing to do ─+$/m)
+  assert.match(empty, /^TO DO \(0\) ▾ · nothing to do ─+$/m)
+  // Folded (the pane's default), To do is one line, after Doing's section, before Done's line.
+  const folded = plain(draw(state, { agents: [], scroll: { todoOpen: false } }).text)
+  assert.match(folded, /^TO DO · 2 ▸\nDONE · 0 today ▸$/m)
+  assert.doesNotMatch(folded, /^TO DO \(/m)
   const wide = plain(draw(state, { agents: [], width: 140 }).text).split("\n")
   const doing = wide.indexOf("DOING (0) · nothing running")
   assert.ok(doing > 0, "folded")
-  assert.match(wide[doing + 2], /^TO DO \(2\)$/, "To do has the whole width")
+  assert.match(wide[doing + 2], /^TO DO \(2\) ▾$/, "To do has the whole width")
 })
 
 test("emoji and CJK: widths by East Asian Width, variation selectors and joiners dropped, so every line has the width the board counts", () => {
@@ -210,7 +217,8 @@ test("section emoji: one code point each, two cells, no variation selector or jo
   assert.equal(emojiOn({ LANG: "C", BOARD_EMOJI: "1" }), true)
   const on = plain(draw(board(), { emoji: true }).text)
   assert.match(on, /^▸ 🔔 WAITING ON YOU \(4\) ─+$/m)
-  assert.match(on, /^📋 TO DO \(8\) ─+$/m)
+  assert.match(on, /^📋 TO DO \(8\) ▾ ─+$/m)
+  assert.match(plain(draw(board(), { emoji: true, scroll: { todoOpen: false } }).text), /^📋 TO DO · 8 ▸$/m)
   assert.match(on, /^🏁 DONE · 2 today ▸$/m)
   assert.doesNotMatch(plain(draw(board()).text), /[🔔🔨📋🏁]/u, "off by default")
 })
@@ -271,7 +279,7 @@ test("the key line is under the title at every width, and the last row is empty;
   assert.match(rows[1], /^Keys \(\? or Esc hides them\):$/)
   const last = rows.findIndex((l, i) => i > 1 && /q quit$/.test(l))
   const list = rows.slice(2, last + 1).join(" ")
-  for (const k of ["Tab / Shift-Tab section", "Enter details", "c copy", "t go to the job's tab", "m mouse", "p project", "? hide this list", "q quit"]) assert.ok(list.includes(k), `the list has ${k}`)
+  for (const k of ["Tab / Shift-Tab section", "Enter details", "c copy", "t to do", "d done", "t in a card's details: go to the job's tab", "m mouse", "p project", "? hide this list", "q quit"]) assert.ok(list.includes(k), `the list has ${k}`)
   // The list takes rows 2 to `last` where the key line took row 2 alone.
   const shift = last - 1
   const header = (d) => d.regions.waiting.top

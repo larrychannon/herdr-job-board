@@ -12,7 +12,7 @@
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
 
-[1;34mDOING (1)[0m                                                    [1mTO DO (3)[0m
+[1;34mDOING (1)[0m                                                    [1mTO DO (3) ▾[0m
 [2m3 [0m[1mOrder history UI: build[0m                           [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m                       [2m3 h 30 min[0m
   [32mworking[0m                                                      From the roadmap.
   The order list and filters from the approved mockup.
@@ -53,7 +53,7 @@
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
 
-[1;34mDOING (1)[0m                                                    [1mTO DO (3)[0m
+[1;34mDOING (1)[0m                                                    [1mTO DO (3) ▾[0m
 [2m3 [0m[1mOrder history UI: build[0m                           [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m                       [2m3 h 30 min[0m
   [32mworking[0m                                                      From the roadmap.
   The order list and filters from the approved mockup.
@@ -94,7 +94,7 @@
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
 
-[1m▸ [0m[1;7;34mDOING (1)[0m                                                  [1mTO DO (3)[0m
+[1m▸ [0m[1;7;34mDOING (1)[0m                                                  [1mTO DO (3) ▾[0m
 [1m3▸[0m[1mOrder history UI: build[0m                           [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m                       [2m3 h 30 min[0m
   [32mworking[0m                                                      From the roadmap.
   The order list and filters from the approved mockup.
@@ -135,7 +135,7 @@
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
 
-[1;34mDOING (1)[0m                                [1mTO DO (3)[0m                                [1m▸ [0m[7;32mDONE (7) ▾[0m
+[1;34mDOING (1)[0m                                [1mTO DO (3) ▾[0m                              [1m▸ [0m[7;32mDONE (7) ▾[0m
 [2m3 [0m[1mOrder history UI: build[0m       [2m12 min[0m   [2m5 [0m[1mTODO-MARK Export to PDF[0m   [2m3 h 30 min[0m   [1m 4▸[0mCSV export on the Orders page (PR
   [32mworking[0m                                  From the roadmap.                         #48): try it, then merge      [2m09:10[0m
   The order list and filters from the
@@ -178,7 +178,7 @@
 [1;34mDOING (1)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 3[0m   Order history UI: build                                            [32mworking[0m  [2m12 min[0m
 
-[1mTO DO (3)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 5[0m   TODO-MARK Export to PDF                                                 [2m3 h 30 min[0m
 [1m [0m[2m 6[0m   TODO-MARK Nightly backup check                                          [2m3 h 29 min[0m
 [1m [0m[2m 7[0m   TODO-MARK Rotate the API keys                                           [2m3 h 28 min[0m
@@ -219,7 +219,7 @@
 [1;34mDOING (1)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 3[0m   Order history UI: build                                            [32mworking[0m  [2m12 min[0m
 
-[1mTO DO (3)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 5[0m   TODO-MARK Export to PDF                                                 [2m3 h 30 min[0m
 [1m [0m[2m 6[0m   TODO-MARK Nightly backup check                                          [2m3 h 29 min[0m
 [1m [0m[2m 7[0m   TODO-MARK Rotate the API keys                                           [2m3 h 28 min[0m
@@ -256,7 +256,7 @@
 [1m▸[0m[1;7m 3[0m   [1mOrder history UI: build[0m                                            [32mworking[0m  [2m12 min[0m
       The order list and filters from the approved mockup.
 
-[1mTO DO (3)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 5[0m   TODO-MARK Export to PDF                                                 [2m3 h 30 min[0m
 [1m [0m[2m 6[0m   TODO-MARK Nightly backup check                                          [2m3 h 29 min[0m
 [1m [0m[2m 7[0m   TODO-MARK Rotate the API keys                                           [2m3 h 28 min[0m
@@ -296,7 +296,7 @@
 [1;34mDOING (1)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 3[0m   Order history UI: build                                            [32mworking[0m  [2m12 min[0m
 
-[1mTO DO (3)[0m [2m──────────────────────────────────────────────────────────────────────────────[0m
+[1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m 5[0m   TODO-MARK Export to PDF                                                 [2m3 h 30 min[0m
 [1m [0m[2m 6[0m   TODO-MARK Nightly backup check                                          [2m3 h 29 min[0m
 [1m [0m[2m 7[0m   TODO-MARK Rotate the API keys                                           [2m3 h 28 min[0m

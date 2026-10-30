@@ -1,6 +1,6 @@
 ===== inbox 95x40 · all =====
 Job board · all projects · 4 need you                                                     11:57
-Tab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · p project · d done · q quit
 Projects: ▸all  sfc 3  ai 1  herdr  home                                       p filter · P all
 
 ▸ WAITING ON YOU (4) ──────────────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ Projects: ▸all  sfc 3  ai 1  herdr  home                                      
 DOING (1) ─────────────────────────────────────────────────────────────────────────────────────
  211   herdr Job board 0.5.0, one board for all projects: plan            working [=   ]  3 min
 
-TO DO (10) ────────────────────────────────────────────────────────────────────────────────────
+TO DO (10) ▾ ──────────────────────────────────────────────────────────────────────────────────
  140   sfc   Bring sfc-app-track into sfc-integration                                    3 days
  171   sfc   SFC-MKC-012: heartbeat flaps down/up every ~20 s                            3 days
  177   sfc   DNS: Edit Targets loop guard                                                3 days
@@ -42,7 +42,7 @@ DONE · 2 today ▸
 
 ===== inbox 95x40 · p (sfc), ↓ to 170 =====
 Job board · sfc-integration · 3 need you  (+1 in other projects)                          11:57
-Tab section · ↑↓ card · Enter details · c copy · p next project · P all · d done · q quit
+Tab · ↑↓ · Enter · c copy · t to do · p proj · P all · d done · mouse: board · q
 Projects: all  ▸sfc 3  ai 1  herdr  home                                         p next · P all
 
 ▸ WAITING ON YOU (3 · +1 other) ───────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ Projects: all  ▸sfc 3  ai 1  herdr  home                                      
 
 DOING (0 · +1 other) · nothing running here ───────────────────────────────────────────────────
 
-TO DO (6 · +4 other) ──────────────────────────────────────────────────────────────────────────
+TO DO (6 · +4 other) ▾ ────────────────────────────────────────────────────────────────────────
  140   sfc Bring sfc-app-track into sfc-integration                                      3 days
  171   sfc SFC-MKC-012: heartbeat flaps down/up every ~20 s                              3 days
  177   sfc DNS: Edit Targets loop guard                                                  3 days
@@ -84,7 +84,7 @@ DONE · 1 today · +1 other ▸
 
 ===== compact 60x30 · all =====
 all · 4 need you                                       11:57
-Tab · ↑↓ · Space peek · Enter · c copy · p proj · d done · q
+Tab · ↑↓ · Space · Enter · ? keys · p proj · q
 ▸all sfc 3 ai 1 herd home                              p · P
 ▸ WAITING ON YOU (4) ───────────────────────────────────────
 ▸108 ! sfc  UI consistency plan: answer 10 questions  3 days
@@ -93,7 +93,7 @@ Tab · ↑↓ · Space peek · Enter · c copy · p proj · d done · q
  204 ! ai   Git access on the LXC: narrower tokens ins… 16 h
 DOING (1) ──────────────────────────────────────────────────
  211   herd Job board 0.5.0, one boar… working [=   ]  3 min
-TO DO (10) ─────────────────────────────────────────────────
+TO DO (10) ▾ ───────────────────────────────────────────────
  140   sfc  Bring sfc-app-track into sfc-integration  3 days
  171   sfc  SFC-MKC-012: heartbeat flaps down/up eve… 3 days
  177   sfc  DNS: Edit Targets loop guard              3 days
@@ -131,7 +131,7 @@ all sfc 3 ▸ai 1 herd home                              p · P
           then sends to the board's coordinator (sfc, pane
           w4:p6)
 DOING (0 · +1 other) · nothing running here ────────────────
-TO DO (2 · +8 other) ───────────────────────────────────────
+TO DO (2 · +8 other) ▾ ─────────────────────────────────────
  206   ai Job board 0.4.0 follow-ups in ai-config and … 13 h
  209   ai Coordinator auto-restart supervisor (parked) 9 min
 DONE · 0 today · +2 other ▸
@@ -148,7 +148,7 @@ DONE · 0 today · +2 other ▸
 
 ===== wide 160x45 · all =====
 Job board · all projects                                                                                                                                   11:57
-Tab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · p project · d done · m mouse: board · q quit
 Projects: ▸all  sfc 3  ai 1  herdr  home                                                                                                        p filter · P all
 
 ▸ WAITING ON YOU (4)
@@ -171,7 +171,7 @@ Projects: ▸all  sfc 3  ai 1  herdr  home                                      
                                                                                            no ai coordinator is running: a press asks first, then sends to the
                                                                                            board's coordinator (sfc, pane w4:p6)                           16 h
 
-DOING (1)                                                                        TO DO (10)
+DOING (1)                                                                        TO DO (10) ▾
 211 herdr Job board 0.5.0, one board for all projects: plan              3 min   140 sfc   Bring sfc-app-track into sfc-integration                      3 days
           working [=   ]
                                                                                  171 sfc   SFC-MKC-012: heartbeat flaps down/up every ~20 s              3 days
@@ -195,12 +195,12 @@ DONE · 2 today ▸
 
 ===== wide 160x45 · p p p (herdr) =====
 Job board · herdr-job-board                                                                                                                                11:57
-Tab section · ↑↓ card · Enter details · c copy · p next project · P all · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · p next project · P all · d done · m mouse: board · q quit
 Projects: all  sfc 3  ai 1  ▸herdr  home                                                                                                          p next · P all
 
 ▸ WAITING ON YOU (0 · +4 other)  Nothing needs you here
 
-DOING (1)                                                                        TO DO (1 · +9 other)
+DOING (1)                                                                        TO DO (1 · +9 other) ▾
 211 herdr Job board 0.5.0, one board for all projects: plan              3 min   207 herdr Board key binding + sidebar count (in 0.5.0)                   3 min
           working [=   ]
 

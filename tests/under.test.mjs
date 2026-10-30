@@ -59,7 +59,7 @@ const agents = [
 ]
 const view = (state) => buildView(state, agents, { now: NOW, workspace: "w9" })
 const draw = (state, opts = {}) =>
-  renderBoard(view(state), { width: 60, height: 60, interactive: true, now: NOW, layout: "compact", ...opts, scroll: { selected: "doing", doneOpen: true, ...opts.scroll } })
+  renderBoard(view(state), { width: 60, height: 60, interactive: true, now: NOW, layout: "compact", ...opts, scroll: { selected: "doing", todoOpen: true, doneOpen: true, ...opts.scroll } })
 const HEADS = { waiting: "WAITING ON YOU", doing: "DOING", todo: "TO DO", done: "DONE" }
 // A section's lines in a one-column layout, from its header to the next one.
 const section = (text, head, next) => {
@@ -247,7 +247,7 @@ test("a selected sub-task row highlights only its id after the ↳; the empty id
 })
 
 test("wide, two cards a row: a sub-task's card stays under its parent's, never beside it", () => {
-  const text = plain(renderBoard(view(board()), { width: 120, now: NOW, layout: "wide", scroll: { doneOpen: true } }).text)
+  const text = plain(renderBoard(view(board()), { width: 120, now: NOW, layout: "wide", scroll: { todoOpen: true, doneOpen: true } }).text)
   const lines = text.split("\n")
   const parent = lines.findIndex((l) => /^261 One 'Edit/.test(l))
   const child = lines.findIndex((l) => /↳ 286/.test(l))

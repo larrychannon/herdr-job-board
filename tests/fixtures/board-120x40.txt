@@ -1,5 +1,5 @@
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (5)
 1▸Login page redesign: approve                  2 h 20 min   2 Search filters mockup: approve                1 h 30 min
@@ -19,7 +19,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   Question: Say go once merged
   [ Go ✓ ]  [ Not now ]  [ Other… ]
 
-DOING (2)                                                    TO DO (4)
+DOING (2)                                                    TO DO (4) ▾
 6 Search filters: build                             25 min    8 Export to CSV                                     1 min
   working                                                       Let people download any table as CSV. Three customers
   The filter panel from the approved mockup, with saved         asked for it.
