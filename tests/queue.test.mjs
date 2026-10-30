@@ -559,6 +559,20 @@ test("markStart (the pane's s): queues a To do card marked, marks and unmarks a 
     assert.equal(card(1).start, undefined)
     r.board("2026-10-30T10:04:00Z", "move", "1", "queue")
     assert.equal(startMarked(card(1)), false)
+    // An edit removes the mark for good: editing the words back doesn't bring it back.
+    markStart(r.file, 1, true, NOW)
+    const said = card(1).desc
+    r.board("2026-10-30T10:04:30Z", "edit", "1", "--desc", "Something else.")
+    assert.equal(card(1).start, undefined, "removed, not only out of date")
+    r.board("2026-10-30T10:04:40Z", "edit", "1", "--desc", said)
+    assert.equal(startMarked(card(1)), false)
+    // A retag removes it too.
+    markStart(r.file, 1, true, NOW)
+    mkdirSync(join(r.base, "lib"))
+    spawnSync("git", ["-C", join(r.base, "lib"), "init", "-q"])
+    r.board("2026-10-30T10:04:50Z", "retag", "1", join(r.base, "lib"))
+    assert.equal(card(1).start, undefined)
+    r.board("2026-10-30T10:04:55Z", "retag", "1", basename(r.dir), "--project", "lib")
     // A reorder keeps it.
     markStart(r.file, 1, true, NOW)
     r.board("2026-10-30T10:05:00Z", "order", "1", "top")
@@ -600,7 +614,7 @@ test("hooks: a marked card is started without the word check (a read-only check 
   }
 })
 
-test("hooks: a marked card is still a question when its title starts with Deploy, Merge or Release, or it asks for access, IAM, secrets, settings or deleting data", () => {
+test("hooks: a marked card is still a question when any part of its title starts with a deploy, merge, release, push, roll-out, tag, go-live or delete, or it asks for access, IAM, secrets, keys, settings, force-pushing or deleting data", () => {
   const asked = [
     ["App: merge the fix", ""],
     ["Merge the queue branch", ""],
@@ -611,6 +625,32 @@ test("hooks: a marked card is still a question when its title starts with Deploy
     ["Keys: tidy them", "Rotate the API key."],
     ["Router: fix the timeout", "Change the DNS settings."],
     ["Cleanup: old data", "Delete the stale records from the database."],
+    // Every part of the title counts, not only the one after its last ": " (and " — ").
+    ["App — merge the fix", ""],
+    ["Merge: login fix: final tidy", ""],
+    ["Release: v2: cut it", ""],
+    // More actions that never start without asking.
+    ["Ship v2 to production", ""],
+    ["Publish v2", ""],
+    ["Push the fix to main", ""],
+    ["Roll out the new build", ""],
+    ["Cut a release of the app", ""],
+    ["Tag v1.2 and push", ""],
+    ["Promote staging to prod", ""],
+    ["Go live with the new site", ""],
+    ["Redeploy staging", ""],
+    ["App: delete the old exports", ""],
+    ["Tables: drop the legacy ones", ""],
+    // Destroying data, force-pushing, keys, tokens and root, in the description.
+    ["Chore: tidy", "Drop the users table."],
+    ["Chore: tidy", "Purge the S3 bucket."],
+    ["Chore: tidy", "rm -rf the old backups bucket."],
+    ["Chore: tidy", "Remove stale branches from origin."],
+    ["Chore: tidy", "Then force-push main."],
+    ["Chore: tidy", "Update the config for prod."],
+    ["Chore: tidy", "Add my ssh key to the server."],
+    ["Chore: tidy", "Use sudo to fix it."],
+    ["Chore: tidy", "Set a new token for the CI."],
   ]
   for (const [t, d] of asked) assert.ok(needsYes(t, d, true), `${t} / ${d}`)
   const started = [
@@ -634,7 +674,7 @@ test("hooks: a marked card is still a question when its title starts with Deploy
     markStart(r.file, 1, true, NOW)
     const reason = reasonOf(handle(stop(r.dir), hookEnv(r), { now: new Date("2026-10-30T10:05:00Z") }))
     assert.match(reason, /#1 "Roles: tidy them"/)
-    assert.match(reason, /The user marked it "start without asking", but its title starts with a deploy, merge or release, or it asks for access, IAM, secrets, settings or deleting data, which the mark never covers: move it to Waiting/)
+    assert.match(reason, /The user marked it "start without asking", but its title starts with a deploy, merge, release, push, roll-out, tag, go-live or delete, or it asks for access, IAM, secrets, keys, settings, force-pushing or deleting data, which the mark never covers: move it to Waiting/)
     assert.doesNotMatch(reason, /job-open/)
   } finally {
     r.done()

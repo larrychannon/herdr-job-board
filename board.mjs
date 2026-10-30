@@ -1425,12 +1425,13 @@ export function recordedCard(slug, env = process.env) {
  * makes a card). `card`: the card that carried the job before (unlinked by job-close, say), on the
  * board (`archived` false) or in the archive; null when there is none.
  */
-function lateNote(slug, card, archived, status, report, path) {
+function lateNote(slug, card, archived, status, report, path, reopened = false) {
   const what = status === "done" ? "finished" : status === "blocked" ? "is blocked" : "failed"
   const summary = oneLine(report?.summary, 240).replace(/[.\s]+$/, "") || "no summary in the report"
   const needs = needsList(report?.needs_user)
   const asks = needs.length ? ` It asks: ${oneLine(needs.join(" / "), 300)}.` : ""
   const head = `job ${slug} ${what} (${summary}).${asks}`
+  if (card && reopened) return `${head} It reported after it was closed: card ${card.id} (${card.title}) is back in ${label(card.column)} with the reason as its question. Read the report (${path}), then answer it with the user or close the card again.`
   if (card && !archived) return `${head} It reported after it was closed: the report is on card ${card.id} (${card.title}), which stays ${label(card.column)}. Read it (${path}) and update the card if it changes anything.`
   if (card) return `${head} Its card ${card.id} (${card.title}) is archived, so the report is on no card. Read it (${path}) and add a card for it only if it needs one.`
   return `${head} No card carries the job, so the report is on no card (a report never makes one). Read it (${path}) and put what it says on the card it belongs to.`
@@ -1519,11 +1520,15 @@ function moveItem(state, item, column, now, woke = []) {
 /** Change a card's fields (and its parent: --parent, --no-parent); an edit clears "ready to resume". */
 function editItem(state, item, opts, now) {
   if (opts.parent !== undefined && opts["no-parent"]) throw usage("--parent and --no-parent: pick one")
+  const said = [item.title, item.desc]
   if (opts.title !== undefined) {
     if (!clean(opts.title)) throw usage("an item needs a title")
     item.title = clean(opts.title)
   }
   if (opts.desc !== undefined) item.desc = cleanDesc(opts.desc)
+  // The user's "start without asking" was for the card as it was: a change of its words ends it,
+  // for good (0.15.0; an edit back doesn't bring it back).
+  if (item.title !== said[0] || item.desc !== said[1]) delete item.start
   if (opts.ask !== undefined) {
     item.ask = cleanLines(opts.ask)
     // A new question: the press that couldn't run is over.
@@ -6126,11 +6131,11 @@ export function queueCard(file, id, to, now = new Date()) {
 
 /**
  * "Start without asking" (0.15.0): the user's mark on a queued card, which the Stop hook hands
- * over as a job to start without the word check (a title that starts with Deploy, Merge or
- * Release, or one that asks for access, IAM, secrets or settings, is still asked). Set only from
- * the pane (s in a card's details: markStart), never from the command line, so neither a job nor
- * the coordinator can set it. It holds what the card said when it was marked: an edit, a retag or
- * a move out of the Queue and back ends it (startMarked).
+ * over as a job to start without the word check (a risky title or an access or data-deleting card
+ * is still asked: the hook's needsYes). Set only from the pane (s in a card's details:
+ * markStart), never from the command line, so neither a job nor the coordinator can set it;
+ * import and restore drop it. It holds what the card said when it was marked: an edit or a retag
+ * removes it, and a move out of the Queue too (startMarked checks the hash besides).
  */
 const startSig = (i) => createHash("sha256").update(JSON.stringify(["start", i.title, i.desc, i.project, i.since])).digest("hex").slice(0, 16)
 /** Whether queued card `i` carries the user's "start without asking" mark, as it is now. */
@@ -6891,10 +6896,12 @@ The Queue (0.14.0)
   description asks for one, anywhere in it, is handed over as a question), and never start it
   over a repo's limit.
 - "Start without asking" (0.15.0): the user's mark on a queued card (s in the pane; no command
-  sets it, so you can't either). Such a card is handed over to start, without the word check:
-  start its job on it. Still a question: a title whose action starts with deploy, merge or
-  release, and a card that asks for access, IAM, secrets, settings or deleting data. An edit of
-  its title or description, a retag or a move out of the Queue ends the mark.
+  sets it, so you can't either; import and restore drop it). Such a card is handed over to
+  start, without the word check: start its job on it. Still a question: any part of its title
+  that starts with deploy, merge, release, ship, publish, push, roll out, tag, go live, delete
+  or drop, and a card that asks for access, IAM, secrets, keys, tokens, settings, force-pushing
+  or deleting data. An edit of its title or description, a retag or a move out of the Queue
+  removes the mark.
 - A card made because of another (doing card A, you find you need B first): add B with
   --parent <A's id> (job-start --parent too; edit --parent / --no-parent later). A shows
   "waiting on 1" with B drawn under it; when every card under it is done, A is "ready to resume", on top of its
@@ -6955,8 +6962,9 @@ Jobs
   under it stays in Doing with the report stored, and you get a "[job note]". A wait script
   calls it with --if-final; a repeat is a no-op (held or not), a rewritten summary applies again,
   and a rewrite of a report already applied is a "[job note]" too. It never makes a card
-  (0.15.0): a report after job-close goes on the card that carried the job, which stays where it
-  is, and you get a "[job note]"; with no such card, only the "[job note]".
+  (0.15.0): a report after job-close goes on the card that carried the job (a failed or blocked
+  one reopens it in Waiting with the reason; else it stays where it is), and you get a "[job
+  note]"; with no such card, only the "[job note]". A job can't run import or restore.
 - When a job stops, its hooks write one line to your inbox (never typed into your pane), once
   per stop: "[job finished] <slug> — <report status, or no report yet> — <summary, or its last
   line>" or "[job waiting] <slug> — needs: <its question, or the approval it waits for>".
@@ -7306,6 +7314,15 @@ function retagList(text) {
 }
 
 /**
+ * A card as import or restore brings it in (0.15.0): never in the Queue (it lands in To do) and
+ * never with the user's "start without asking" mark. Only the user queues, and only the pane marks.
+ */
+const brought = (card) => {
+  const { start: _start, ...fields } = card
+  return fields.column === "queue" ? { ...fields, column: "todo" } : fields
+}
+
+/**
  * Merge 0.4 boards into the store's `state`. `sources`: [{ file, id (projectAt), board }].
  * The biggest board goes first, so the most ids stay. A card keeps its id when it is free (on
  * the board and in the archive), else gets the next one, with `was: "<project>#<old id>"`. A
@@ -7342,7 +7359,7 @@ export function importInto(state, sources, ctx) {
       const same = state.items.find(isSame(name, card, earlier))
       if (same) {
         if (new Date(card.updated) > new Date(same.updated)) {
-          const { id: _id, project: _p, origin: _o, workspace: _w, was: _was, order: _order, ...fields } = card
+          const { id: _id, project: _p, origin: _o, workspace: _w, was: _was, order: _order, ...fields } = brought(card)
           Object.assign(same, fields, { origin: same.origin || card.origin || origin, workspace: same.workspace || card.workspace || project.workspace })
           entry.merged++
         } else entry.unchanged++
@@ -7358,7 +7375,7 @@ export function importInto(state, sources, ctx) {
     state.next_id = Math.max(state.next_id, Number(src.board.next_id) || 1, ...kept.map((c) => c.id + 1))
     for (const card of take) {
       // Its place on this board is given when it is next read (orderAll: below the cards here).
-      const { order: _order, ...fields } = card
+      const { order: _order, ...fields } = brought(card)
       const item = { ...fields, project: name, origin: card.origin || origin, workspace: card.workspace || project.workspace }
       if (used.has(card.id)) {
         item.id = state.next_id++
@@ -7752,6 +7769,8 @@ export function restoreBackup(file, ref, now) {
     throw new Error(`${path} is a 0.4 board (one repo's cards, e.g. what import kept), not a backup of the one board; restore puts back only backups/board-*.json. To merge its cards in again: ${CLI()} import ${shellQuote(path)}`)
   }
   const restored = readBoard(path)
+  // Its Queue goes back to To do, without marks: only the user queues and marks (0.15.0).
+  restored.items = restored.items.map(brought)
   privateDir(dirname(file))
   return withLock(file, () => {
     let saved = ""
@@ -8109,6 +8128,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return ids.map((ref) => {
             const it = owned(s, findItem(s, ref, me))
             if (it.column === "queue") queueWrite(me, "change its cards")
+            if (it.project !== to) delete it.start
             it.project = to
             // A card nobody owned (imported by a shell or a worker) is the re-tagging coordinator's
             // now, so it can go on changing it in its new project.
@@ -8387,7 +8407,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // so the card that carried the job before (former_jobs), the one with this report file, or
         // the card in the job's record; never a card linked to another job since.
         const recorded = recordedCard(slug, env)
-        const formerCard = (list) => list.find((i) => !i.job && recorded != null && i.id === recorded) || lastCard(list, (i) => !i.job && ((i.former_jobs || []).includes(slug) || (Boolean(i.report) && i.report === path)))
+        const formerCard = (list) => list.find((i) => !i.job && recorded != null && i.id === recorded && (!i.former_jobs?.length || i.former_jobs.at(-1) === slug)) || lastCard(list, (i) => !i.job && ((i.former_jobs || []).includes(slug) || (Boolean(i.report) && i.report === path)))
         // Where an applied report went: its card on the board, or the archive, or no card.
         const appliedWords = (reports) => {
           const id = applied(reports).id
@@ -8439,14 +8459,24 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           // A report never makes a card (0.15.0; it made ones titled with the job's slug). The card
           // that carried the job before its close gets the report and a status line, and stays
           // where it is; with none on the board, no card does. Either way the coordinator gets a note.
+          // A failed or blocked one reopens the card: Waiting, with the reason as its question
+          // (never a job's buttons), unless open cards under it hold it.
           if (closed || !found) {
+            const st = clean(report.status).toLowerCase()
+            const reopen = Boolean(found) && (st === "failed" || st === "blocked") && !heldBy(s, found).length
             s.reports[keyOf(false)] = { id: found?.id ?? archived?.id ?? null, at: now.toISOString() }
             if (found) {
+              if (reopen) {
+                moveItem(s, found, "waiting", now, woke)
+                dropOptions(found)
+                found.ask = shownAsk
+              }
               found.report = path
               found.updated = now.toISOString()
-              setStatus(s, found, "the job reported after it was closed: read its report", { only: true, by: me.pane || "" }, now)
+              const line = reopen ? `the job ${st === "failed" ? "failed" : "is blocked"}: it reported after it was closed; read its report` : "the job reported after it was closed: read its report"
+              setStatus(s, found, line, { only: true, by: me.pane || "" }, now)
             }
-            return { ...(found || archived || { id: null, title: `job ${slug}` }), late: { card: found || archived || null, archived: !found } }
+            return { ...(found || archived || { id: null, title: `job ${slug}` }), late: { card: found || archived || null, archived: !found, reopened: reopen } }
           }
           under = heldBy(s, found)
           const held = under.length > 0
@@ -8477,6 +8507,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         })
         const status = clean(report.status).toLowerCase()
         if (item.unchanged) out(item.words ? appliedWords(readBoard(file).reports) : `${item.id} unchanged (${label(item.column)}): ${item.title}`)
+        else if (item.late?.reopened) out(`${item.id} → ${label(item.column)}: ${item.title} (job ${slug} ${status === "failed" ? "failed" : "is blocked"} after it was closed; no new card)${shownAsk ? `\n  ask: ${shownAsk.replace(/\n/g, "\n  ask: ")}` : ""}`)
         else if (item.late) out(item.late.card && !item.late.archived ? `${item.id} stays ${label(item.column)}: ${item.title} (job ${slug} reported after it was closed; the report is on this card, no new card)` : `job ${slug}: no card carries it, so its report is on no card (a report never makes one); the coordinator is told`)
         else if (item.stays) out(`${item.id} stays done: ${item.title} (job ${slug}'s follow-up report needs nothing from the user; no new card)`)
         else if (under.length) out(`${item.id} stays in Doing: ${item.title} (it ${coverText(item, under)}; the job's ${status} report is stored on it, not applied)`)
@@ -8489,7 +8520,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // The card needs the coordinator's words, or its eyes: say so on stderr and in its inbox
         // (the wait script that runs this shows nobody its output).
         const text = item.late
-          ? lateNote(slug, item.late.card, item.late.archived, status, report, path)
+          ? lateNote(slug, item.late.reopened ? item : item.late.card, item.late.archived, status, report, path, item.late.reopened)
           : under.length
           ? heldNote(item, under, status, report)
           : [rewrote && rewriteNote(item, column, report), !answered && (column === "waiting" || numbered.length) && wordingNote(item, column, numbered, asked?.problems)].filter(Boolean).join(" ")
@@ -8614,6 +8645,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       }
       case "import": {
         only(opts, command)
+        if (me.role) throw usage(`import is the coordinator's and the user's: a ${me.role} doesn't bring cards in. Say in your job report what should go on the board`)
         const paths = rest.length ? rest : legacyBoards(process.cwd(), env)
         for (const line of runImport(file, paths, opts, { env, now, me })) out(line)
         if (!opts["dry-run"] && existsSync(file)) syncToken(file, env)
@@ -8631,6 +8663,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       case "restore": {
         only(opts, command)
         if (rest.length > 1) throw usage("usage: board.mjs restore [<backup>]")
+        if (me.role && rest.length) throw usage(`restore is the user's and the coordinator's: a ${me.role} doesn't put a backup back`)
         if (!rest.length) {
           const list = backupsOf(file)
           out(list.length ? ["backups (newest first; board.mjs restore <file>):", ...list.map((f) => `  ${f}`)].join("\n") : `no backups yet (${join(sideDir(file), "backups")})`)

@@ -592,7 +592,7 @@ test("job-report: a follow-up report for a job whose card is done adds no slug-t
   }
 })
 
-test("job-report after job-close: the report goes on the card that carried the job (by its former link, or the job's record), which stays where it is; never a new card", () => {
+test("job-report after job-close: the report goes on the card that carried the job (by its former link, or the job's record); a failed or blocked one reopens it in Waiting; never a new card", () => {
   const s = setup({ slug: "wan-check" })
   try {
     const state = join(s.base, "xdg")
@@ -611,17 +611,25 @@ test("job-report after job-close: the report goes on the card that carried the j
     // A late report (a rewrite with a different verdict, after the close).
     const late = join(s.base, "late.json")
     writeFileSync(late, JSON.stringify({ status: "blocked", summary: "Two tunnels undercount", needs_user: ["Decide whether to restart the poller"] }))
+    // A late done report: the card stays Done, with the report on it.
+    const fine = join(s.base, "fine.json")
+    writeFileSync(fine, JSON.stringify({ status: "done", summary: "Also checked the spare hub.", needs_user: [] }))
+    assert.match(run(at(5), "job-report", "wan-check", fine).stdout, /^1 stays done: Fix the export: build \(job wan-check reported after it was closed; the report is on this card, no new card\)/)
+    assert.deepEqual([cards()[0].column, cards()[0].report, cards()[0].now.text], ["done", fine, "the job reported after it was closed: read its report"])
+    assert.match(s.inbox().at(-1).text, /job wan-check finished \(Also checked the spare hub\)\. It reported after it was closed: the report is on card 1 \(Fix the export: build\), which stays done\./)
+    // A late blocked report: the card is back in Waiting with the reason; no new card.
     const out = run(at(10), "job-report", "wan-check", late)
-    assert.match(out.stdout, /^1 stays done: Fix the export: build \(job wan-check reported after it was closed; the report is on this card, no new card\)/)
+    assert.match(out.stdout, /^1 → waiting on you: Fix the export: build \(job wan-check is blocked after it was closed; no new card\)\n {2}ask: /)
     assert.equal(cards().length, 1, "no new card")
     const [card] = cards()
-    assert.deepEqual([card.column, card.report, card.now.text], ["done", late, "the job reported after it was closed: read its report"])
+    assert.deepEqual([card.column, card.report, card.job, card.now.text], ["waiting", late, "", "the job is blocked: it reported after it was closed; read its report"])
+    assert.match(card.ask, /Two tunnels undercount|Decide whether to restart the poller/)
     const note = s.inbox().at(-1)
     assert.equal(note.card, 1)
-    assert.match(note.text, /^\[job note\] wan-check — job wan-check is blocked \(Two tunnels undercount\)\. It asks: Decide whether to restart the poller\. It reported after it was closed: the report is on card 1 \(Fix the export: build\), which stays done\./)
+    assert.match(note.text, /^\[job note\] wan-check — job wan-check is blocked \(Two tunnels undercount\)\. It asks: Decide whether to restart the poller\. It reported after it was closed: card 1 \(Fix the export: build\) is back in waiting on you with the reason as its question\./)
     // Again: unchanged.
     const notes = s.inbox().length
-    assert.match(run(at(11), "job-report", "wan-check", late).stdout, /^1 unchanged \(done\): Fix the export: build/)
+    assert.match(run(at(11), "job-report", "wan-check", late).stdout, /^1 unchanged \(waiting on you\): Fix the export: build/)
     assert.equal(s.inbox().length, notes)
 
     // A card unlinked before 0.15.0 (no former link) and another report file: the job's record names it.
@@ -635,11 +643,12 @@ test("job-report after job-close: the report goes on the card that carried the j
     writeFileSync(join(jobs, "wan-check.closed-2026-10-22T10-00-00-000Z.json"), JSON.stringify({ slug: "wan-check", card: 1 }))
     const third = join(s.base, "third.json")
     writeFileSync(third, JSON.stringify({ status: "done", summary: "Rechecked: all match.", needs_user: [] }))
-    assert.match(run(at(13), "job-report", "wan-check", third).stdout, /^1 stays done: /)
+    assert.match(run(at(13), "job-report", "wan-check", third).stdout, /^1 stays waiting on you: /)
     assert.equal(cards().length, 2)
     assert.equal(cards().find((i) => i.id === 1).report, third)
 
     // A card linked to another job since is never taken: the report goes on no card.
+    run(at(14), "done", "1")
     run(at(14), "edit", "1", "--job", "other-job")
     const fourth = join(s.base, "fourth.json")
     writeFileSync(fourth, JSON.stringify({ status: "failed", summary: "Crashed." }))

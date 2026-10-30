@@ -156,12 +156,17 @@ itself out again at once.
   asking`) or takes the mark off (`Ask before starting`). A marked card shows `»` and `starts
   without asking` in the Queue, and the coordinator starts its job without the keyword check, so
   a read-only check that mentions "live", or a title that says "merge" in passing, isn't sent
-  back as a question. Still a question, marked or not: a title whose action starts with Deploy,
-  Merge or Release (`App: merge the fix`), and a card that asks for access, IAM, secrets,
-  credentials, settings, DNS or deleting data. The coordinator still never merges, deploys or
-  releases because a card is queued. Only you set the mark, from the pane: no command sets it, so
-  neither a job nor the coordinator can. It holds for the card as you marked it: an edit of its
-  title or description, a retag or a move out of the Queue ends it. **Only you and the
+  back as a question. Still a question when marked: any part of the title (split at `: ` or a
+  dash) that starts with deploy, merge, release, ship, publish, push, roll out, cut a release,
+  tag, promote, go live, delete, drop, purge, wipe or truncate (`Merge: login fix: final tidy`);
+  a card that asks for access, IAM, secrets, credentials, keys, tokens, `sudo`, settings or
+  DNS; and one that deletes or drops data, force-pushes or `rm -rf`s. Release notes are never
+  asked. These are keyword checks, a safety net: read the card before you mark it. The
+  coordinator still never merges, deploys or releases because a card is queued. Only you set the
+  mark, from the pane: no command sets it, so neither a job nor the coordinator can, and
+  `import` and `restore` drop it (and put queued cards they bring in into To do); a job can run
+  neither. It holds for the card as you marked it: an edit of its title or description or a
+  retag removes it (editing back doesn't restore it), and so does a move out of the Queue. **Only you and the
   coordinator write the Queue**: a job's pane can't add to it, move a card into it, reorder it,
   or edit or retag a queued card (the CLI refuses, and the job skill's guard blocks the first
   two). The Queue sits
@@ -775,8 +780,9 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    `former_jobs`), a late report goes on the card that carried the job (that link, the card with
    the same report file, or the card in the job skill's record of the job,
    `~/.local/state/job-skill/jobs/<slug>.json` or its newest `<slug>.closed-*.json`), never on a
-   card linked to another job since. That card stays where it is, with the report and the status
-   line `the job reported after it was closed: read its report`, and you get a `[job note]`. With
+   card linked to another job since. A `failed` or `blocked` report reopens that card in Waiting
+   with the reason; any other report leaves it where it is, with the report and the status line
+   `the job reported after it was closed: read its report`. Either way you get a `[job note]`. With
    no such card on the board (a job opened by hand, an archived card) no card gets the report:
    you get a `[job note]` with its status, summary and path, and add a card yourself if it needs
    one.

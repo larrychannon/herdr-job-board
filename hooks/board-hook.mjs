@@ -35,8 +35,8 @@
 //                     question (always a question when its title or description asks for a merge,
 //                     deploy, release, production, settings or access change; 0.15.0: a card the
 //                     user marked "start without asking" skips that word check, except a title
-//                     that starts with deploy, merge or release, or access, IAM, secrets,
-//                     settings or deleting data). Each card is handed
+//                     part that starts with a risky action, or access, keys, secrets, settings,
+//                     force-pushing or deleting data). Each card is handed
 //                     over once as it is (queue.json): one still queued at a later stop didn't
 //                     start, and isn't handed over again until edited or moved back in. After a
 //                     Queue block (stop_hook_active) the next stop may hand over the next card.
@@ -564,7 +564,7 @@ export const offeredAlready = (card, offers) => offers[String(card.id)]?.sig ===
 // whose title or description, anywhere in it, asks for one of these is handed over as a question
 // for the user instead. A keyword check, on the safe side: a word in passing makes a question too.
 // The user's "start without asking" mark (0.15.0) skips the wording ones (WORDING), never the
-// access ones (ALWAYS_ASK) nor a title that starts with Deploy, Merge or Release (asksAlways).
+// access ones (ALWAYS_ASK); a marked card is checked for risky actions instead (risky, MARKED_ASK).
 const WORDING = [
   /\bmerg(?:e|es|ed|ing)\b/i,
   /\bdeploy(?:s|ed|ing|ment|ments)?\b/i,
@@ -576,26 +576,36 @@ const WORDING = [
   /\broll(?:s|ed|ing)?[ -]?outs?\b/i,
   /\btag(?:s|ged|ging)?\s+(?:and\s+push|the\s+release|v?\d)/i,
 ]
-// Access, secrets, settings and deleting data: asked even on a card the user marked.
+// Access, secrets, settings and deleting data: asked whether the user marked the card or not.
 const ALWAYS_ASK = [
   /\bIAM\b|\bpermissions?\b|\bgrant(?:s|ed|ing)?\b|\b(?:admin|write|root|owner)\s+(?:access|rights|role)\b|\baccess\s+(?:to|for)\b/i,
   /\b(?:secrets?|credentials?|passwords?|api[ -]?keys?|access[ -]tokens?)\b|\brotat(?:e|es|ed|ing)\b/i,
   /\bsettings\b|\bDNS\b/i,
   /\bdelet(?:e|es|ed|ing)\b[^.\n]*\b(?:branch(?:es)?|database|bucket|records?|users?)\b/i,
 ]
-// A title whose action (after its last ": ", else the whole title) starts with a deploy, merge or
-// release: "App: merge the fix", "Release v2". Not a name ("Release Notes Manager: build the
-// export") nor release notes ("Firmware 8.5: release notes for the fixed bugs").
-const STARTS_RISKY = /^\s*(?:deploy(?:s|ing)?\b|merg(?:e|es|ing)\b|releas(?:e|es|ing)\b(?!\s+notes?\b))/i
-const asksAlways = (title, desc) => {
-  const t = String(title ?? "")
-  const action = t.includes(": ") ? t.slice(t.lastIndexOf(": ") + 2) : t
-  return deploysTitle(t) || STARTS_RISKY.test(action) || ALWAYS_ASK.some((re) => re.test(`${t}\n${String(desc ?? "")}`))
-}
+// On a card the user marked, the word check above is skipped, so these are asked as well
+// (0.15.0): destroying data, force-pushing, keys, tokens and root, in the title or description.
+const MARKED_ASK = [
+  /\b(?:delet|drop|purg|wip|truncat|eras|destroy|remov)(?:e|es|ed|ing|s)?\b[^.\n]*\b(?:branch(?:es)?|database|db|tables?|buckets?|records?|users?|data|backups?|rows?|volumes?|snapshots?)\b/i,
+  /\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r|\bforce[- ]?push|\bpush\s+(?:-f|--force)\b|\breset\s+--hard\b/i,
+  /\b(?:ssh|gpg|deploy)[ -]?keys?\b|\bsudo\b|\btokens?\b|\bconfig(?:uration)?\s+(?:for|on|of|in)\s+(?:the\s+)?(?:prod(?:uction)?|live)\b/i,
+]
+// A title part that starts with an action never started without asking: "App: merge the fix",
+// "Release v2", "Merge: login fix: final tidy", "App — ship it". Each part of the title counts
+// (split at ": ", " — ", " – ", " - "). Release (or publish) notes are writing, not a release.
+const RISKY_START = new RegExp(
+  "^(?:re)?(?:deploy(?:s|ing)?|merg(?:e|es|ing)|releas(?:e|es|ing)(?!\\s+notes?\\b)|publish(?:es|ing)?(?!\\s+notes?\\b)|ship(?:s|ping)?|push(?:es|ing)?|" +
+    "roll(?:s|ing)?[ -]?out|rollout|cut(?:s|ting)?\\s+(?:a\\s+|the\\s+)?(?:new\\s+)?release|tag(?:s|ging)?|promot(?:e|es|ing)|go(?:es|ing)?[ -]live|" +
+    "delet(?:e|es|ing)|drop(?:s|ping)?|purg(?:e|es|ing)|wip(?:e|es|ing)|truncat(?:e|es|ing))\\b",
+  "i",
+)
+const titleParts = (title) => String(title ?? "").split(/:\s+|\s+[—–-]\s+/).map((p) => p.trim()).filter(Boolean)
+const risky = (title) => titleParts(title).some((p) => RISKY_START.test(p))
 /** Whether a card is handed over only as a question; `marked`: the user's "start without asking". */
 export const needsYes = (title, desc = "", marked = false) => {
   const text = `${String(title ?? "")}\n${String(desc ?? "")}`
-  return asksAlways(title, desc) || (!marked && WORDING.some((re) => re.test(text)))
+  if (deploysTitle(String(title ?? "")) || ALWAYS_ASK.some((re) => re.test(text))) return true
+  return marked ? risky(title) || MARKED_ASK.some((re) => re.test(text)) : WORDING.some((re) => re.test(text))
 }
 
 const roomWords = (r) =>
@@ -654,7 +664,7 @@ export function queueReason(state, card, room, total, count, cli = BOARD_CLI) {
   const open = `Start its job on this card with the job skill (job-open.mjs <repo> <slug> --brief … --report … --id ${id}: the card goes to Doing)`
   const marked = startMarked(card)
   if (marked && needsYes(card.title, card.desc, true)) {
-    return `${head}The user marked it "start without asking", but its title starts with a deploy, merge or release, or it asks for access, IAM, secrets, settings or deleting data, which the mark never covers: move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
+    return `${head}The user marked it "start without asking", but its title starts with a deploy, merge, release, push, roll-out, tag, go-live or delete, or it asks for access, IAM, secrets, keys, settings, force-pushing or deleting data, which the mark never covers: move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
   }
   if (marked) {
     return (
