@@ -1,0 +1,16 @@
+# job-rules v1
+# Codex rules for the job skill (~/.claude/skills/job), copied to .codex/rules/job.rules by
+# `/job init`. Do not edit the copy in a repo: change the skill's templates/codex-job.rules and
+# re-run `/job init` (`/job init --check` reports an old or edited copy).
+#
+# Codex's default sandbox can't reach the Herdr socket and can't write to .git or to the
+# worktrees next to the main checkout, so a Codex coordinator runs these commands outside the
+# sandbox, without asking. Only these prefixes, and only as plain commands (a pipe or an
+# `&& echo` keeps the whole line in the sandbox); everything else keeps the sandbox. The job
+# guard (.codex/hooks.json) still checks every one of them, so a worker still can't start
+# agents or tabs.
+prefix_rule(pattern=["herdr", "agent", ["list", "get", "start", "prompt"]], decision="allow")
+prefix_rule(pattern=["herdr", "tab", "create"], decision="allow")
+prefix_rule(pattern=["herdr", "pane", ["rename", "read"]], decision="allow")
+prefix_rule(pattern=["git", "fetch"], decision="allow")
+prefix_rule(pattern=["git", "worktree", ["add", "remove"]], decision="allow")
