@@ -1,5 +1,6 @@
 ===== inbox 95x40 · all =====
 [1mJob board · all projects[0m[2m · [0m[1;33m4 need you[0m                                                     [2m11:57[0m
+[2mTab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit[0m
 [2mProjects: [0m[1m▸[0m[1mall[0m  [35msfc[0m[1;33m 3[0m  [36mai[0m[1;33m 1[0m  [34mherdr[0m  [32mhome[0m                                       [2mp filter · P all[0m
 
 [1m▸ [0m[1;7;33mWAITING ON YOU (4)[0m [33m──────────────────────────────────────────────────────────────────────────[0m
@@ -38,10 +39,10 @@
 
 
 
-[2mTab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit[0m
 
 ===== compact 60x30 · p p (ai), Space =====
 [1mai-config[0m[2m · [0m[1;33m1 needs you[0m[2m (+3 other)[0m                     [2m11:57[0m
+[2mTab · ↑↓ · Space · Enter · ? keys · p proj · P all · q[0m
 [1mall[0m [35msfc[0m[1;33m 3[0m [1m▸[0m[36mai[0m[1;33m 1[0m [34mherd[0m [32mhome[0m                              [2mp · P[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1 · +3 other)[0m [33m────────────────────────────[0m
 [1m▸[0m[1;7m204[0m [1;33m![0m [36mai[0m [1mGit access on the LXC: narrower tokens inste…[0m [2m16 h[0m
@@ -70,10 +71,10 @@
 
 
 
-[2mTab · ↑↓ · Space · Enter · p proj · P all · q[0m
 
 ===== wide 160x45 · all =====
 [1mJob board · all projects[0m                                                                                                                                   [2m11:57[0m
+[2mTab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit[0m
 [2mProjects: [0m[1m▸[0m[1mall[0m  [35msfc[0m[1;33m 3[0m  [36mai[0m[1;33m 1[0m  [34mherdr[0m  [32mhome[0m                                                                                                        [2mp filter · P all[0m
 
 [1m▸ [0m[1;7;33mWAITING ON YOU (4)[0m
@@ -113,9 +114,8 @@
                                                                                  [2m200 [0m[32mhome [0m [1m3CX SSL certificate: renew before ~25 Oct 2026[0m                  [2m26 h[0m
 
                                                                                  [2m206 [0m[36mai   [0m [1mJob board 0.4.0 follow-ups in ai-config and the job skill[0m       [2m13 h[0m
+                                                                                 [2m↓ 2 more[0m
 
-                                                                                 [2m207 [0m[34mherdr[0m [1mBoard key binding + sidebar count (in 0.5.0)[0m                   [2m3 min[0m
-                                                                                 [2m↓ 1 more[0m
 [2;32mDONE · 2 today ▸[0m
-[2mTab section · ↑↓ card · Enter details · c copy · p project · d done · m mouse: board · q quit[0m
+
 

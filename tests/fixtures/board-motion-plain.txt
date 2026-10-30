@@ -1,5 +1,6 @@
 ===== Done folded · frame 0 · 120 columns =====
 Job board · all projects                                                                                           10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -36,11 +37,11 @@ DOING (4)                                                    TO DO (1)
 
 
 
-
 DONE · 1 today ▸
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+
 ===== Done open (d) · frame 3 · 120 columns =====
 Job board · all projects                                                                                           10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -79,9 +80,9 @@ DOING (4)                                TO DO (1)                              
 
 
 
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== Done folded · frame 0 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸1 ! Old question: pick a name                                                    2 days
@@ -120,9 +121,9 @@ DONE · 1 today ▸
 
 
 
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 ===== Done open (d) · frame 3 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸1 ! Old question: pick a name                                                    2 days
@@ -161,4 +162,3 @@ DONE (1) ▾ ──────────────────────�
 
 
 
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit

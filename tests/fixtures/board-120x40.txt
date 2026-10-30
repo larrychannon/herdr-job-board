@@ -1,4 +1,5 @@
 Job board · all projects                                                                                           10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (5)
 1▸Login page redesign: approve                  2 h 20 min   2 Search filters mockup: approve                1 h 30 min
@@ -35,6 +36,5 @@ DOING (2)                                                    TO DO (4)
                                                                 The current version reaches end of life next month.
 
 
-
 DONE · 1 today ▸
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+

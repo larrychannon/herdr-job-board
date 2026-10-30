@@ -1,4 +1,5 @@
 Job board · all projects                                                                                           10:30
+Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -35,6 +36,5 @@ DOING (2)                                                    TO DO (1)
 
 
 
-
 DONE · 1 today ▸
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+

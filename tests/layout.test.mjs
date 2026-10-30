@@ -5,7 +5,7 @@ import "./guard.mjs"
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { buildView, emojiOn, formatAge, handleInput, layoutOf, renderBoard, SECTION_EMOJI, textWidth, wrap } from "../board.mjs"
+import { buildView, emojiOn, formatAge, handleInput, layoutOf, parseInput, renderBoard, SECTION_EMOJI, textWidth, wrap } from "../board.mjs"
 
 const NOW = new Date("2026-10-13T10:30:00Z")
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
@@ -69,6 +69,7 @@ test("every size from 40x15 to 200x60: exactly the pane's lines, none wider, and
           const lines = d.text.split("\n")
           const size = `${width}x${height} ${d.layout} ${JSON.stringify(scroll)}${color ? " colour" : ""}`
           assert.equal(lines.length, height, `${size}: ${height} lines`)
+          assert.equal(lines.at(-1), "", `${size}: the last row is empty (a phone's terminal keeps it in view)`)
           for (const l of lines) assert.ok(textWidth(plain(l)) <= width, `${size}: wider than ${width}: ${plain(l)}`)
           if (!scroll.doneOpen) assert.ok(lines.some((l) => plain(l).includes("DONE · 2 today ▸")), `${size}: Done's folded line`)
           if (color) continue
@@ -137,10 +138,10 @@ test("compact: rows only, no blank lines; Space peeks at the selected card; ← 
   assert.equal(d.layout, "compact")
   const lines = plain(d.text).split("\n")
   assert.match(lines[0], /^4 need you +\d\d:\d\d$|^Job board · 4 need you/)
-  assert.match(lines[1], /^▸ WAITING ON YOU \(4\) ─+$/, "no blank line after the title")
+  assert.match(lines[1], /^Tab · ↑↓ · Space peek · Enter/, "the key line under the title")
+  assert.match(lines[2], /^▸ WAITING ON YOU \(4\) ─+$/, "no blank line after the title and its key line")
   assert.ok(!lines.slice(1, lines.indexOf("DONE · 2 today ▸")).includes(""), "no blank line between sections")
   assert.equal(d.buttons.length, 0, "no card open")
-  assert.match(lines.at(-1), /^Tab · ↑↓ · Space peek · Enter/)
   assert.equal(handleInput(d.scroll, key("right"), d).scroll.selected, "doing", "→ moves on: the row's buttons aren't on screen")
   d = draw(state, { width: 60, height: 30, scroll: handleInput(d.scroll, key("peek"), d).scroll })
   assert.equal(d.open, true)
@@ -245,4 +246,39 @@ test("live resize: the same board re-laid out at each new size, the selection an
     assert.ok(d.cardHits.some((c) => c.key === card), `${width}x${height}: still in view`)
     if (d.layout === "inbox") assert.equal(d.open, true, `${width}x${height}: still open`)
   }
+})
+
+test("the key line is under the title at every width, and the last row is empty; on a phone it shortens to ? keys, and ? shows every key", () => {
+  const state = board()
+  for (const [width, height] of [[160, 45], [95, 40], [60, 30], [40, 24], [24, 20]]) {
+    const d = draw(state, { width, height })
+    const lines = plain(d.text).split("\n")
+    assert.equal(lines.length, height, `${width}x${height}: the pane's height`)
+    assert.match(lines[1], /q(?: quit)?$/, `${width}x${height}: the key line is the second row: ${lines[1]}`)
+    assert.equal(lines.at(-1), "", `${width}x${height}: nothing on the last row`)
+    assert.ok(textWidth(lines[1]) <= width, `${width}: one line`)
+  }
+  const phone = draw(state, { width: 30, height: 20 })
+  assert.equal(plain(phone.text).split("\n")[1], "? keys · q quit")
+  // ? opens the list under the title (the rows below move down, and what they hit with them); ? or Esc hides it.
+  assert.deepEqual(parseInput("?"), [key("help")])
+  const opened = handleInput(phone.scroll, key("help"), phone)
+  assert.equal(opened.scroll.help, true)
+  const help = draw(state, { width: 30, height: 20, scroll: opened.scroll })
+  const rows = plain(help.text).split("\n")
+  assert.equal(rows.length, 20)
+  assert.equal(rows.at(-1), "", "the last row stays empty with the list open")
+  assert.match(rows[1], /^Keys \(\? or Esc hides them\):$/)
+  const last = rows.findIndex((l, i) => i > 1 && /q quit$/.test(l))
+  const list = rows.slice(2, last + 1).join(" ")
+  for (const k of ["Tab / Shift-Tab section", "Enter details", "c copy", "t go to the job's tab", "m mouse", "p project", "? hide this list", "q quit"]) assert.ok(list.includes(k), `the list has ${k}`)
+  // The list takes rows 2 to `last` where the key line took row 2 alone.
+  const shift = last - 1
+  const header = (d) => d.regions.waiting.top
+  assert.equal(header(help) - header(phone), shift, "the sections and their mouse places move down with the list")
+  assert.equal(handleInput(opened.scroll, key("help"), help).scroll.help, false, "? again hides it")
+  assert.equal(handleInput(opened.scroll, key("escape"), help).scroll.help, false, "Esc hides it")
+  // A card's details stay open under Esc while the list is shown: Esc hides the list first.
+  const detail = { ...opened.scroll, detail: { key: "#181", offset: 0 } }
+  assert.ok(handleInput(detail, key("escape"), help).scroll.detail, "the details stay")
 })

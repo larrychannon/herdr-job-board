@@ -167,8 +167,8 @@ test("wide: a click that closes the details uncovers buttons; a click on them ri
 })
 
 test("the details: a double click on the question, or a triple click on a lower row, presses no button that moved under it", () => {
-  // (a) compact 60x16, card 1's details: the click on the question scrolls the panel, and "< Yes ✓ >" lands under the pointer.
-  const a = drawer(recheckBoard(2, 0), 60, 16)
+  // (a) compact 60x17, card 1's details: the click on the question scrolls the panel, and "< Yes ✓ >" lands under the pointer.
+  const a = drawer(recheckBoard(2, 0), 60, 17)
   let d = settle(a, { selected: "waiting", detail: { key: "#1", offset: 0 } })
   const q = d.askHits.find((h) => h.panel)
   let r = handleInput(d.scroll, { type: "click", x: q.x0 + 1, y: q.y, at: 0 }, d)
@@ -176,10 +176,10 @@ test("the details: a double click on the question, or a triple click on a lower 
   d = a(r.scroll)
   assert.ok(buttonAt(d, q.x0 + 1, q.y)?.panel, "a panel button is under the pointer now")
   for (const t of [80, 450]) assert.equal(handleInput(d.scroll, { type: "click", x: q.x0 + 1, y: q.y, at: t }, d).action, null, `+${t} ms: nothing sent`)
-  // (b) wide 130x44, 12 cards: a double click on card 12's row opens its details, whose buttons land under the pointer.
-  const b = drawer(recheckBoard(12, 0), 130, 44)
+  // (b) wide 130x45, 12 cards: a double click on card 12's row opens its details, whose buttons land under the pointer.
+  const b = drawer(recheckBoard(12, 0), 130, 45)
   d = settle(b, { selected: "waiting", card: "#11" })
-  const y = 29
+  const y = 30
   const x = 10
   r = handleInput(d.scroll, { type: "click", x, y, at: 0 }, d)
   d = b(r.scroll)
