@@ -159,6 +159,9 @@ test("a Waiting sub-task under a To do parent is in Waiting, 'for #300 …', cou
   assert.match(text, /^Job board · 1 needs you/)
   assert.equal(tokenText(view(state)), "1 doing · 1 needs you · 2 to do")
   assert.match(reminder(state), /: #301 "Phone alerts move: approve the cut-over" \(for #300 "Release checklist: ship it"\)\. Close/)
+  // Under a deploy card (0.14.0) the reminder says the card waits for the deploy.
+  state.items[0].title = "Release checklist: deploy it"
+  assert.match(reminder(state), /: #301 "Phone alerts move: approve the cut-over" \(waits for the deploy on #300 "Release checklist: deploy it"\)\. Close/)
 })
 
 test("a Waiting sub-task of a Doing parent is selectable in Waiting: ↓ reaches it, → chooses its buttons, Enter sends, a click presses", () => {

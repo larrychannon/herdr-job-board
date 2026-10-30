@@ -7699,7 +7699,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         for (const w of warnings) err(w)
         out(`${item.id} → ${label(column)}: ${item.title}`)
         for (const parent of woke) out(readyNote(parent))
-        if (open.length) err(`board: #${item.id} had open cards for it: ${idList(open)}. They keep their link, shown as "for #${item.id} ${shortTitle(item.title)} (done)".`)
+        if (open.length) err(`board: #${item.id} had open cards for it: ${idList(open)}. They keep their link, shown as "${deploysTitle(item.title) ? "deployed with" : "for"} #${item.id} ${shortTitle(item.title)} (done)".`)
         return 0
       }
       case "edit": {

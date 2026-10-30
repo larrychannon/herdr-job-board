@@ -533,7 +533,7 @@ test("under a deploy card (0.14.0): the merged cards wait for the deploy, and th
     assert.match(details(2), /\n {2}Waits for the deploy on #1 Release Notes Manager\n/)
     assert.match(details(1), /\n {2}Deploys: PDF file names \[waiting on you\] · Forum posts \[to do\]\n/)
     // The deploy done: its cards say they went out with it.
-    t.ok(["done", "1"])
+    assert.match(t.run(["done", "1"]).stderr, /shown as "deployed with #1 Release Notes Manager \(done\)"/)
     assert.match(details(2), /Deployed with #1 Release Notes Manager \(done\)/)
     // A card under any other card is still a part of it, and that card waits on it.
     t.ok(["add", "doing", "Node health: goes live"])
