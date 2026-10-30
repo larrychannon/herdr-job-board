@@ -10,8 +10,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
   Question: Approve the whole release (merges, tag v1.4,
 ↓ card cut off: open it for the rest
 
-QUEUE · 0 ▸
-
 DOING (2)                                                    TO DO (3) ▾
 2 Search filters: build                             25 min   4 Export to CSV                                      1 min
   The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
@@ -20,6 +18,8 @@ DOING (2)                                                    TO DO (3) ▾
 3 Docs site: fix links                              10 min   5 Dark mode                                          1 min
   Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
                                                              ↓ 1 more
+
+QUEUE · 0 ▸
 DONE · 0 today ▸
 
 ===== details, → chooses and scrolls to it · 120x23 wide =====
@@ -34,7 +34,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Question: Approve the whole release (merges, tag v1.4,
 ↓ card cut off: open it for the rest
 
-QUEUE · 0 ▸
+DOING (2)                                                    TO DO (3) ▾
 ── card 1 · ↑ 5 lines above ────────────────────────────────────────────────────────────────────────────────────────────
   mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
 
@@ -58,8 +58,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
 ↓ card cut off: open it for the rest
 
-QUEUE · 0 ▸
-
 DOING (2)                                    TO DO (3) ▾
 2 Search filters: build             25 min   4 Export to CSV                      1 min
   The filter panel from the approved           Let people download any table as CSV;
@@ -68,6 +66,8 @@ DOING (2)                                    TO DO (3) ▾
 3 Docs site: fix links              10 min
   Check every link on the new docs site
   and fix the 404s.
+
+QUEUE · 0 ▸
 DONE · 0 today ▸
 
 ===== details, → chooses and scrolls to it · 88x23 wide =====
@@ -82,7 +82,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
 ↓ card cut off: open it for the rest
 
-QUEUE · 0 ▸
+DOING (2)                                    TO DO (3) ▾
 ── card 1 · ↑ 6 lines above ────────────────────────────────────────────────────────────
   main), tag v1.4, deploy, then run the backfill.
 
@@ -104,9 +104,9 @@ Tab · ↑↓ · Space peek · Enter · t to do · d done · q
      #16 dark mode). Plan: merge in order (each catches up …
      Question: Approve the whole release (merges, tag
 ↓ card cut off: open it for the rest
-QUEUE · 0 ▸
 DOING (2) ──────────────────────────────────────────────────
 ↓ 2 more
+QUEUE · 0 ▸
 TO DO (3) ▾ ────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸
@@ -138,9 +138,9 @@ Tab · ↑↓ · Space peek · Enter · c copy · u queue · t to do · d done �
      v1.4, deploy, then run the backfill.
      Question: Approve the whole release (merges, tag v1.4, deploy to production, then the
 ↓ card cut off: open it for the rest
-QUEUE · 0 ▸
 DOING (2) ─────────────────────────────────────────────────────────────────────────────────────
 ↓ 2 more
+QUEUE · 0 ▸
 TO DO (3) ▾ ───────────────────────────────────────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸

@@ -15,10 +15,10 @@
 [1m [0m[2m192[0m [1;33m![0m [35msfc  [0m [1mOne Analytics page PR #146: merge[0m                                           [31m2 days[0m
 [1m [0m[2m204[0m [1;33m![0m [36mai   [0m [1mGit access on the LXC: narrower tokens instead of Touch-ID: pick[0m              [2m16 h[0m
 
-[1;36mQUEUE · 0 ▸[0m
-
 [1;34mDOING (1)[0m [34m─────────────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m211[0m   [34mherdr[0m Job board 0.5.0, one board for all projects: plan            [32mworking[0m[32m [=   ][0m  [2m3 min[0m
+
+[1;36mQUEUE · 0 ▸[0m
 
 [1mTO DO (10) ▾[0m [2m──────────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m140[0m   [35msfc  [0m Bring sfc-app-track into sfc-integration                                    [2m3 days[0m
@@ -56,8 +56,8 @@
           [33mno ai coordinator is running: a press asks first,[0m
           [33mthen sends to the board's coordinator (sfc, pane[0m
           [33mw4:p6)[0m
-[1;36mQUEUE · 0 ▸[0m
 [1mDOING (0 · +1 other)[0m[2m · nothing running here[0m [34m────────────────[0m
+[1;36mQUEUE · 0 ▸[0m
 [1mTO DO (2 · +8 other) ▾[0m [2m─────────────────────────────────────[0m
 [1m [0m[2m206[0m   [36mai[0m Job board 0.4.0 follow-ups in ai-config and … [2m13 h[0m
 [1m [0m[2m209[0m   [36mai[0m Coordinator auto-restart supervisor (parked) [2m9 min[0m
@@ -89,8 +89,6 @@
           [2manswers go to: sfc coordinator (w4:p6)[0m
 [2m↓ 2 more[0m
 
-[1;36mQUEUE · 0 ▸[0m
-
 [1;34mDOING (1)[0m                                                                        [1mTO DO (10) ▾[0m
 [2m211 [0m[34mherdr[0m [1mJob board 0.5.0, one board for all projects: plan[0m              [2m3 min[0m   [2m140 [0m[35msfc  [0m [1mBring sfc-app-track into sfc-integration[0m                      [2m3 days[0m
           [32mworking[0m[32m [=   ][0m
@@ -116,6 +114,8 @@
 
 
 
+
+[1;36mQUEUE · 0 ▸[0m
 [2;32mDONE · 2 today ▸[0m
 
 

@@ -47,7 +47,7 @@ through by itself.
   choice holds while the pane runs. `t` used to go to the selected card's job tab from the
   board: it still does in a card's details (`Enter`, then `t`). `ls` shows To do whole, as
   before. The key line and `?` list `t to do`.
-- **The Queue**: a column between Waiting and Doing for To do cards the coordinator starts by
+- **The Queue**: a column between Doing and To do for To do cards the coordinator starts by
   itself, top first. A To do card's details have `Add to the Queue` (`u`, or a click; a queued
   card's `Back to To do`); `move <ref> queue` and `add queue …` work too. A card goes in last;
   `Shift+↑` `Shift+↓` and `order` reorder it. The pane shows it open while it has cards

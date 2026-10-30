@@ -1082,7 +1082,7 @@ test("the working bar: only on screen counts (scrolled away or under the details
     assert.equal(counted(draw(null)), 0, "Herdr unreadable: no live status at all")
     // The details panel covers the lower half: bars under it don't count.
     assert.equal(counted(draw(motionAgents, { detail: { key: "#1", offset: 0 } })), 1, "one working card above the panel, one under it")
-    assert.equal(counted(draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 24 })), 0, "both under it")
+    assert.equal(counted(draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 20 })), 0, "both under it")
     assert.ok(counted(draw(motionAgents, {}, { height: 24 })) >= 1, "while without it one shows")
     // Scrolled so the working cards are above the view: none on screen. (Doing: 3 search-ui, 4
     // docs-links, 7 api-client, 8 release-notes; a short pane shows one Doing card at a time.)
@@ -1093,7 +1093,7 @@ test("the working bar: only on screen counts (scrolled away or under the details
     // The timer: started once while a bar shows, stopped when none does, never two at once.
     const calls = []
     const timer = animationTimer(() => {}, { start: (fn, ms) => (calls.push(["start", ms]), calls.length), stop: (h) => calls.push(["stop", h]) })
-    for (const drawn of [draw(motionAgents), draw(motionAgents), draw(idle), draw(idle), draw(motionAgents), draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 24 })]) timer.sync(drawn.animated > 0)
+    for (const drawn of [draw(motionAgents), draw(motionAgents), draw(idle), draw(idle), draw(motionAgents), draw(motionAgents, { detail: { key: "#1", offset: 0 } }, { height: 20 })]) timer.sync(drawn.animated > 0)
     assert.deepEqual(calls, [["start", TICK_MS], ["stop", 1], ["start", TICK_MS], ["stop", 3]])
     assert.equal(timer.running, false)
     assert.ok(TICK_MS >= 125 && TICK_MS <= 250, "4 to 8 frames a second")

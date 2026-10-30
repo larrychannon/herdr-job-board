@@ -11,11 +11,11 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
   4 ! Docs move (PR #14): merge                                                   45 min
   5 ! Deploy v1.4: go                                                             30 min
 
-QUEUE · 0 ▸
-
 DOING (2) ──────────────────────────────────────────────────────────────────────────────
   6   Search filters: build                                              working  25 min
   7   Docs site: fix broken links                                         working  2 min
+
+QUEUE · 0 ▸
 
 TO DO (4) ▾ ────────────────────────────────────────────────────────────────────────────
   8   Export to CSV                                                                1 min

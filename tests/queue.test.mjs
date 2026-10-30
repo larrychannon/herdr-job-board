@@ -1,7 +1,7 @@
 // Run: node --test (from the repo root)
 // The Queue (0.14.0): To do cards the user queues (u in a card's details, or move <id> queue) and
 // orders; the coordinator's hooks hand them over, top first, while a repo has room for a job.
-// The pane shows it between Waiting and Doing, open while it has cards, folded while empty.
+// The pane shows it between Doing and To do, open while it has cards, folded while empty.
 // Herdr is the fake (tests/fixtures/fake-herdr.mjs); the store, HOME and the repos are scratch.
 import "./guard.mjs"
 import assert from "node:assert/strict"
@@ -51,28 +51,30 @@ const linesOf = (drawn) => plain(drawn.text).split("\n")
 const row = (lines, re) => lines.findIndex((l) => re.test(l))
 
 for (const layout of ["wide", "inbox", "compact"]) {
-  test(`${layout}: the Queue sits between Waiting and Doing, open with its cards top first; u folds it to "QUEUE · 2 ▸" and opens it again`, () => {
+  test(`${layout}: the Queue sits between Doing and To do, open with its cards top first; u folds it to "QUEUE · 2 ▸" and opens it again`, () => {
     const s = board()
     const open = draw(s, { layout })
     const lines = linesOf(open)
     const waiting = row(lines, /WAITING ON YOU/)
     const queue = row(lines, /QUEUE \(2\) ▾/)
     const doing = row(lines, /DOING \(1\)/)
-    assert.ok(waiting >= 0 && waiting < queue && queue < doing, open.text)
+    const todo = row(lines, /TO DO/)
+    assert.ok(waiting >= 0 && waiting < doing && doing < queue && queue < todo, open.text)
     const first = row(lines, /Queued task 0/)
     const second = row(lines, /Queued task 1/)
-    assert.ok(queue < first && first < second && second < doing, "its cards, top first, one row each")
+    assert.ok(queue < first && first < second && second < todo, "its cards, top first, one row each")
     assert.equal(open.queueToggle.y, queue + 1)
-    // Tab goes Waiting → Queue → Doing.
-    assert.equal(feed(s, [key("next")], { layout }).drawn.scroll.selected, "queue")
+    // Tab goes Waiting → Doing → Queue.
+    assert.equal(feed(s, [key("next")], { layout }).drawn.scroll.selected, "doing")
+    assert.equal(feed(s, [key("next"), key("next")], { layout }).drawn.scroll.selected, "queue")
     // u folds it: one line in the same place; Tab skips it.
     const { drawn: folded } = feed(s, [key("queue")], { layout })
     assert.equal(folded.scroll.queueOpen, false)
     const flines = linesOf(folded)
     const line = row(flines, /^QUEUE · 2 ▸$/)
-    assert.ok(line > row(flines, /WAITING ON YOU/) && line < row(flines, /DOING \(1\)/), folded.text)
+    assert.ok(line > row(flines, /DOING \(1\)/) && line < row(flines, /TO DO/), folded.text)
     assert.ok(!plain(folded.text).includes("Queued task"))
-    assert.equal(feed(s, [key("queue"), key("next")], { layout }).drawn.scroll.selected, "doing")
+    assert.notEqual(feed(s, [key("queue"), key("next"), key("next")], { layout }).drawn.scroll.selected, "queue")
     // u (or a click on the line) opens it again.
     assert.equal(feed(s, [key("queue"), key("queue")], { layout }).drawn.scroll.queueOpen, true)
     const t = folded.queueToggle
@@ -85,8 +87,8 @@ for (const layout of ["wide", "inbox", "compact"]) {
     const drawn = draw(s, { layout })
     const lines = linesOf(drawn)
     const line = row(lines, /^QUEUE · 0 ▸$/)
-    assert.ok(line > row(lines, /WAITING ON YOU/) && line < row(lines, /DOING \(1\)/), drawn.text)
-    assert.equal(feed(s, [key("next")], { layout }).drawn.scroll.selected, "doing", "Tab skips it")
+    assert.ok(line > row(lines, /DOING \(1\)/) && line < row(lines, /TO DO/), drawn.text)
+    assert.notEqual(feed(s, [key("next"), key("next")], { layout }).drawn.scroll.selected, "queue", "Tab skips it")
     const opened = feed(s, [key("queue")], { layout }).drawn
     assert.match(plain(opened.text), /QUEUE \(0\) ▾ · nothing queued/)
   })
@@ -109,16 +111,16 @@ test("details: a To do card has an 'Add to the Queue' button (u, or a click), a 
   r = handleInput(todo.drawn.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at: 5000 }, todo.drawn)
   assert.deepEqual(r.action, { type: "queue", id: 5, key: "#5", to: "queue" })
   // A queued card: back to To do.
-  const queued = feed(s, [key("next"), key("enter")], { height: 40 })
+  const queued = feed(s, [key("next"), key("next"), key("enter")], { height: 40 })
   assert.equal(queued.drawn.scroll.detail?.key, "#3")
   assert.match(plain(queued.drawn.text), /Back to To do \(u\)/)
   assert.deepEqual(handleInput(queued.drawn.scroll, key("queue"), queued.drawn).action, { type: "queue", id: 3, key: "#3", to: "todo" })
   // Shift+↑ ↓ on a queued card: the order action, as in any section.
-  const sel = feed(s, [key("next"), key("down")]).drawn
+  const sel = feed(s, [key("next"), key("next"), key("down")]).drawn
   assert.equal(sel.scroll.card, "#4")
   assert.deepEqual(handleInput(sel.scroll, key("moveUp"), sel).action, { type: "order", id: 4, key: "#4", where: "up", among: [3, 4] })
   // A Doing card: no button, u does nothing.
-  const doing = feed(s, [key("next"), key("next"), key("enter")], { height: 40 })
+  const doing = feed(s, [key("next"), key("enter")], { height: 40 })
   assert.equal(doing.drawn.scroll.detail?.key, "#2")
   assert.doesNotMatch(plain(doing.drawn.text), /Add to the Queue|Back to To do/)
   assert.equal(handleInput(doing.drawn.scroll, key("queue"), doing.drawn).action, null)
@@ -170,10 +172,10 @@ test("move <id> queue: each card goes last, so the Queue keeps the order cards c
     assert.deepEqual(r.queued(), [3, 2, 1])
     r.board("2026-10-30T10:03:00Z", "add", "queue", "Four: build it")
     assert.deepEqual(r.queued(), [3, 2, 1, 4])
-    // ls shows the Queue whole, between Waiting and Doing.
+    // ls shows the Queue whole, between Doing and To do.
     const ls = r.board("2026-10-30T10:04:00Z", "ls", "--width", "100").stdout
     assert.match(ls, /QUEUE \(4\)[^\n]*\n +3 +Three: build it[^\n]*\n +2 +Two: build it[^\n]*\n +1 +One: build it[^\n]*\n +4 +Four: build it/)
-    assert.ok(ls.indexOf("WAITING ON YOU") < ls.indexOf("QUEUE (4)") && ls.indexOf("QUEUE (4)") < ls.indexOf("DOING"))
+    assert.ok(ls.indexOf("WAITING ON YOU") < ls.indexOf("DOING") && ls.indexOf("DOING") < ls.indexOf("QUEUE (4)"))
   } finally {
     r.done()
   }

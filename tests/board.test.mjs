@@ -240,19 +240,18 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     const quiet = frame(120, 30, calm).split("\n")
     assert.equal(quiet[3], "▸ WAITING ON YOU (0)  Nothing needs you")
     assert.equal(quiet[4], "")
-    // The empty Queue folded to its line, in its place under Waiting.
-    assert.equal(quiet[5], "QUEUE · 0 ▸")
-    assert.equal(quiet[6], "")
     // Doing with nothing in it folds to its header, and To do has the width.
-    assert.equal(quiet[7], "DOING (0) · nothing running")
-    assert.equal(quiet[8], "")
-    assert.match(quiet[9], /^TO DO \(1\) ▾$/)
+    assert.equal(quiet[5], "DOING (0) · nothing running")
+    assert.equal(quiet[6], "")
+    assert.match(quiet[7], /^TO DO \(1\) ▾$/)
+    // The empty Queue folded to its line, in its place under Doing (and its To do column).
+    assert.ok(quiet.indexOf("QUEUE · 0 ▸") > 7)
     assert.equal(quiet.at(-3), "DONE · 0 today ▸", "right above the empty last row")
     // The inbox folds every empty section to its header, with a rule.
     const calmInbox = frame(88, 30, calm).split("\n")
     assert.deepEqual(
       calmInbox.slice(3, 13).map((l) => l.replace(/ ─+$/, " ─")),
-      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "QUEUE · 0 ▸", "", "DOING (0) · nothing running ─", "", "TO DO (1) ▾ ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
+      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "DOING (0) · nothing running ─", "", "QUEUE · 0 ▸", "", "TO DO (1) ▾ ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
     )
   } finally {
     done()

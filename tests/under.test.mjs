@@ -84,7 +84,7 @@ test("a sub-task in another section keeps its own row there, 'for #231 …' unde
     }
   }
   const text = draw(board({ question: false })).text
-  const doing = section(text, "DOING", "TO DO")
+  const doing = section(text, "DOING", "QUEUE")
   assert.match(doing[1], /^.231   Node health/)
   assert.match(doing[2], /^ {9}↳ 279  Node health fixes[^\n]* working +\d/)
   assert.equal(doing.length, 3)

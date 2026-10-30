@@ -9,8 +9,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (2)                                                    TO DO (1) ▾
 3 Search filters: build                             25 min   5 Export to CSV                                     23 min
   working, report done                                         Let people download any table as CSV.
@@ -36,5 +34,7 @@ DOING (2)                                                    TO DO (1) ▾
 
 
 
+
+QUEUE · 0 ▸
 DONE · 1 today ▸
 

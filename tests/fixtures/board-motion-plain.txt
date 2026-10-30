@@ -10,8 +10,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (4)
 3 Search filters: build                                                                                           25 min
   working, report done [=   ]
@@ -36,6 +34,8 @@ DOING (4)
 
 
 
+
+QUEUE · 0 ▸
 TO DO · 1 ▸
 DONE · 1 today ▸
 
@@ -50,8 +50,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
                                                                Question: Try http://localhost:3000/invoices, then say
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
-
-QUEUE · 0 ▸
 
 DOING (4)                                                    TO DO (1) ▾
 3 Search filters: build                             25 min   5 Export to CSV                                     23 min
@@ -78,6 +76,8 @@ DOING (4)                                                    TO DO (1) ▾
 
 
 
+
+QUEUE · 0 ▸
 DONE · 1 today ▸
 
 ===== To do and Done open (t d) · frame 3 · 120 columns =====
@@ -91,8 +91,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
                                                                Question: Try http://localhost:3000/invoices, then say
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
-
-QUEUE · 0 ▸
 
 DOING (4)                                TO DO (1) ▾                              DONE (1) ▾
 3 Search filters: build         25 min   5 Export to CSV                 23 min   6 Nightly backup check           09:30
@@ -121,6 +119,8 @@ DOING (4)                                TO DO (1) ▾                          
 
 
 
+QUEUE · 0 ▸
+
 ===== To do and Done folded (default) · frame 0 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
@@ -130,13 +130,13 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
 
-QUEUE · 0 ▸
-
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [=   ]  20 min
  8   Release notes: draft                                               no agent  18 min
+
+QUEUE · 0 ▸
 
 TO DO · 1 ▸
 DONE · 1 today ▸
@@ -171,13 +171,13 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
 
-QUEUE · 0 ▸
-
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [=   ]  20 min
  8   Release notes: draft                                               no agent  18 min
+
+QUEUE · 0 ▸
 
 TO DO (1) ▾ ────────────────────────────────────────────────────────────────────────────
  5   Export to CSV                                                                23 min
@@ -212,13 +212,13 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
 
-QUEUE · 0 ▸
-
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [   =]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [   =]  20 min
  8   Release notes: draft                                               no agent  18 min
+
+QUEUE · 0 ▸
 
 TO DO (1) ▾ ────────────────────────────────────────────────────────────────────────────
  5   Export to CSV                                                                23 min
