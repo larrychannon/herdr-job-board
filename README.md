@@ -605,6 +605,7 @@ this list.
 | `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, and `waiting_on` (the open ids under it) when it has any. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
+| `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's family too (its top card and every open card under it) unless `--only`. `--event merge\|deploy\|…` notes that event on the family first. Words checked as for a card. See Status lines below. |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
 | `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
 | `restore [<backup>]` | List the board's backups, or put one back. |
@@ -621,6 +622,30 @@ this list.
 
 Exit codes: 0 ok, 1 error (unknown card, unreadable board, Herdr failed), 2 bad usage (and a
 change to another project's card without `--project`).
+
+### Status lines (0.13.0)
+
+A card's description says what the thing is; its **status line** says where the work stands
+now, and changes many times a day. `now <ref> "<text>"` writes it; the card shows it on top:
+
+```
+DOING (1)
+ 1   Login fix: build                                          just now
+     Now: merged, waiting for your deploy OK
+     Fix the sign-in error on the login page.
+```
+
+- **A family moves together.** A card's family is its top card and every card under it.
+  `now` writes the line on each open card of the family, unless `--only`.
+- **Events put older lines out of date**: a job's report on a card of the family
+  (`job-report`, which also writes the job's own card's line), a card under it done, and a
+  `now --event merge|deploy|…` (the lines written with it are current). A line written before
+  its family's last event shows `Now (out of date: card done on #3 since): …` in amber, and the
+  card's row says `status out of date`.
+- **The coordinator hears of it**: its turn reminder lists its cards with a line out of date,
+  and its Stop hook blocks once per card and event while a card its pane owns has one (after
+  the Waiting-card check). Cards with no line, and Done cards, are never out of date.
+- `json` shows `now` ({ text, at, by }) and `event` ({ kind, at, card }) on a card.
 
 ## For agents: running jobs with the board
 

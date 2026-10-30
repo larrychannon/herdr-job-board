@@ -85,7 +85,18 @@
 //                           stays in Doing with the report stored, and the coordinator gets a
 //                           "[job note]" (0.12.0). notes (FYIs) never reach the ask. --if-final: a missing,
 //                           unreadable or non-final report is a quiet no-op (exit 0), for wait
-//                           scripts that call it whenever the report file changes
+//                           scripts that call it whenever the report file changes. It also writes
+//                           the card's status line ("the job finished: its report is ready to
+//                           check") and notes a "job report" event on the card's family (0.13.0)
+//   now <ref> "<where it stands>" [--only] [--event KIND] | now <ref> --clear [--only]
+//                           the card's status line, shown at the top of the card ("Now: merged,
+//                           waiting for your deploy OK"), apart from its description; written on
+//                           its family too (its top card and every open card under that) unless
+//                           --only. --event (merge, deploy, …) notes that event on the family
+//                           first. A family's events (a job report, a card under it done, an
+//                           --event) make a line written before them out of date: the card says
+//                           "status out of date", the coordinator's turn reminder lists it, and
+//                           its Stop hook blocks once while one of its own cards has one (0.13.0)
 //   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
 //                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
 //                           of the repos under $HOME) into the one board. Ids are kept when free,
@@ -1295,6 +1306,8 @@ function moveItem(state, item, column, now, woke = []) {
     if (closing) {
       const parent = wakeParent(state, item, now)
       if (parent) woke.push(parent)
+      // Its family's status lines were written before this card was done (0.13.0).
+      if (item.parent != null) noteEvent(state, item, "card done", now)
     }
   }
   item.updated = at
@@ -1492,6 +1505,81 @@ export function shortTitle(title) {
 
 /** The ids as "#230, #266". */
 export const idList = (ids) => ids.map((id) => `#${id}`).join(", ")
+
+// --- status lines (0.13.0): "Now: merged, waiting for your deploy OK" -----------------------------
+//
+// A card's status line (`now`: { text, at, by }) says where its work stands, apart from its
+// description, and shows at the top of the card. A card's family is its top card (the parent of
+// its parents) and every card under it. An event in the family (a job's report, a card under it
+// done, a merge or a deploy written with `now --event`) is noted on each card of it (`event`:
+// { kind, at }); a status line written before the family's last event is stale: the turn
+// reminder lists it, and the coordinator's Stop hook blocks once while one of its own is.
+
+const STATUS_MAX = 200
+const EVENT_KIND = /^[a-z][a-z -]{0,30}$/
+
+/** The card's family: its top card and every card under that, the card itself included. */
+export function familyOf(state, item) {
+  const byId = new Map(state.items.map((i) => [i.id, i]))
+  let top = item
+  for (const seen = new Set([item.id]); byId.has(top.parent) && !seen.has(top.parent); ) {
+    seen.add(top.parent)
+    top = byId.get(top.parent)
+  }
+  const out = [top]
+  const ids = new Set([top.id])
+  for (let n = 0; n < out.length; n++) for (const c of state.items) if (c.parent === out[n].id && !ids.has(c.id)) (ids.add(c.id), out.push(c))
+  if (!ids.has(item.id)) out.push(item)
+  return out
+}
+
+/** Note an event (`kind`, e.g. "job report", "card done", "merge", "deploy") on the card's family. */
+export function noteEvent(state, item, kind, now) {
+  const event = { kind, at: now.toISOString(), card: item.id }
+  for (const i of familyOf(state, item)) i.event = event
+  return event
+}
+
+/** Whether a card's status line is older than its family's last event (open cards with one only). */
+export function statusStale(item) {
+  if (!item || item.column === "done" || !clean(item.now?.text) || !item.event?.at) return false
+  return new Date(item.event.at) > new Date(item.now.at)
+}
+
+/** What a stale line says: "a job report on #12 since" (the card when it is another). */
+export function staleWhy(item) {
+  const e = item.event || {}
+  return `${clean(e.kind) || "a change"}${e.card && e.card !== item.id ? ` on #${Number(e.card)}` : ""} since`
+}
+
+/** The status line job-report writes on a job's card. */
+export function reportStatusLine(status, column, held = false) {
+  if (held) return "the job reported; its report waits until the cards under this one are done"
+  if (status === "blocked") return "the job is blocked and needs you"
+  if (status === "failed") return "the job failed: read its report"
+  return column === "waiting" ? "the job finished and needs your answer" : "the job finished: its report is ready to check"
+}
+
+/** The problems with a status line's words, as for a card: numbers that stand for a thing. */
+export function statusProblems(text) {
+  return numberedIn(text).map((n) => ({ field: "status line", text: n.text, why: n.what, fix: NAME_IT, level: "refuse" }))
+}
+
+/**
+ * Write a status line on `item`, and on its family unless `only`; with `event`, note that event on
+ * the family first (so the lines written now are not stale, and the others are). Returns the
+ * cards it wrote.
+ */
+export function setStatus(state, item, text, { only = false, event = "", by = "" } = {}, now = new Date()) {
+  const line = clean(text).slice(0, STATUS_MAX)
+  if (event) noteEvent(state, item, event, now)
+  const cards = only ? [item] : familyOf(state, item).filter((i) => i === item || i.column !== "done")
+  for (const i of cards) {
+    if (line) i.now = { text: line, at: now.toISOString(), ...(by ? { by } : {}) }
+    else delete i.now
+  }
+  return cards
+}
 
 /** What add, edit and job-start with --parent print: " · for #253 Node health; #253 now waits on #230, #277". */
 function parentNote(state, item) {
@@ -1762,6 +1850,8 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
     // A card ready to resume shows how long since it got ready.
     if (entry.ready) entry.age = now - new Date(entry.ready)
+    // Its status line, out of date when its family changed since it was written (0.13.0).
+    entry.stale = statusStale(item)
     if (item.column === "done") {
       if (new Date(item.since) >= startOfDay) view.doneToday.push(doneDays ? { ...entry, when: shortTime(item.since, now) } : entry)
       continue
@@ -2325,6 +2415,8 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   const blocked = entry.live === "blocked"
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
   const lines = []
+  // Its status line first (0.13.0): "Now: merged, waiting for your deploy OK".
+  lines.push(...nowLines(entry, inner, indent, ui.full || ui.detail ? 4 : 2))
   if (blocked) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
   } else if (status && entry.ready) {
@@ -2375,6 +2467,21 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   if (buttons && !entry.sent?.label && !ui.note && ui.route) for (const t of wrap(ui.route.t, inner, 3)) lines.push([indent, { t, s: ui.route.s }])
   if (ui.note) for (const t of wrap(ui.note.t, inner, 2)) lines.push([indent, { t, s: ui.note.s }])
   return lines
+}
+
+/** A card's status line as lines: "Now: …", or "Now (out of date: a job report since): …" in amber. */
+export function nowText(entry) {
+  const text = clean(entry?.now?.text)
+  if (!text || entry.column === "done") return null
+  return entry.stale ? { label: `Now (out of date: ${staleWhy(entry)}):`, text, s: "unreviewed" } : { label: "Now:", text, s: "" }
+}
+
+function nowLines(entry, inner, indent, max) {
+  const n = nowText(entry)
+  if (!n) return []
+  return wrap(`${n.label} ${n.text}`, inner, max).map((t, i) =>
+    i || !t.startsWith(n.label) ? [indent, { t, s: n.s }] : [indent, { t: n.label, s: n.s || "dim" }, { t: t.slice(n.label.length), s: n.s }],
+  )
 }
 
 // --- a card's links (0.7.0; in words since 0.7.1; with state tags since 0.7.5): "for #253 Node
@@ -2494,6 +2601,7 @@ const fit = (text, width) => (width <= 0 ? "" : textWidth(printable(text)) <= wi
  * inbox, a peek in compact, every Waiting card in `ls`), the card's body follows, indented to the
  * title: description, question, buttons. A note (sending…, couldn't send) always shows.
  */
+const STALE_ROW_TEXT = "status out of date"
 function cardRow(entry, column, width, idWidth, ui = {}) {
   const blocked = entry.live === "blocked"
   const mark = entry.id == null ? "•" : String(entry.id)
@@ -2517,6 +2625,8 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   if (blocked) status = [{ t: "blocked", s: "blocked" }]
   else if (entry.ready && column !== "done") status = [{ t: readyText(entry), s: "ready" }]
   else if (column === "doing" && entry.unreviewed) status = [{ t: UNREVIEWED_TEXT, s: "unreviewed" }]
+  // A status line older than its family's last event (0.13.0).
+  else if (entry.stale && column !== "done") status = [{ t: STALE_ROW_TEXT, s: "unreviewed" }]
   // A parent waiting on other cards says so where the state goes, unless its own agent works.
   else if (waitText(entry) && column !== "done" && entry.live !== "working") status = [{ t: waitText(entry), s: "title" }]
   else if (column === "doing" && (entry.live || entry.reportStatus)) {
@@ -3087,6 +3197,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
   lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
+  lines.push(...nowLines(entry, inner, ind, Infinity))
   if (entry.ready) lines.push([ind, { t: `Ready to resume${afterText(entry) ? `: ${afterText(entry)}` : ""}`, s: "ready" }])
   if (entry.unreviewed) lines.push([ind, { t: "Job finished — not reviewed yet: update the card", s: "unreviewed" }])
   if (forText(entry)) for (const t of wrap(forText(entry).replace(/^for/, "For"), inner, 3)) lines.push([ind, { t, s: "dim" }])
@@ -6197,6 +6308,15 @@ Writing cards
   "waiting on 1" with B drawn under it; when every card under it is done, A is "ready to resume", on top of its
   section, and your turn-start reminder says so: pick A up again, or tell the user why not.
 
+Status lines (0.13.0)
+- now <id> "<where it stands>": the card's status line, at the top of the card ("Now: merged,
+  waiting for your deploy OK"), apart from its description. It is written on the card's family
+  too (its top card and every open card under it) unless --only; --event merge|deploy|… notes
+  that event on the family first. job-report writes the job's card's line itself.
+- A family's events (a job's report, a card under it done, an --event) put any line written
+  before them out of date: the card says "status out of date", your turn reminder lists it, and
+  the Stop hook blocks once while a card you own has one. Write the line again (now <id> …).
+
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
   A press reaches the card's coordinator as a prompt: "Board card <id> (<tag> · <title>):
@@ -7049,8 +7169,8 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["timeout", "parent", "desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
-const SWITCHES = new Set(["all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator"])
+const FLAGS = new Set(["event", "timeout", "parent", "desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
+const SWITCHES = new Set(["only", "clear", "all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -7098,6 +7218,7 @@ export const COMMAND_FLAGS = {
   project: ["tag", "color", "name"],
   "job-start": ["id", "title", "desc", "report", "project", "worktree", "parent", "allow-wording"],
   "job-report": ["if-final"],
+  now: ["only", "event", "clear", "project", "allow-wording"],
   ls: ["width", "project", "done"],
   lint: ["project"],
   json: ["archive", "project"],
@@ -7124,7 +7245,7 @@ function only(opts, command) {
 
 const label = (column) => (column === "waiting" ? "waiting on you" : column === "todo" ? "to do" : column)
 // The commands that change the board, and those that only read it (see migrate).
-const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report"])
+const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report", "now"])
 const READS = new Set(["ls", "json", "projects", "token", "export"])
 // answer writes (the sent note) but brings nothing in: the card is on the board already.
 
@@ -7665,6 +7786,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           it.reported = keyOf(held)
           it.updated = now.toISOString()
           s.reports[keyOf(held)] = { id: it.id, at: now.toISOString() }
+          // 0.13.0: the card's own status line says what the report means; its family's lines,
+          // written before this report, are stale until the coordinator writes them again.
+          setStatus(s, it, reportStatusLine(clean(report.status).toLowerCase(), column, held), { only: true, event: "job report", by: me.pane || "" }, now)
           return it
         })
         const status = clean(report.status).toLowerCase()
@@ -7687,6 +7811,28 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return 0
         }
         return postInbox(file, [note], { env, now }).then(() => 0)
+      }
+      case "now": {
+        // A card's status line, and its family's unless --only (0.13.0).
+        only(opts, command)
+        if (opts.clear ? rest.length !== 1 : rest.length !== 2) throw usage('usage: board.mjs now <id|job> "<where it stands>" [--only] [--event merge|deploy|…] [--project P]  or  board.mjs now <id|job> --clear [--only]')
+        const text = opts.clear ? "" : clean(rest[1])
+        if (!opts.clear && !text) throw usage("a status line needs words: where the work stands, e.g. \"merged, waiting for your deploy OK\"")
+        const kind = opts.event === undefined ? "" : clean(opts.event).toLowerCase()
+        if (opts.event !== undefined && !EVENT_KIND.test(kind)) throw usage(`--event takes a short word or two in lower case ("merge", "deploy", "job report"), not "${clean(opts.event).slice(0, 40)}"`)
+        const problems = statusProblems(text)
+        if (problems.length && !opts["allow-wording"]) {
+          const error = usage([`the status line is not in plain words yet, so nothing was written:`, ...problems.map((p) => `  - ${wordingLine(p)}`)].join("\n"))
+          error.wording = true
+          throw error
+        }
+        const { item, cards } = change((s) => {
+          const it = owned(s, findItem(s, rest[0], me))
+          return { item: it, cards: setStatus(s, it, text, { only: Boolean(opts.only), event: kind, by: me.pane || "" }, now) }
+        })
+        const others = cards.filter((c) => c.id !== item.id).map((c) => c.id)
+        out(`${item.id} ${text ? `now: ${text}` : "status line cleared"}${others.length ? ` (also ${idList(others)})` : ""}${kind ? ` · event: ${kind}` : ""}`)
+        return 0
       }
       case "lint": {
         // Read-only: every open card whose words fail the check (--project P: P's), with each fix.
