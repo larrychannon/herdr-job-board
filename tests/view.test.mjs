@@ -655,7 +655,7 @@ test("details helpers: first sentences, short local times, link labels", async (
     // job-report reads a need's question too.
     const q = join(t.base, "q.json")
     writeFileSync(q, JSON.stringify({ status: "done", needs_user: [{ question: "Merge it?", suggested_answer: "Yes" }, "Then deploy"] }))
-    t.board(NOW, "job-start", "qa", "--report", q)
+    t.board(NOW, "job-start", "qa", "--title", "Login page: check", "--report", q)
     t.board(NOW, "job-report", "qa")
     assert.equal(JSON.parse(readFileSync(t.file, "utf8")).items[0].ask, "Merge it?\nThen deploy")
   } finally {

@@ -261,7 +261,7 @@ test("sidebar: each workspace counts its own cards; only the workspaces whose te
     h.ok(sfc, ["add", "waiting", "sfc q"], h.at("w4:p6"))
     h.ok(ai, ["add", "todo", "ai todo"], h.at("wA:p1"))
     // The sfc coordinator starts an ai job in workspace w4: counted in w4 (where it runs) and in wA (ai's).
-    h.ok(sfc, ["job-start", "guard", "--project", "ai-config"], h.at("w4:p6"))
+    h.ok(sfc, ["job-start", "guard", "--title", "Test guard: build", "--project", "ai-config"], h.at("w4:p6"))
     const state = h.state()
     assert.equal(tokenFor(state, null, "w4"), "1 doing · 1 needs you")
     assert.equal(tokenFor(state, null, "wA"), "1 doing · 1 to do")
