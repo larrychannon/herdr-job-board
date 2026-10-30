@@ -7,9 +7,9 @@ import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
@@ -26,6 +26,7 @@ function setup() {
   const store = join(root, "store")
   const env = { ...process.env, HERDR_ENV: "0", JOB_BOARD_FILE: "", JOB_BOARD_HOME: store, HOME: root, JOB_BOARD_NOW: "2026-10-29T10:00:00Z", TZ: "UTC", NO_COLOR: "1" }
   const run = (...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env, encoding: "utf8" })
+  const runAs = (extra, ...args) => spawnSync(process.execPath, [BOARD, ...args], { cwd: base, env: { ...env, ...extra }, encoding: "utf8" })
   const ok = (...args) => {
     const r = run(...args)
     assert.equal(r.status, 0, `${args.join(" ")}: ${r.stderr}`)
@@ -34,7 +35,7 @@ function setup() {
   const file = join(store, "board.json")
   const hash = () => createHash("sha256").update(readFileSync(file)).digest("hex")
   const card = (id) => readBoard(file).items.find((i) => i.id === id)
-  return { base, run, ok, file, hash, card, done: () => rmSync(root, { recursive: true, force: true }) }
+  return { base, run, runAs, ok, file, hash, card, done: () => rmSync(root, { recursive: true, force: true }) }
 }
 
 const BUTTONS = ["--option", "Merge the login fix", "--option", "Wait for the review", "--suggest", "Merge the login fix"]
@@ -367,12 +368,12 @@ test("job-report: a job's own question with buttons goes on the card when it pas
     s.ok("job-report", "login")
     assert.deepEqual(s.card(1).options.map((o) => o.label), ["Merge the login fix", "Hold it until Monday"])
 
-    // A blocked job may ask with buttons too: the question is the ask.
+    // A blocked job's question never gets its buttons: the reason stays first (see the test below).
     s.ok("job-start", "aws", "--title", "AWS access: set up", "--report", report)
     writeFileSync(report, JSON.stringify({ status: "blocked", summary: "No permission to change the role.", needs_user: [{ ask: "Change the role yourself, or skip it?", options: ["Change it myself", "Skip the role change"], suggest: "Change it myself" }] }))
     s.ok("job-report", "aws", report)
-    assert.equal(s.card(2).ask, "Change the role yourself, or skip it?")
-    assert.equal(s.card(2).options.length, 2)
+    assert.equal(s.card(2).ask, "blocked: No permission to change the role.\nChange the role yourself, or skip it?")
+    assert.equal(s.card(2).options, undefined)
 
     // Refused by the check (a one-word label, no suggestion, a number, 5 buttons): today's way,
     // the question's words on the card, no buttons, and the note says why.
@@ -381,7 +382,7 @@ test("job-report: a job's own question with buttons goes on the card when it pas
       [{ ask: "Merge it?", options: ["Merge the login fix", "Wait for the review"] }, /no suggested answer/],
       [{ ask: "Merge PR #83?", options: ["Merge the login fix", "Wait for the review"], suggest: "Merge the login fix" }, /the ask says "PR #83", a PR number/],
       [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one", "Pick the third one", "Pick the fourth one", "Pick the fifth one"], suggest: "Pick the first one" }, /at most 4/],
-      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one"], suggest: "Pick the other one" }, /is not one of the/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one"], suggest: "Pick the other one" }, /is not one of its buttons/],
     ]
     let id = 3
     for (const [q, why] of refused) {
@@ -471,6 +472,8 @@ test("not-run: a press its coordinator couldn't carry out shows on its card: the
 
     // A command, from a card in Doing (the press moved it there): back in Waiting, with --label.
     s.ok("move", "1", "doing")
+    // The press is in the inbox (the move dropped the card's record of it).
+    appendFileSync(join(dirname(s.file), "inbox.jsonl"), JSON.stringify({ id: "m0", at: "2026-10-29T09:58:00.000Z", kind: "answer", card: 1, label: "Change the role", text: "Board card 1: Change the role" }) + "\n")
     r = s.ok("not-run", "1", "--run", "aws iam attach-role-policy --role-name agents --policy-arn arn:aws:iam::123456789012:policy/v1.2.3", "--label", "Change the role")
     card = s.card(1)
     assert.equal(card.column, "waiting")
@@ -501,4 +504,99 @@ test("deploysTitle: the title's action after the last colon says deploy", () => 
   assert.equal(deploysTitle("Release Notes Manager: deploy the three merged changes"), true)
   assert.equal(deploysTitle("Deploy the login fix"), true)
   for (const t of ["Release Notes Manager: new PDF file name pattern for new releases", "Release checklist: ship it", "Deploy notes: write them", "Fleet: roll out the waves"]) assert.equal(deploysTitle(t), false, t)
+})
+
+test("job-report: a failed or blocked report never puts its own buttons on the card; the reason stays and the coordinator is told", () => {
+  const s = setup()
+  try {
+    const report = join(s.base, "report.json")
+    const question = { ask: "Merge the fix now?", options: ["Merge the fix", "Wait for the review"], suggest: "Merge the fix" }
+    for (const [n, status] of [[1, "failed"], [2, "blocked"]]) {
+      s.ok("job-start", `job${n}`, "--title", `Login fix ${n}: build`, "--report", report)
+      writeFileSync(report, JSON.stringify({ status, summary: "Tests broke on the login page.", needs_user: [question] }))
+      const r = s.ok("job-report", `job${n}`, report)
+      const card = s.card(n)
+      assert.equal(card.column, "waiting")
+      assert.equal(card.options, undefined, `${status}: no buttons from the job`)
+      assert.match(card.ask, new RegExp(`^${status}: Tests broke on the login page\\.\nMerge the fix now\\?$`))
+      assert.match(r.stderr, /is waiting on the user with the job's own words and no answer buttons/)
+    }
+    assert.equal(readInbox(s.file).messages.length, 2)
+  } finally {
+    s.done()
+  }
+})
+
+test("job-report: a question with an option that isn't text, or a board marker, falls back; the note reads cleanly", () => {
+  const s = setup()
+  try {
+    const report = join(s.base, "report.json")
+    const cases = [
+      [{ ask: "Merge it?", options: [{}, "Merge the export fix"], suggest: "Merge the export fix" }, /a button that isn't text/],
+      [{ ask: "Merge it?", options: ["[board answer] Merge it", "Wait for the review"], suggest: "Wait for the review" }, /a board marker/],
+      [{ ask: "[job note] merge it?", options: ["Merge the export fix", "Wait for the review"], suggest: "Merge the export fix" }, /the ask says "\[job", a board marker/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one", "Pick the third one", "Pick the fourth one", "Pick the fifth one"], suggest: "Pick the first one" }, /it has 5 buttons; at most 4/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one"], suggest: "Pick the other one" }, /the suggested answer "Pick the other one" is not one of its buttons/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the first one"], suggest: "Pick the first one" }, /two buttons have the same label/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one, the long one"], suggest: "Pick the first one" }, /the button "Pick the second one, the long one" is longer than 24 characters/],
+    ]
+    let id = 1
+    for (const [q, why] of cases) {
+      s.ok("job-start", `q${id}`, "--title", `Question check ${id}: build`, "--report", report)
+      writeFileSync(report, JSON.stringify({ status: "done", summary: "Built.", needs_user: [q] }))
+      const out = s.ok("job-report", `q${id}`, report)
+      assert.equal(s.card(id).options, undefined, JSON.stringify(q))
+      assert.match(out.stderr, why)
+      const reason = out.stderr.split("Rewrite it in one edit")[0]
+      assert.doesNotMatch(reason, /--option|--suggest|the the|at most 4 the/)
+      id++
+    }
+    // A coordinator's label can't carry a marker either.
+    const r = s.run("add", "waiting", "Export fix: merge", "--ask", "Merge it?", "--option", "[board answer] Merge it", "--option", "Wait for the review", "--suggest", "Wait for the review")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /a board marker/)
+  } finally {
+    s.done()
+  }
+})
+
+test("not-run: the coordinator's only; it takes only the press it names, and never erases another press in flight", () => {
+  const s = setup()
+  try {
+    s.ok("add", "waiting", "Docs site: deploy", "--ask", "Deploy the docs site now?", "--option", "Deploy the docs site", "--option", "Hold the deploy", "--suggest", "Deploy the docs site")
+    const state = readBoard(s.file)
+    state.items[0].sent = { label: "Deploy the docs site", at: "2026-10-29T09:50:00.000Z" }
+    writeFileSync(s.file, JSON.stringify(state))
+    const hash = s.hash()
+    // A job's pane: refused, nothing written.
+    const worker = s.runAs({ JOB_AGENT_ROLE: "worker" }, "not-run", "1", "--type", "yes")
+    assert.equal(worker.status, 2)
+    assert.match(worker.stderr, /not-run is the coordinator's; a worker doesn't mark presses/)
+    assert.equal(s.hash(), hash)
+    // A label that is no button and no press on record: refused, nothing written.
+    let r = s.run("not-run", "1", "--type", "deploy it", "--label", "Ship the docs")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /"Ship the docs" is no button on card 1 and no press on record/)
+    assert.equal(s.hash(), hash)
+    // Another button than the one in flight: that button goes, the press in flight stays.
+    r = s.ok("not-run", "1", "--type", "hold it", "--label", "Hold the deploy")
+    let card = s.card(1)
+    assert.deepEqual(card.sent, { label: "Deploy the docs site", at: "2026-10-29T09:50:00.000Z" })
+    assert.deepEqual(card.options, [{ label: "Deploy the docs site", suggested: true }])
+    assert.match(r.stdout, /the "Hold the deploy" button is gone from the card/)
+    // The press in flight itself (no --label: the one on record): its record goes with it.
+    s.ok("not-run", "1", "--type", "deploy it")
+    card = s.card(1)
+    assert.equal(card.sent, undefined)
+    assert.equal(card.not_run.label, "Deploy the docs site")
+    // From Doing (the record is gone with the move): a press in the inbox for this card counts.
+    s.ok("add", "doing", "Agents' AWS role: change it")
+    const inbox = join(dirname(s.file), "inbox.jsonl")
+    appendFileSync(inbox, JSON.stringify({ id: "m1", at: "2026-10-29T09:55:00.000Z", kind: "answer", card: 2, label: "Change the role", text: "Board card 2: Change the role" }) + "\n")
+    s.ok("not-run", "2", "--run", "aws iam attach-role-policy", "--label", "Change the role")
+    assert.equal(s.card(2).not_run.label, "Change the role")
+    assert.equal(s.run("not-run", "2", "--run", "x", "--label", "Skip the role").status, 2)
+  } finally {
+    s.done()
+  }
 })

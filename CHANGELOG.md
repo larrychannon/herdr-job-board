@@ -13,9 +13,12 @@ under a deploy says it waits for the deploy.
 - **A job's own question** (`job-report`): a report's `needs_user` may be one entry
   `{ "ask": "…", "options": ["…", "…"], "suggest": "…" }`. When it passes the same wording check
   as `add` (2 to 4 labels, a verb plus the thing in 24 characters at most, one suggested, no
-  numbers in the ask), the card gets that question and its buttons and the coordinator gets no
-  note. When it fails, the card gets its words as today and the `[job note]` says why. Plain
-  text entries work as before. A report without such a question keeps its applied-report key.
+  numbers in the ask, no `[board …]` or `[job …]` markers, every option text), the card gets
+  that question and its buttons and the coordinator gets no note. Only a `done` report: a
+  `blocked` or `failed` one keeps its reason first, without buttons, and the coordinator gets
+  the note, so one press can't approve a failed job's work. When it fails, the card gets its
+  words as today and the `[job note]` says why, in plain words. Plain text entries work as
+  before. A report without such a question keeps its applied-report key.
 - **Short-name titles**: the wording check refuses a title that is only a job's short name (one
   lower-case word with dashes, or the card's own job) where a command sets the title: `add`,
   `edit --title`, and a new card from `job-start` (so `job-start <slug>` without `--title` for a
@@ -27,7 +30,10 @@ under a deploy says it waits for the deploy.
   button is gone (the others stay), and the card and its details show `couldn't run: the "…"
   press · 10:36`. On a card nothing was pressed on yet it asks `A press can't run this: …`, for
   an action the coordinator knows only the user's typed words can do. The literal phrase or
-  command isn't checked for numbers. A new `--ask` or `--option` ends it. `json` shows `not_run`.
+  command isn't checked for numbers. `--label` must name a button of the card or a press on
+  record (the card's or the inbox's); a different press still in flight keeps its record. A
+  worker can't run it. A new `--ask` or `--option` ends it. `json` shows `not_run`.
+- **Labels**: a button label with `[board …]` or `[job …]` (the board's own markers) is refused.
 - **Under a deploy**: a card whose parent's title says deploy in its action (after the last
   `: `) says `waits for the deploy on #417 …` (`deployed with #417 … (done)` once done); the
   deploy card says `deploys 2`, `Deploys: …`, and `add`/`edit`/`job-start --parent` print

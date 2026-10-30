@@ -364,7 +364,9 @@ button itself. A click on the question never sends.
   asking `Your press couldn't run this: type "deploy the fixes" in the coordinator's chat` (or
   `run this command: …`), its status line says the same, the pressed button is gone, and the
   card shows `couldn't run: the "Deploy the fixes" press · 10:36` in amber. The other buttons
-  stay. A new question (`--ask` or `--option`) ends it. For an action the coordinator knows no
+  stay. `--label` must name a button of the card or a press on record (the card's or the
+  inbox's), else nothing is written; a different press still in flight keeps its record.
+  Workers can't run it. A new question (`--ask` or `--option`) ends it. For an action the coordinator knows no
   press can run, it does the same before anything is pressed (a Waiting card without `--ask`,
   then `not-run`): `A press can't run this: type "…" in the coordinator's chat`, no button.
 
@@ -713,10 +715,12 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    - **The job's own question with buttons** (0.14.0): a `needs_user` of one entry
      `{ "ask": "Merge the login fix now, or wait for the review?", "options": ["Merge the login
      fix", "Wait for the review"], "suggest": "Merge the login fix" }` goes on the card as its
-     question and buttons when it passes the wording check (2 to 4 labels, each a verb plus the
-     thing in 24 characters at most, one suggested, no numbers), for `done`, `blocked` and
-     `failed` alike; you get no note to rewrite it. When it fails, the card gets its words without
-     buttons, and the `[job note]` says why.
+     question and buttons when the report is `done` and they pass the wording check (2 to 4
+     labels, all text, each a verb plus the thing in 24 characters at most, one suggested, no
+     numbers, no `[board …]` or `[job …]` markers); you get no note to rewrite it. When it fails,
+     the card gets its words without buttons, and the `[job note]` says why. A `blocked` or
+     `failed` report never puts its own buttons on the card: its reason stays first and you get
+     the note, so one press can't approve a failed job's work.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
    - A card with open cards under it (`--parent`: its checks, its sub-tasks) is never closed or
@@ -1057,6 +1061,7 @@ board: card 12 is not in plain words yet, so nothing was written:
 | version strings | description | warned: there it is often the thing itself (the firmware a customer runs) |
 | a question (`--ask`) on a Waiting card without 2 to 4 buttons, or none suggested | Waiting cards | refused |
 | a label of one word (`Go`, `Hold`), with `+`, `/` or `&`, `next` / `then` / `continue`, a step number (`steps 3–5`), an option letter (`Only A and C`) or a code (`1P`, `M3`) | button labels | refused |
+| `[board …]` or `[job …]`, the board's own markers | button labels (and a job's own question) | refused |
 | a title that is only a job's short name (`daily-review-1030`: one lower-case word with dashes, or the card's job) | title | refused by the command that sets it (`add`, `edit --title`, a new card from `job-start`); on an old card a warning, so `job-start --id` still starts its job's next round (0.14.0) |
 | an `Each answer:` list (one `- <label>: …` line per button; `=`, `→` or a spaced dash work too, and quotes or bold around the label; a `- Either way: …` line is skipped) that names a button the card doesn't have, or misses one it has (the buttons changed, the list didn't) | description of a card with buttons | refused; `lint` warns. Change the buttons and the list in one edit |
 

@@ -26,7 +26,8 @@
 //                           same, and the pressed button (L, else the one sent) is gone; on a
 //                           card nothing was pressed on yet, "A press can't run this: …" (an
 //                           action only the user's typed words can do); a new --ask or --option
-//                           ends it
+//                           ends it. --label must be a button of the card or a press on record;
+//                           another press in flight keeps its record. Not for workers
 //   lint [--project P]      every open card whose words fail the check, with each fix (read-only;
 //                           exit 1 when one must be fixed)
 //   done <ref>                                                 same as move <ref> done; when it was
@@ -88,10 +89,11 @@
 //   job-report <slug> [report.json] [--if-final]
 //                           a job's report landed (default: the --report given at job-start):
 //                           done → Done; done with needs_user → Waiting, asking needs_user;
-//                           blocked / failed → Waiting with the reason. A needs_user that is one
-//                           { "ask", "options", "suggest" } entry is the job's own question: when
-//                           it passes the wording check it goes on the card with its buttons and
-//                           nothing goes to the coordinator; else it is copied as text. A needs_user (or a
+//                           blocked / failed → Waiting with the reason. A done report's needs_user
+//                           that is one { "ask", "options", "suggest" } entry is the job's own
+//                           question: when it passes the wording check it goes on the card with
+//                           its buttons and nothing goes to the coordinator; else (and for a
+//                           blocked or failed report always) it is copied as text. A needs_user (or a
 //                           blocked job's summary) that names PR, build or commit numbers stays
 //                           off the ask (a plain stand-in instead); every card it puts in
 //                           Waiting, and every report with such numbers, is a "[job note]" to
@@ -1132,17 +1134,27 @@ const notRunCard = (item) => isRecord(item?.not_run) && [NOT_RUN, NO_PRESS].some
 /**
  * Mark the press on `item` as not carried out (`how`: { type } or { run }, `label` the button,
  * else the one sent): the card goes to Waiting with notRunAsk as its ask and status line, without
- * that button. Returns the label ("" when none is known).
+ * that button. A `label` must be one of the card's buttons, the press on record (`sent`) or a
+ * press in the inbox for this card (`presses`, labels): a slip never takes another button. The
+ * record of a press (`sent`) goes only with that press: another one still in flight stays.
+ * Returns the label ("" when none is known).
  */
-function markNotRun(state, item, how, label, by, now) {
+function markNotRun(state, item, how, label, by, now, presses = []) {
+  const same = (a, b) => clean(a).toLowerCase() === clean(b).toLowerCase()
+  if (label !== undefined) {
+    const known = [...optionsOf(item).map((o) => o.label), item.sent?.label, ...presses].filter(Boolean)
+    if (!known.some((l) => same(l, label))) throw usage(`"${clean(label)}" is no button on card ${item.id} and no press on record${known.length ? ` (it has: ${[...new Set(known.map(clean))].map((l) => `"${l}"`).join(", ")})` : ""}: check the label, or leave --label out for the press on record`)
+  }
   const pressed = clean(label ?? item.sent?.label ?? "")
+  const sent = item.sent
   moveItem(state, item, "waiting", now)
   const ask = notRunAsk(how, Boolean(pressed))
   item.ask = ask
-  const kept = optionsOf(item).filter((o) => o.label.toLowerCase() !== pressed.toLowerCase())
+  const kept = optionsOf(item).filter((o) => !same(o.label, pressed))
   if (kept.length) item.options = kept.map((o) => (o.suggested ? { label: o.label, suggested: true } : { label: o.label }))
   else delete item.options
-  delete item.sent
+  if (sent && !same(sent.label, pressed)) item.sent = sent
+  else delete item.sent
   item.not_run = { label: pressed, at: now.toISOString(), ...(how.type ? { type: how.type } : { run: how.run }) }
   setStatus(state, item, ask, { only: true, by }, now)
   return pressed
@@ -1195,9 +1207,16 @@ export function numberedIn(text) {
   return found
 }
 
+// "[board answer]", "[job note]" and the like are the board's own markers: a label (or a job's
+// ask) that starts one would read like a line the board wrote.
+const MARKER = /\[(?:board|job)\b/i
+const MARKER_WHY = "a board marker"
+const MARKER_FIX = 'leave out "[board …]" and "[job …]": the board writes those itself'
+
 // A button's label is a verb plus the thing, in full words, one decision: the user often sees
 // it alone (the board row, Telegram). Its 24 characters are checked by makeOptions.
 const LABEL_RULES = [
+  [MARKER, MARKER_WHY, MARKER_FIX],
   [/[+/&]/, "a symbol for a word", 'say it in words ("Merge and install")'],
   [/\b(?:next|then|continue)\b/i, '"next", "then" or "continue"', "say what comes next in the description's Then: line, not in the label"],
   [/\bsteps?[ \t]*\d/i, "a step number", "say what the steps do"],
@@ -1838,7 +1857,22 @@ export function reportQuestion(report) {
   if (list.length !== 1 || !isRecord(list[0]) || !Array.isArray(list[0].options)) return null
   const { ask, options, suggest } = list[0]
   if (typeof ask !== "string" || !ask.trim()) return null
-  return { ask: cleanLines(ask), labels: options.map((o) => (typeof o === "string" ? o : asText(o))), suggest: typeof suggest === "string" ? suggest : undefined }
+  // An option that isn't text is no button: the question falls back to text (questionFor says why).
+  const labels = options.every((o) => typeof o === "string") ? options : null
+  return { ask: cleanLines(ask), labels, suggest: typeof suggest === "string" ? suggest : undefined }
+}
+
+/** What is wrong with a job's buttons before makeOptions, in words for the coordinator: [] when nothing. */
+function questionProblems({ labels, suggest }) {
+  if (!labels) return ["it has a button that isn't text"]
+  const list = labels.map(clean)
+  const out = []
+  if (list.length > MAX_OPTIONS) out.push(`it has ${list.length} buttons; at most ${MAX_OPTIONS}`)
+  if (list.some((l) => !l)) out.push("a button has no label")
+  for (const l of list) if ([...l].length > MAX_LABEL) out.push(`the button "${l}" is longer than ${MAX_LABEL} characters`)
+  if (new Set(list.map((l) => l.toLowerCase())).size !== list.length) out.push("two buttons have the same label")
+  if (suggest !== undefined && !list.includes(clean(suggest))) out.push(`the suggested answer "${clean(suggest)}" is not one of its buttons`)
+  return out
 }
 
 /**
@@ -1848,16 +1882,23 @@ export function reportQuestion(report) {
  * other buttons): a title or description the coordinator wrote isn't the job's to fix.
  */
 function questionFor(item, question) {
+  const early = questionProblems(question)
+  if (early.length) return { problems: early }
   let options
   try {
     options = makeOptions(question.labels, question.suggest)
   } catch (error) {
-    return { problems: [String(error.message).replace(/--option /g, "the button ").replace(/--suggest /g, "the suggested ")] }
+    return { problems: [String(error.message)] }
   }
   const trial = { ...item, column: "waiting", ask: question.ask, options }
   const own = (p) => p.field === "ask" || p.field === "buttons" || p.field.startsWith("button ") || p.level === "stale"
   const problems = cardWording(trial).filter((p) => (p.level === "refuse" || p.level === "stale") && own(p))
-  return problems.length ? { problems: problems.map(wordingLine) } : { ask: question.ask, options }
+  // A job's ask can't carry a board marker either: it would read like the board's own line.
+  const marker = MARKER.exec(question.ask)
+  if (marker) problems.unshift({ field: "ask", text: marker[0], why: MARKER_WHY, fix: MARKER_FIX })
+  // Its own fix, not the coordinator's edit flags: the job's words are rewritten by the coordinator.
+  const line = (p) => (p.field === "buttons" ? `its buttons: ${p.why}` : `the ${p.field}${p.text ? ` says "${p.text}", ${p.why}` : `: ${p.why}`}`)
+  return problems.length ? { problems: problems.map(line) } : { ask: question.ask, options }
 }
 
 // Parsed reports by path, kept while the file's mtime and size stay the same: the pane redraws
@@ -6556,10 +6597,11 @@ Writing cards
 - A title that is only a job's short name ("daily-review-1030": one lower-case word with
   dashes, or the card's job) is refused where a command sets it (add, edit --title, a new card
   from job-start); an old card titled so only warns, so its job's next round still starts.
-- job-report puts a job's own question on the card with its buttons when its needs_user is one
-  { "ask", "options", "suggest" } entry that passes the check (nothing for you to rewrite). Any
-  other needs_user, or a question that fails, is copied as text (numbers kept off the ask), and
-  you get a "[job note]" for the card: rewrite it in one edit (title, ask, buttons).
+- job-report puts a job's own question on the card with its buttons when the report is done and
+  its needs_user is one { "ask", "options", "suggest" } entry that passes the check (nothing
+  for you to rewrite; read the report before you merge or deploy on such a press). Any other
+  needs_user, a blocked or failed report, or a question that fails is copied as text (numbers
+  kept off the ask), and you get a "[job note]" for the card: rewrite it in one edit.
 - Before you ask the user something, add or update a Waiting card (the Stop hook checks).
 - Order: each section is in the user's order, new cards and cards that change section on top.
   When the user asks to move a card: order <id> top|up|down|bottom.
@@ -6596,7 +6638,9 @@ Buttons
   this: type …" (or "run this command: …"), as its status line too, and the pressed button is
   gone: never leave a button that does nothing. An action you know no press can run gets the
   same before anything is pressed: add the Waiting card without --ask, then not-run it ("A
-  press can't run this: type …"). A new --ask or --option ends it.
+  press can't run this: type …"). --label must name a button of the card or a press on record
+  (another press in flight keeps its record); a worker can't run it. A new --ask or --option
+  ends it.
 - Workers (a job's pane: JOB_AGENT_ROLE, any *_AGENT_ROLE, or the repo's role_env, set to
   anything but coordinator) never add buttons and never send answers.
 
@@ -7995,8 +8039,9 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const hash = (parts) => createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16)
         const summary = clean(report.summary)
         // A job's question with buttons (reportQuestion) counts too, only when there is one: a
-        // report without it keeps the key it had.
-        const question = column === "waiting" ? reportQuestion(report) : null
+        // report without it keeps the key it had. Only a done report's: a failed or blocked job's
+        // buttons would hide its reason, and one press could approve its broken work.
+        const question = column === "waiting" && clean(report.status).toLowerCase() === "done" ? reportQuestion(report) : null
         const keyOf = (held) => `r2-${hash([path, column, ask, summary, held ? "held" : "", ...(question ? [question.ask, question.labels, question.suggest ?? ""] : [])])}`
         const legacy = hash([path, column, ask])
         const known = (k) => typeof k === "string" && (k === keyOf(false) || k === keyOf(true) || (!k.startsWith("r2-") && k === legacy))
@@ -8141,15 +8186,18 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       case "not-run": {
         // A press its coordinator couldn't carry out: the card says what to type or run instead.
         only(opts, command)
+        if (me.role) throw usage(`not-run is the coordinator's; a ${me.role} doesn't mark presses`)
         const usageLine = 'usage: board.mjs not-run <id|job> --type "<the words to type>" | --run "<the command>" [--label "<the button pressed>"] [--project P]'
         if (rest.length !== 1 || (opts.type === undefined) === (opts.run === undefined)) throw usage(usageLine)
         const how = opts.type !== undefined ? { type: clean(opts.type) } : { run: clean(opts.run) }
         if (!how.type && !how.run) throw usage(`${usageLine}\n(the phrase or command can't be empty)`)
         let pressed = ""
+        // The presses the inbox has for each card: a card moved out of Waiting lost its `sent`.
+        const presses = (id) => readInbox(file).messages.filter((m) => m.kind === "answer" && Number(m.card) === id && typeof m.label === "string").map((m) => m.label)
         const item = change((s) => {
           const it = owned(s, findItem(s, rest[0], me))
           if (it.column === "done") throw usage(`card ${it.id} is done: a press on it can't be waiting to run`)
-          pressed = markNotRun(s, it, how, opts.label, me.pane || "", now)
+          pressed = markNotRun(s, it, how, opts.label, me.pane || "", now, opts.label === undefined ? [] : presses(it.id))
           return it
         })
         out(`${item.id} → waiting on you: ${item.title}\n  ask: ${item.ask}\n  ${pressed ? `the "${pressed}" button is gone from the card` : "no press on record: the card says a press can't run this"}${optionsOf(item).length ? ` (buttons left: ${optionsOf(item).map((o) => o.label).join(" · ")})` : ""}`)
