@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.1 · unreleased
+
+The answer list in a card's description matches its buttons.
+
+- **Why**: an edit changed a card's buttons and kept its description's "Each answer:" list
+  naming the old ones, so the card explained buttons it no longer had.
+- **The check**: the wording check now reads that list (one `- <label>: …` line per button;
+  `=`, `→` or a spaced dash work too, quotes or bold around the label are read through, and a
+  line that starts with a button's label is that button's; a `- Either way: …` line is
+  skipped) on a card with buttons. A line naming a button the card doesn't have, or
+  a button with no line, refuses `add`, `edit`, `move … waiting` and `job-start`, with the label
+  named; `lint` lists it as a warning (exit 0). Change the buttons and the list in the same
+  edit; `--allow-wording` lets it through as for any other problem.
+
 ## 0.13.0 · unreleased
 
 A status line per card, kept in step with its family.

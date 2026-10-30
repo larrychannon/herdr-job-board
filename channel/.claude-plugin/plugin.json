@@ -1,6 +1,6 @@
 {
   "name": "job-board",
   "description": "The herdr-job-board inbox as a Claude Code channel: a job's stop and a board button press arrive in the coordinator's session as channel events, never typed into its pane.",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "keywords": ["herdr", "job-board", "channel", "mcp"]
 }

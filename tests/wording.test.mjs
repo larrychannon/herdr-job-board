@@ -13,7 +13,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { cardWording, detailLines, labelProblems, numberedIn, readBoard, readInbox } from "../board.mjs"
+import { answerLabels, cardWording, detailLines, labelProblems, numberedIn, readBoard, readInbox } from "../board.mjs"
 
 const BOARD = fileURLToPath(new URL("../board.mjs", import.meta.url))
 const plain = (lines) => lines.map((l) => l.map((s) => s.t).join("").trimEnd())
@@ -274,4 +274,73 @@ test("cardWording: what a stored card shows is what is checked (buttons as store
   assert.deepEqual(problems({ id: 1, title: "A", column: "todo", ask: "Merge it?" }), [])
   assert.deepEqual(problems({ id: 1, title: "A", column: "waiting", ask: "Merge it?", options: [{ label: "Merge it now" }, { label: "Wait a day", suggested: true }] }), [])
   assert.deepEqual(problems({ id: 1, title: "A", column: "waiting", ask: "Merge it?", options: [{ label: "Go", suggested: true }, { label: "Wait a day" }] }), ['button "Go": one word'])
+})
+
+test("answerLabels: the labels of an \"Each answer:\" list, whichever separator the line uses", () => {
+  assert.deepEqual(answerLabels("What: x\n\nEach answer:\n- Close this card: drop the idea.\n- Keep it open: you still want it."), ["Close this card", "Keep it open"])
+  assert.deepEqual(answerLabels("Each answer:\n- It works → I close this.\n- Something's wrong → tell me what"), ["It works", "Something's wrong"])
+  assert.deepEqual(answerLabels("Each answer:\n- Move the 6 to history = I move them.\n- Keep them\nThen: the next note."), ["Move the 6 to history", "Keep them"])
+  assert.deepEqual(answerLabels("Each answer: Check headroom = a job. No = nothing."), [], "an inline sentence isn't a list")
+  assert.deepEqual(answerLabels("No list here.\n- Close this card: x"), [])
+})
+
+test("Each answer: a list naming buttons the card no longer has: edit refused naming the label, lint warns; buttons and list changed together pass", () => {
+  const s = setup()
+  try {
+    const desc = "What: make every press count as typing.\n\nEach answer:\n- Close this card: drop the idea.\n- Keep it open: you still want it."
+    s.ok("add", "waiting", "Typed press idea: close or keep", "--desc", desc, "--ask", "Close this idea?", "--option", "Close this card", "--option", "Keep it open", "--suggest", "Close this card")
+    // The buttons change, the list doesn't: refused, the old label named, nothing written.
+    const before = s.hash()
+    let r = s.run("edit", "1", "--option", "Drop the typed press", "--option", "Keep it open", "--suggest", "Drop the typed press")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /the description says "Close this card", its "Each answer:" list names a button the card doesn't have: make the description's "Each answer:" list name the buttons as they are now, one line each \("Drop the typed press", "Keep it open"\), as "- <label>: …", "- <label> = …" or "- <label> → …", in the same edit as the buttons/)
+    assert.match(r.stderr, /the button "Drop the typed press": it has no line in the description's "Each answer:" list/)
+    assert.equal(s.hash(), before)
+    // An edit of only the description that drops a button's line: refused too.
+    r = s.run("edit", "1", "--desc", "What: x.\n\nEach answer:\n- Close this card: drop the idea.")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /the button "Keep it open": it has no line/)
+    // Buttons and list changed in one edit: written.
+    s.ok("edit", "1", "--option", "Drop the typed press", "--option", "Keep it open", "--suggest", "Drop the typed press", "--desc", "What: x.\n\nEach answer:\n- Drop the typed press: the idea goes.\n- Keep it open: you still want it.")
+    assert.deepEqual(s.card(1).options.map((o) => o.label), ["Drop the typed press", "Keep it open"])
+    // A card with a list and no buttons isn't checked.
+    s.ok("add", "todo", "Notes tidy-up: plan", "--desc", "Each answer:\n- Archive them: x.")
+    // A list gone stale on the stored card (written before the check): lint warns, exit 0.
+    const state = readBoard(s.file)
+    state.items[0].options = [{ label: "Drop the typed press", suggested: true }, { label: "Wait until Monday" }]
+    writeFileSync(s.file, JSON.stringify(state))
+    const hash = s.hash()
+    r = s.run("lint")
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+    assert.match(r.stdout, /^ {2}warn the description says "Keep it open", its "Each answer:" list names a button the card doesn't have/m)
+    assert.match(r.stdout, /^ {2}warn the button "Wait until Monday": it has no line/m)
+    assert.match(r.stdout, /0 of 2 open cards fail the wording check \(1 more with a warning only\)/)
+    assert.equal(s.hash(), hash, "lint writes nothing")
+    // --allow-wording lets it through, as for any other problem.
+    s.ok("edit", "1", "--title", "Typed press idea: drop or wait", "--allow-wording")
+  } finally {
+    s.done()
+  }
+})
+
+test("Each answer: lists that do match the buttons pass, whatever their dash, quotes or bold; a line for any answer is no button's; a refusal names the forms read", () => {
+  const s = setup()
+  try {
+    const buttons = ["--option", "Merge it now", "--option", "Ship it: today", "--suggest", "Merge it now"]
+    s.ok("add", "waiting", "Login fix: merge", "--ask", "Merge the login fix?", ...buttons)
+    for (const list of [
+      "- Merge it now — I merge it.\n- Ship it: today – it goes out today.",
+      '- "Merge it now": I merge it.\n- "Ship it: today": it goes out today.',
+      "- **Merge it now**: I merge it.\n- **Ship it: today** = it goes out today.\n- Either way: you get a note.",
+    ]) {
+      const r = s.run("edit", "1", "--desc", `What: the login fix.\n\nEach answer:\n${list}`)
+      assert.equal(r.status, 0, `${list}\n${r.stderr}`)
+    }
+    assert.deepEqual(answerLabels("Each answer:\n- **Merge it now**: x\n- Either way: y", ["Merge it now"]), ["Merge it now"])
+    const r = s.run("edit", "1", "--desc", "Each answer:\n- Merge it now: x\n- Ship it tomorrow: y")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /as "- <label>: …", "- <label> = …" or "- <label> → …"/)
+  } finally {
+    s.done()
+  }
 })

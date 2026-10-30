@@ -176,7 +176,9 @@
 // fix"); card numbers ("card 373") and links are fine, and a version in a description only warns.
 // A Waiting card with a question has 2 to 4 buttons, one suggested; a label is a verb plus the
 // thing, two words or more, without "+", "/", "&", "next", "then", step numbers, option letters
-// or codes like "1P". --allow-wording writes text that fails anyway, and the card remembers
+// or codes like "1P". A description's "Each answer:" list names the card's buttons as they are
+// (an edit that changes one without the other is refused; lint warns about an old card's list).
+// --allow-wording writes text that fails anyway, and the card remembers
 // it: later edits and lint leave that text alone while it is there.
 //
 // Exit: 0 ok, 1 error (unknown item, unreadable board, Herdr failed), 2 bad usage (and a
@@ -1156,11 +1158,58 @@ export function labelProblems(label) {
   return out
 }
 
+// A line for whatever is pressed ("- Either way: …") is no button's.
+const ANY_ANSWER = /^(?:either way|any answer|whichever|whatever|in any case|in both cases|both|all of them|then|after any(?: answer)?)$/i
+// Quotes or bold (**…**, __…__) around a label are not part of it.
+const unwrap = (text) => clean(text).replace(/^(?:\*\*|__)(.+?)(?:\*\*|__)$/, "$1").replace(/^["“'‘](.+?)["”'’]$/, "$1").trim()
+
+/**
+ * The labels a description's "Each answer:" list gives, one bullet line per button ("- Close this
+ * card: drop the idea."). A line that starts with one of `buttons` (quotes or bold around it
+ * allowed) is that button's, whatever follows; any other line's label ends at the first
+ * " = ", ": ", " → ", "->" or a spaced em or en dash. A line for any answer ("- Either way: …") is left out. [] without such a list; an
+ * inline "Each answer: A = …" sentence isn't read.
+ */
+export function answerLabels(desc, buttons = []) {
+  const m = /(?:^|\n)[ \t]*Each answer:[ \t]*\r?\n((?:[ \t]*[-*•][ \t]+[^\n]*(?:\r?\n|$))+)/i.exec(asText(desc ?? ""))
+  if (!m) return []
+  const known = [...buttons].map((b) => clean(b)).filter(Boolean).sort((a, b) => b.length - a.length)
+  const out = []
+  for (const line of m[1].split("\n")) {
+    const body = /^[ \t]*[-*•][ \t]+(.+)$/.exec(line.trimEnd())?.[1]
+    if (!body) continue
+    const bare = clean(body).replace(/^(?:\*\*|__)/, "").replace(/^["“'‘]/, "")
+    const button = known.find((b) => bare.toLowerCase().startsWith(b.toLowerCase()) && !/^[\p{L}\p{N}]/u.test(bare.slice(b.length)))
+    const label = button || unwrap(/^(.+?)(?:[ \t]+(?:=|→|->|—|–)[ \t]|:[ \t]|:?$)/.exec(clean(body))?.[1] ?? "")
+    if (label && !ANY_ANSWER.test(label)) out.push(label)
+  }
+  return out
+}
+
+/**
+ * An "Each answer:" list that doesn't match the card's buttons (they were changed by an edit and
+ * the list wasn't): each listed label that is no button, and each button with no line. Level
+ * "stale": an edit is refused, lint warns. Only a card with buttons is checked.
+ */
+function answerListProblems(item, options) {
+  const listed = answerLabels(item.desc, options.map((o) => o.label))
+  if (!listed.length || !options.length) return []
+  const key = (l) => clean(l).toLowerCase().replace(/[.!?]+$/, "")
+  const buttons = new Set(options.map((o) => key(o.label)))
+  const lines = new Set(listed.map(key))
+  const fix = `make the description's "Each answer:" list name the buttons as they are now, one line each (${options.map((o) => `"${clean(o.label)}"`).join(", ")}), as "- <label>: …", "- <label> = …" or "- <label> → …", in the same edit as the buttons`
+  return [
+    ...listed.filter((l) => !buttons.has(key(l))).map((l) => ({ field: "description", text: l, why: `its "Each answer:" list names a button the card doesn't have`, fix, level: "stale" })),
+    ...options.filter((o) => !lines.has(key(o.label))).map((o) => ({ field: `button "${o.label}"`, text: "", why: `it has no line in the description's "Each answer:" list`, fix, level: "stale" })),
+  ]
+}
+
 /**
  * What is wrong with a card's words, as the user would read it: [{ field, text, why, fix, level }]
- * (level "refuse" or "warn"). Title, description, ask and each button label: no number that
- * stands for a thing; labels by LABEL_RULES; a Waiting card with a question has 2 to 4 buttons,
- * one of them suggested.
+ * (level "refuse", "stale" or "warn"). Title, description, ask and each button label: no number
+ * that stands for a thing; labels by LABEL_RULES; a Waiting card with a question has 2 to 4
+ * buttons, one of them suggested; a description's "Each answer:" list names the buttons the card
+ * has ("stale" when not: refused like "refuse" by add, edit, move and job-start; lint warns).
  */
 export function cardWording(item) {
   const out = []
@@ -1172,6 +1221,7 @@ export function cardWording(item) {
   add("ask", numberedIn(item.ask))
   const options = optionsOf(item)
   for (const o of options) add(`button "${o.label}"`, labelProblems(o.label))
+  out.push(...answerListProblems(item, options))
   if (item.column === "waiting" && clean(item.ask)) {
     const fix = '--option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"'
     if (options.length < 2) add("buttons", [{ text: "", why: `${options.length ? "one answer button" : "no answer buttons"}: a Waiting card with a question needs 2 to 4, one suggested`, fix }])
@@ -1194,7 +1244,7 @@ const allowedOf = (item) => new Set(Array.isArray(item.wording_ok) ? item.wordin
 function checkWording(item, opts, warn) {
   const problems = cardWording(item)
   for (const p of problems.filter((p) => p.level === "warn")) warn(`board: card ${item.id}: ${wordingLine(p)} (a warning: written as it is)`)
-  const refusedAll = problems.filter((p) => p.level === "refuse")
+  const refusedAll = problems.filter((p) => p.level === "refuse" || p.level === "stale")
   const allowed = allowedOf(item)
   const refused = refusedAll.filter((p) => !allowed.has(wordingLine(p)))
   const kept = refusedAll.map(wordingLine).filter((l) => allowed.has(l))
@@ -1257,7 +1307,7 @@ export function wordingFailures(items) {
   for (const item of items) {
     if (item.column === "done") continue
     const allowed = allowedOf(item)
-    const problems = cardWording(item).filter((p) => !(p.level === "refuse" && allowed.has(wordingLine(p))))
+    const problems = cardWording(item).filter((p) => !(p.level !== "warn" && allowed.has(wordingLine(p))))
     if (problems.length) out.push({ item, problems })
   }
   return out
@@ -7910,7 +7960,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const failing = wordingFailures(open)
         for (const { item, problems } of failing) {
           out(`card ${item.id} (${label(item.column)} · ${state.projects?.[item.project]?.tag || item.project || "?"}): ${item.title}`)
-          for (const p of problems) out(`  ${p.level === "warn" ? "warn" : "fix "} ${wordingLine(p)}`)
+          for (const p of problems) out(`  ${p.level === "refuse" ? "fix " : "warn"} ${wordingLine(p)}`)
         }
         const refused = failing.filter((f) => f.problems.some((p) => p.level === "refuse")).length
         out(
