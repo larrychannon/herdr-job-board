@@ -1,6 +1,6 @@
 ===== as drawn · 120x21 wide =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (1)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min
@@ -10,7 +10,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   Question: Approve the whole release (merges, tag v1.4,
 ↓ card cut off: open it for the rest
 
-DOING (2)                                                    TO DO (3)
+DOING (2)                                                    TO DO (3) ▾
 2 Search filters: build                             25 min   4 Export to CSV                                      1 min
   The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
   user.                                                        it.
@@ -44,7 +44,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 
 ===== as drawn · 88x21 wide =====
 Job board · all projects                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
 
 ▸ WAITING ON YOU (1)
 1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
@@ -54,7 +54,7 @@ Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: boar
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
 ↓ card cut off: open it for the rest
 
-DOING (2)                                    TO DO (3)
+DOING (2)                                    TO DO (3) ▾
 2 Search filters: build             25 min   4 Export to CSV                      1 min
   The filter panel from the approved           Let people download any table as CSV;
   mockup, saved per user.                      three asked for it.
@@ -88,7 +88,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 
 ===== as drawn · 60x15 (Space) =====
 all · 1 needs you                                      10:30
-Tab · ↑↓ · Space peek · Enter · c copy · d done · q
+Tab · ↑↓ · Space peek · Enter · t to do · d done · q
 ▸ WAITING ON YOU (1) ───────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?         7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs
@@ -98,7 +98,7 @@ Tab · ↑↓ · Space peek · Enter · c copy · d done · q
 ↓ card cut off: open it for the rest
 DOING (2) ──────────────────────────────────────────────────
 ↓ 2 more
-TO DO (3) ──────────────────────────────────────────────────
+TO DO (3) ▾ ────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸
 
@@ -120,7 +120,7 @@ Enter: send · Esc · ↑↓ · ←→ · c copy · t tab · q
 
 ===== as drawn · 95x15 (Space) =====
 all · 1 needs you                                                                         10:30
-Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: board · q
+Tab · ↑↓ · Space peek · Enter · c copy · t to do · d done · mouse: board · q
 ▸ WAITING ON YOU (1) ──────────────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                            7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export
@@ -130,7 +130,7 @@ Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: board · q
 ↓ card cut off: open it for the rest
 DOING (2) ─────────────────────────────────────────────────────────────────────────────────────
 ↓ 2 more
-TO DO (3) ─────────────────────────────────────────────────────────────────────────────────────
+TO DO (3) ▾ ───────────────────────────────────────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸
 

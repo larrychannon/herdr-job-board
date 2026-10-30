@@ -173,7 +173,8 @@ test("an update of the pane's own folder: the running pane restarts itself with 
     let out = ""
     child.stdout.on("data", (d) => (out += d.toString("utf8")))
     await pause(1500)
-    assert.match(out, /Something/)
+    // The card counted on To do's folded line: the board drew.
+    assert.match(out, /TO DO · 1 ▸/)
     t.setVersion("9.9.9")
     // The new version stands still for the settle time, the copy checks out, then it hands over and quits.
     const exited = await Promise.race([new Promise((r) => child.on("exit", () => r(true))), pause(8000).then(() => false)])
@@ -288,7 +289,7 @@ test("a new version is checked only after it stood still for the settle time, no
   let live
   try {
     live = livePane(t, { JOB_BOARD_UPDATE_SETTLE_MS: "4000" })
-    for (let i = 0; i < 100 && !/Something/.test(live.out); i++) await pause(100)
+    for (let i = 0; i < 100 && !/TO DO · 1 ▸/.test(live.out); i++) await pause(100)
     await pause(300)
     t.setVersion("9.9.9")
     await pause(2500)
@@ -859,7 +860,7 @@ test("a pane whose own <n> folder Herdr removed still follows the installed root
       live = { out: "", exited: false, kill: () => { try { if (!live.exited) process.kill(-child.pid, "SIGKILL") } catch {} } }
       child.stdout.on("data", (d) => (live.out += d.toString("utf8")))
       child.on("exit", () => (live.exited = true))
-      for (let i = 0; i < 100 && !/Something/.test(live.out); i++) await pause(100)
+      for (let i = 0; i < 100 && !/TO DO · 1 ▸/.test(live.out); i++) await pause(100)
       // The update: 2-0 written at 9.9.9, plugin_root flips to it, and Herdr removes 1-0.
       const second = L.copy(L.inst("2-0"), "9.9.9")
       L.installAt(second, "9.9.9")

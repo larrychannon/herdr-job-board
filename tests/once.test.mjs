@@ -37,7 +37,7 @@ function board() {
 }
 const agents = [{ name: "pr-review3", agent_status: "working", workspace_id: "w9" }]
 const draw = (state, opts = {}) =>
-  renderBoard(buildView(state, agents, { now: NOW, workspace: "w9" }), { width: 60, height: 40, interactive: true, now: NOW, ...opts, scroll: { selected: "doing", doneOpen: true, ...opts.scroll } })
+  renderBoard(buildView(state, agents, { now: NOW, workspace: "w9" }), { width: 60, height: 40, interactive: true, now: NOW, ...opts, scroll: { selected: "doing", todoOpen: true, doneOpen: true, ...opts.scroll } })
 const section = (text, head, next) => {
   const lines = plain(text).split("\n")
   const from = lines.findIndex((l) => l.includes(head))
@@ -64,13 +64,13 @@ test("compact: a sub-task in its parent's section is one row, straight under the
   assert.equal(rows[1].indexOf("↳"), rows[0].indexOf("Node") + 2)
   // 274 keeps its own row in To do, counted there, with whose it is on a line of its own.
   assert.deepEqual(section(d.text, "TO DO", "DONE").map((l) => l.replace(/\s+$/, "")), [" 274   Phone alerts move: merged — goes live wit… 1 h 14 min", "       for #231 Node health"])
-  assert.match(text, /\nTO DO \(1\) ─/)
+  assert.match(text, /\nTO DO \(1\) ▾ ─/)
   assert.match(text, /\n▸ DOING \(4\) ─/)
   for (const line of text.split("\n")) assert.ok([...line].length <= 60, `fits 60: ${line}`)
 })
 
 test("wide: a sub-task's card follows its parent's, indented with its id after the ↳; the other section's one is its own card there", () => {
-  const d = renderBoard(buildView(board(), agents, { now: NOW, workspace: "w9" }), { width: 120, now: NOW, layout: "wide", scroll: { doneOpen: true } })
+  const d = renderBoard(buildView(board(), agents, { now: NOW, workspace: "w9" }), { width: 120, now: NOW, layout: "wide", scroll: { todoOpen: true, doneOpen: true } })
   const text = plain(d.text)
   assert.match(text, /\n231 Node health: goes live after its {5}/)
   assert.match(text, /\n {6}↳ 279  Node health fixes: built\n {13}— in independent review\n {13}working\n/)

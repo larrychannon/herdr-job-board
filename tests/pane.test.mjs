@@ -38,9 +38,10 @@ function state({ waiting = 6, doing = 2, todo = 3, withOptions = [] } = {}) {
 }
 
 // The wide layout (the pane draws it from 120 columns) at 88 columns, where these tests'
-// mouse positions were measured; the inbox and compact layouts have tests of their own.
+// mouse positions were measured; the inbox and compact layouts have tests of their own. To do
+// open (t), as these tests were written for it; its fold has a test of its own.
 const draw = (s, opts = {}) =>
-  renderBoard(buildView(s, opts.agents ?? null, { now: NOW, workspace: "w9" }), { width: 88, height: 40, now: NOW, interactive: true, layout: "wide", ...opts })
+  renderBoard(buildView(s, opts.agents ?? null, { now: NOW, workspace: "w9" }), { width: 88, height: 40, now: NOW, interactive: true, layout: "wide", ...opts, scroll: { todoOpen: true, ...opts.scroll } })
 
 /** Feed events one by one, redrawing after each, as the pane does. */
 function feed(s, events, opts = {}) {
@@ -166,7 +167,7 @@ test("Done: folded by default; d or a click on its line opens it, d or a click o
     else assert.match(lines[y - 2 - (folded.layout === "inbox" ? 1 : 0)], /^ +\d+ {3}Later \d+ +30 min$/, "right after To do")
     assert.equal(folded.sections.done, undefined, "no Done section to scroll or select")
     assert.deepEqual(folded.doneToggle, { y, x0: 1, x1: width })
-    if (folded.layout === "wide") assert.match(folded.text, /^DOING \(2\) +TO DO \(12\)$/m, `${width}: Doing and To do share the width`)
+    if (folded.layout === "wide") assert.match(folded.text, /^DOING \(2\) +TO DO \(12\) ▾$/m, `${width}: Doing and To do share the width`)
     // d opens it; d again folds it.
     const open = feed(s, [key("done")], at).drawn
     assert.match(open.text, /DONE \(1\) ▾/)
@@ -213,7 +214,7 @@ test("Done: folded by default; d or a click on its line opens it, d or a click o
   many.items.push({ id: 200, title: "Yesterday", column: "done", since: "2026-10-12T09:00:00Z" })
   const counted = draw(many)
   assert.match(counted.text, /^DONE · 32 today ▸$/m)
-  assert.match(counted.text, /^DOING \(2\) +TO DO \(12\)$/m)
+  assert.match(counted.text, /^DOING \(2\) +TO DO \(12\) ▾$/m)
   assert.match(feed(many, [key("done")]).drawn.text, /DONE \(32\) ▾/)
 })
 

@@ -344,10 +344,10 @@ test("ls at 120 columns: 'for …' (dim), 'Waiting on: …' (bold) and the cards
     assert.doesNotMatch(after, /↳/, "nothing open under it: no lines under it")
     // Colours: the words never depend on them, and the SGR codes are the board's own.
     const view = buildView(readBoard(t.file), null, { now: new Date(NOW) })
-    const coloured = render(view, { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: { doneOpen: true } })
+    const coloured = render(view, { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: { todoOpen: true, doneOpen: true } })
     assert.match(coloured, /\x1b\[1;33mready to resume/)
     t.ok(["add", "todo", "Child again", "--parent", "1"])
-    const again = render(buildView(readBoard(t.file), null, { now: new Date(NOW) }), { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: {} })
+    const again = render(buildView(readBoard(t.file), null, { now: new Date(NOW) }), { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: { todoOpen: true } })
     // The new one (To do) keeps its own card there, "for #1 …" (dim); its parent names it with its
     // state in To do's grey (0.7.5).
     assert.match(again, /\x1b\[1mWaiting on: \x1b\[0mChild again \x1b\[90m\[to do\]\x1b\[0m/)
@@ -480,7 +480,7 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <name>
     ], { now: new Date(NOW) })
     const parent = view.doing.find((e) => e.id === 1)
     assert.deepEqual(parent.under.map((c) => [c.id, c.title, c.live]), [[2, "Phone alerts move", "blocked"], [3, "Badge and chart fixes before going live", "working"]])
-    const text = render(view, { width: 60, now: new Date(NOW), layout: "compact", scroll: { doneOpen: true } })
+    const text = render(view, { width: 60, now: new Date(NOW), layout: "compact", scroll: { todoOpen: true, doneOpen: true } })
     // 3 (working, in Doing with it) its own row under it; 2 (blocked: Waiting on you) its own row
     // in Waiting (0.7.5), "for #1 …", and its parent says it waits on you.
     assert.match(text, /\n 1   Node health[^\n]*\n {7}↳ 3  Badge and chart fixes[^\n]* working  just now\n/)

@@ -178,7 +178,7 @@ test("Shift+↑ ↓: parsed from ESC [1;2A / [1;2B (other modifiers stay ↑ ↓
   ])
   const card = (id, order, project = "app") => ({ id, project, column: "todo", title: `card ${id}`, desc: "", job: "", ask: "", origin: "", workspace: "", created: NOW, since: NOW, updated: NOW, order })
   const view = buildView({ items: [card(1, 0), card(2, 1, "lib"), card(3, 2)], projects: {} }, null, { now: new Date(NOW) })
-  const drawn = renderBoard(view, { width: 100, height: 30, interactive: true, now: new Date(NOW), scroll: { selected: "todo", card: "#3", anchors: {} } })
+  const drawn = renderBoard(view, { width: 100, height: 30, interactive: true, now: new Date(NOW), scroll: { selected: "todo", card: "#3", anchors: {}, todoOpen: true } })
   const { scroll, action } = handleInput(drawn.scroll, { type: "key", name: "moveUp" }, drawn)
   assert.deepEqual(action, { type: "order", id: 3, key: "#3", where: "up", among: [1, 2, 3] })
   assert.equal(scroll.card, "#3", "the selection stays on the card")
@@ -189,8 +189,8 @@ test("the pane: Shift+↓ on the selected To do card moves it down and saves the
   try {
     for (const title of ["alpha", "beta", "gamma"]) t.ok(["add", "todo", title])
     assert.deepEqual(t.ids("todo"), [3, 2, 1])
-    // Tab twice: Waiting → Doing → To do; its first card (gamma) is selected.
-    const r = t.pane("\t\t\x1b[1;2B")
+    // t opens To do; Tab twice: Waiting → Doing → To do; its first card (gamma) is selected.
+    const r = t.pane("t\t\t\x1b[1;2B")
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(t.ids("todo"), [2, 3, 1])
     const lines = r.stdout.split("\n")
@@ -198,7 +198,7 @@ test("the pane: Shift+↓ on the selected To do card moves it down and saves the
     assert.ok(row("beta") < row("gamma") && row("gamma") < row("alpha"), r.stdout)
     assert.match(r.stdout, /card 3 moved down/)
     // Shift+↑ twice: back up, then at the top it says it can't go further.
-    const r2 = t.pane("\t\t\x1b[B\x1b[1;2A\x1b[1;2A")
+    const r2 = t.pane("t\t\t\x1b[B\x1b[1;2A\x1b[1;2A")
     assert.equal(r2.status, 0, r2.stderr)
     assert.deepEqual(t.ids("todo"), [3, 2, 1])
     assert.match(r2.stdout, /card 3 can't go further up/)

@@ -2959,6 +2959,11 @@ const subSegs = (entry, ui = {}) =>
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
 export const SECTIONS = ["waiting", "doing", "todo", "done"]
+// The sections the pane folds to one line until opened (scroll.todoOpen, scroll.doneOpen).
+const FOLDS = ["todo", "done"]
+const OPEN_KEY = { todo: "todoOpen", done: "doneOpen" }
+/** The sections drawn whole with `scroll`: To do and Done only while open. */
+const openSections = (scroll) => SECTIONS.filter((s) => !FOLDS.includes(s) || scroll[OPEN_KEY[s]] === true)
 const clockOf = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
 const segWidth = (segs) => segs.reduce((w, seg) => w + textWidth(printable(seg.t)), 0)
 const keyOf = (entry) => (entry.id == null ? `agent:${entry.job}` : `#${entry.id}`)
@@ -3130,8 +3135,8 @@ function headerLine(view, section, selected, interactive, { emoji = false, rule 
   const segs = []
   if (selected) segs.push({ t: "▸ ", s: "head" })
   if (emoji) segs.push({ t: `${SECTION_EMOJI[section]} ` })
-  // Done open in the pane: ▾, for "d or a click here folds it again".
-  segs.push({ t: `${HEADINGS[section]} (${count}${hidden ? ` · +${hidden} other` : ""})${section === "done" && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
+  // To do or Done open in the pane: ▾, for "t (d) or a click here folds it again".
+  segs.push({ t: `${HEADINGS[section]} (${count}${hidden ? ` · +${hidden} other` : ""})${FOLDS.includes(section) && interactive ? " ▾" : ""}`, s: selected ? `sel-${section}` : !count && (section === "waiting" || fold) ? "head" : section })
   const empty = section === "done" && view.doneLabel ? ` · nothing finished ${view.doneLabel}` : EMPTY[section]
   if (!count && (section === "waiting" || fold)) segs.push({ t: `${empty}${hidden ? " here" : ""}`, s: "dim" })
   if (rule && width - segWidth(segs) > 2) segs.push({ t: " " }, { t: "─".repeat(width - segWidth(segs) - 1), s: `rule-${section}` })
@@ -3140,11 +3145,13 @@ function headerLine(view, section, selected, interactive, { emoji = false, rule 
 
 const pad = (painted, width) => painted.text + " ".repeat(Math.max(0, width - painted.width))
 const contentHeight = (blocks) => Math.max(1, heightOf(blocks, 0, blocks.length))
-const HINT = (mouse, copy = "c copy") => `Tab section · ↑↓ card · Enter details · ${copy} · d done · m mouse: ${mouse} · q quit`
-const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · d done · mouse: ${mouse} · q`
+const HINT = (mouse, copy = "c copy") => `Tab section · ↑↓ card · Enter details · ${copy} · t to do · d done · m mouse: ${mouse} · q quit`
+const HINT_NARROW = (mouse) => `Tab · ↑↓ · Enter · c copy · t to do · d done · mouse: ${mouse} · q`
 // Compact: rows only, so Space (peek) is worth a place.
-const HINT_COMPACT = (mouse) => `Tab · ↑↓ · Space peek · Enter · c copy · d done · mouse: ${mouse} · q`
-const HINT_COMPACT_SHORT = "Tab · ↑↓ · Space peek · Enter · c copy · d done · q"
+const HINT_COMPACT = (mouse) => `Tab · ↑↓ · Space peek · Enter · c copy · t to do · d done · mouse: ${mouse} · q`
+const HINT_COMPACT_SHORT = "Tab · ↑↓ · Space peek · Enter · c copy · t to do · d done · q"
+// Under 61 cells: the fold keys before c (? still lists it).
+const HINT_COMPACT_SHORTER = "Tab · ↑↓ · Space peek · Enter · t to do · d done · q"
 const HINT_TINY = "Tab · ↑↓ · Space · Enter · ? keys · q"
 // Where nothing else fits (a phone): ? shows every key (0.12.0).
 const HINT_PHONE = "? keys · q quit"
@@ -3161,8 +3168,9 @@ const ALL_KEYS = [
   "Esc close",
   "f more",
   "c copy",
-  "t go to the job's tab",
+  "t to do",
   "d done",
+  "t in a card's details: go to the job's tab",
   "m mouse: board / select text",
   "p project",
   "P all projects",
@@ -3183,10 +3191,16 @@ const SELECT_HINTS = [
 ]
 // The key line once a card's button is chosen (after "Enter to send").
 const CHOSEN_HINT = (wide) => (wide ? "←→ choose · Esc cancel · ↑↓ card · c copy · q quit" : "←→ · Esc · ↑↓ · q")
-/** Done folded: one line, its count (and in a view of one project, the others') and ▸, for "d or a click here opens it". */
-const doneLine = (view, emoji = false) => [
-  ...(emoji ? [{ t: `${SECTION_EMOJI.done} ` }] : []),
-  { t: `${HEADINGS.done} · ${view.doneToday.length} ${view.doneLabel || "today"}${view.hidden?.done ? ` · +${view.hidden.done} other` : ""} ▸`, s: "done" },
+/**
+ * To do or Done folded: one line, its count (and in a view of one project, the others') and ▸,
+ * for "t (d) or a click here opens it": "TO DO · 12 ▸", "DONE · 3 today ▸".
+ */
+const foldedLine = (view, section, emoji = false) => [
+  ...(emoji ? [{ t: `${SECTION_EMOJI[section]} ` }] : []),
+  {
+    t: `${HEADINGS[section]} · ${entriesOf(view, section).length}${section === "done" ? ` ${view.doneLabel || "today"}` : ""}${view.hidden?.[section] ? ` · +${view.hidden[section]} other` : ""} ▸`,
+    s: section,
+  },
 ]
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
@@ -3676,18 +3690,18 @@ export function layoutOf(width, height = Infinity) {
 
 /**
  * Lay the board out in `width` × `height` cells (height Infinity: everything, no scrolling).
- * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING | TO DO below in
- * two columns, and DONE folded to one line ("DONE · 3 today ▸") at the bottom of the lower area;
- * opened (`scroll.doneOpen`), DOING | TO DO | DONE in three columns. Waiting takes what it needs
+ * Wide: WAITING ON YOU across the top (two cards a row from 110 cells), DOING below, and TO DO
+ * and DONE folded to a line each ("TO DO · 12 ▸", "DONE · 3 today ▸") at the bottom of the lower
+ * area; opened (`scroll.todoOpen`, `scroll.doneOpen`), each a column beside DOING. Waiting takes what it needs
  * up to half the height (more only when the bottom doesn't need it) and shrinks to one line when
  * empty; an empty Doing folds to its header over the columns. The layout (`opts.layout`, else
  * layoutOf the size): wide as above; the inbox and compact stack the sections, one row a card
  * (cardRow), the selected one open (in the inbox; with `scroll.open` true in compact, false in the
- * inbox, Space's choice), empty sections folded to their header, Done's line right after them.
+ * inbox, Space's choice), empty sections folded to their header, the folded lines right after them.
  * `emoji` puts each section's emoji before its header. Each section
  * scrolls on its own and has a selected card; `scroll` is { selected, anchors, card, button,
- * detail, doneOpen, open } where an anchor is a section's first visible card, so the view holds still
- * as cards come and go (Done folded keeps its anchor for when it opens again), and `detail`
+ * detail, todoOpen, doneOpen, open } where an anchor is a section's first visible card, so the view holds still
+ * as cards come and go (a folded section keeps its anchor for when it opens again), and `detail`
  * ({ key, offset, more }) opens a card's details over the lower half: an opaque panel from the
  * middle down to the key line, between a "── card N ──" rule and a closing rule, with nothing of
  * the board inside it. `links` turns whole URLs into terminal hyperlinks; `footer`
@@ -3695,8 +3709,8 @@ export function layoutOf(width, height = Infinity) {
  * frame on Doing cards, none for a board that stands still.
  * Returns { text, sections (per section shown: blockKeys, offset, maxOffset, page, cards),
  * regions (screen rectangles, 1-based), buttons, askHits, cardHits and moreHits (where each
- * button, question, card and the details' "More…" line is, for the mouse), doneToggle (the row a
- * click folds or opens Done on), bars (where each working bar on screen starts, { y, x }) and
+ * button, question, card and the details' "More…" line is, for the mouse), todoToggle and
+ * doneToggle (the row a click folds or opens To do, Done on), bars (where each working bar on screen starts, { y, x }) and
  * animated (how many: the pane ticks only while there are some), entries (by key), scroll (as
  * drawn), layout and open (whether the selected row is open) }. `notice` adds a line under the
  * title (an update is installed).
@@ -3719,9 +3733,12 @@ export function renderBoard(view, opts = {}) {
   const notes = opts.notes || {}
   const frame = Number.isInteger(opts.frame) ? opts.frame : null
   const doneOpen = scroll.doneOpen === true
-  // Done folded can't be selected: To do is, with its own selection.
-  if (!doneOpen && scroll.selected === "done") {
-    scroll.selected = "todo"
+  const todoOpen = scroll.todoOpen === true
+  const opened = openSections(scroll)
+  // A folded section can't be selected: the nearest open one above it is (Done's: To do, else
+  // Doing), with its own selection.
+  if (!opened.includes(scroll.selected)) {
+    scroll.selected = opened.filter((s) => SECTIONS.indexOf(s) < SECTIONS.indexOf(scroll.selected)).at(-1) || "waiting"
     delete scroll.card
     scroll.button = -1
   }
@@ -3790,6 +3807,7 @@ export function renderBoard(view, opts = {}) {
   const moreHits = []
   const animated = []
   let doneToggle = null
+  let todoToggle = null
   const entries = Object.fromEntries(SECTIONS.flatMap((s) => entriesOf(view, s).map((e) => [keyOf(e), { ...e, column: e.column ?? s }])))
   // Paint a line at screen row `row` from column `left`, noting where its buttons and cards are.
   const emit = (segs, row, left, w) => {
@@ -3902,38 +3920,45 @@ export function renderBoard(view, opts = {}) {
   const header = (section, w = width) =>
     headerLine(view, section, interactive && scroll.selected === section, interactive, { emoji, rule: form === "row", width: w, fold: form === "row" || section === "doing" })
   const room = finite ? height - out.length - (interactive ? 1 : 0) : Infinity
-  // Done folded: its line, on the last row of the lower area (after a blank line when nothing
-  // limits the height); a click anywhere on it opens Done.
-  // In the inbox it follows the last section, after a blank line; in compact, straight after it.
-  const foldedDone = () => {
+  // To do and Done folded: a line each (To do's first), on the last rows of the lower area
+  // (after a blank line when nothing limits the height); a click anywhere on one opens it.
+  // In the inbox they follow the last section, after a blank line; in compact, straight after it.
+  const folds = FOLDS.filter((s) => !opened.includes(s))
+  const foldedLines = () => {
+    if (!folds.length) return
     if (form === "row") {
       if (layout === "inbox") out.push("")
-    } else if (finite) while (out.length < height - (interactive ? 1 : 0) - 1) out.push("")
+    } else if (finite) while (out.length < height - (interactive ? 1 : 0) - folds.length) out.push("")
     else out.push("")
-    const y = out.length + 1
-    out.push(emit(doneLine(view, emoji), y, 1, width).text)
-    regions.done = { top: y, bottom: y, left: 1, right: width }
-    doneToggle = { y, x0: 1, x1: width }
+    for (const s of folds) {
+      const y = out.length + 1
+      out.push(emit(foldedLine(view, s, emoji), y, 1, width).text)
+      regions[s] = { top: y, bottom: y, left: 1, right: width }
+      if (s === "todo") todoToggle = { y, x0: 1, x1: width }
+      else doneToggle = { y, x0: 1, x1: width }
+    }
   }
 
   if (layout === "wide") {
     const gap = 3
-    // Done folded: DOING | TO DO share the width, and Done's line takes one row under them. An
-    // empty Doing folds to its header ("DOING (0) · nothing running") over the columns.
+    // The open ones of DOING | TO DO | DONE share the width, and a folded one's line takes one
+    // row under them. An empty Doing folds to its header ("DOING (0) · nothing running") over
+    // the columns; with To do and Done folded too there are no columns.
     const foldDoing = !view.doing.length
-    const bottom = [...(foldDoing ? [] : ["doing"]), "todo", ...(doneOpen ? ["done"] : [])]
-    const folded = (doneOpen ? 0 : 1) + (foldDoing ? 2 : 0)
-    const cw = Math.floor((width - (bottom.length - 1) * gap) / bottom.length)
+    const bottom = [...(foldDoing ? [] : ["doing"]), ...(todoOpen ? ["todo"] : []), ...(doneOpen ? ["done"] : [])]
+    const folded = folds.length + (foldDoing ? 2 : 0)
+    const cw = bottom.length ? Math.floor((width - (bottom.length - 1) * gap) / bottom.length) : width
     const perRow = width >= 110 ? 2 : 1
     let wBlocks = sectionBlocks(view, "waiting", width, perRow, noted)
     const bBlocks = bottom.map((c) => sectionBlocks(view, c, cw, 1, noted))
     const wWant = wBlocks.length ? 1 + contentHeight(wBlocks) : 1
-    const bWant = 1 + Math.max(...bBlocks.map(contentHeight))
+    const bWant = bottom.length ? 1 + Math.max(...bBlocks.map(contentHeight)) : 0
     let wH = wWant
     let bH = bWant
     if (finite) {
       const r = room - 1 - folded
-      if (wBlocks.length) wH = Math.max(Math.min(wWant, 2), Math.min(wWant, Math.max(r - bWant, Math.floor(r / 2))))
+      // Waiting may take every row when there are no columns under it.
+      if (wBlocks.length) wH = Math.max(Math.min(wWant, 2), Math.min(wWant, bottom.length ? Math.max(r - bWant, Math.floor(r / 2)) : r))
       bH = Math.max(2, r - wH)
     }
     const wTop = out.length + 1
@@ -3954,30 +3979,33 @@ export function renderBoard(view, opts = {}) {
       out.push(paint(header("doing")).text)
       regions.doing = { top: y, bottom: y, left: 1, right: width }
       place("doing", [], 0)
-      out.push("")
+      if (bottom.length) out.push("")
     }
-    const bTop = out.length + 1
-    const bodies = bottom.map((c) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
-    const last = bottom.length - 1
-    const row = (cells, y) => cells.map((segs, i) => (i < last ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
-    out.push(row(bottom.map((c) => header(c, cw)), out.length + 1))
-    const rows = finite ? bH - 1 : Math.max(...bodies.map((b) => b.length))
-    for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || []), out.length + 1))
-    bottom.forEach((c, i) => {
-      regions[c] = { top: bTop, bottom: bTop + rows, left: 1 + i * (cw + gap), right: i * (cw + gap) + cw }
-    })
-    // Done open: a click on its header folds it.
-    if (doneOpen) doneToggle = { y: bTop, x0: regions.done.left, x1: regions.done.right }
-    else foldedDone()
+    if (bottom.length) {
+      const bTop = out.length + 1
+      const bodies = bottom.map((c) => place(c, uiFor(c, 1, cw, bH - 1), bH - 1))
+      const last = bottom.length - 1
+      const row = (cells, y) => cells.map((segs, i) => (i < last ? pad(emit(segs, y, 1 + i * (cw + gap), cw), cw + gap) : emit(segs, y, 1 + i * (cw + gap), cw).text)).join("").trimEnd()
+      out.push(row(bottom.map((c) => header(c, cw)), out.length + 1))
+      const rows = finite ? bH - 1 : Math.max(...bodies.map((b) => b.length))
+      for (let r = 0; r < rows; r++) out.push(row(bodies.map((b) => b[r] || []), out.length + 1))
+      bottom.forEach((c, i) => {
+        regions[c] = { top: bTop, bottom: bTop + rows, left: 1 + i * (cw + gap), right: i * (cw + gap) + cw }
+      })
+      // To do or Done open: a click on its header folds it.
+      if (todoOpen) todoToggle = { y: bTop, x0: regions.todo.left, x1: regions.todo.right }
+      if (doneOpen) doneToggle = { y: bTop, x0: regions.done.left, x1: regions.done.right }
+    }
+    foldedLines()
   } else {
     // The inbox and compact: the sections stacked, one row a card, an empty one folded to its
     // header; a blank line between sections in the inbox, none in compact.
-    const shown = doneOpen ? SECTIONS : SECTIONS.filter((s) => s !== "done")
+    const shown = opened
     const gaps = layout === "compact" ? 0 : shown.length - 1
     // What each section wants with its selected card open; the selected section's comes first,
     // so the card open under its row shows whole when the pane can hold it.
-    // Done folded takes its line, and in the inbox the blank line before it.
-    const total = room - gaps - (doneOpen ? 0 : layout === "inbox" ? 2 : 1)
+    // To do and Done folded take a line each, and in the inbox the blank line before them.
+    const total = room - gaps - (folds.length ? folds.length + (layout === "inbox" ? 1 : 0) : 0)
     let all = shown.map((s) => (entriesOf(view, s).length ? uiFor(s, 1, width, finite ? total - 1 : Infinity) : []))
     const wants = all.map((blocks) => (blocks.length ? 1 + contentHeight(blocks) : 1))
     const heights = finite ? share(wants, total, interactive ? shown.indexOf(scroll.selected) : -1) : wants
@@ -4005,12 +4033,13 @@ export function renderBoard(view, opts = {}) {
       if (i && gaps) out.push("")
       const sTop = out.length + 1
       out.push(paint(header(s)).text)
+      if (s === "todo") todoToggle = { y: sTop, x0: 1, x1: width }
       if (s === "done") doneToggle = { y: sTop, x0: 1, x1: width }
       if (all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
       else place(s, all[i], 0)
       regions[s] = { top: sTop, bottom: out.length, left: 1, right: width }
     })
-    if (!doneOpen) foldedDone()
+    foldedLines()
   }
 
   const lines = finite ? out.slice(0, height - (interactive ? 1 : 0)) : out
@@ -4066,6 +4095,7 @@ export function renderBoard(view, opts = {}) {
   let shownCards = cardHits.filter((c) => c.y <= lines.length && !covered(c.y))
   let shownMore = moreHits.filter((m) => m.y <= lines.length)
   let shownToggle = doneToggle && doneToggle.y <= lines.length && !covered(doneToggle.y) ? doneToggle : null
+  let shownTodoToggle = todoToggle && todoToggle.y <= lines.length && !covered(todoToggle.y) ? todoToggle : null
   let shownStrip = stripHits.filter((h) => !covered(h.y))
   // Working bars on screen: not cut off, not under the panel.
   let bars = animated.filter((a) => a.y <= lines.length && !covered(a.y))
@@ -4096,8 +4126,8 @@ export function renderBoard(view, opts = {}) {
         : layout === "compact"
           ? // The mouse mode only when it isn't the usual one, where the line is short.
             showStrip
-            ? keyLine(projectHint(HINT_COMPACT_SHORT, "p proj", view.filter), projectHint(HINT_TINY, "p proj", view.filter), HINT_TINY)
-            : keyLine(HINT_COMPACT(mouse), mouse === "board" ? HINT_COMPACT_SHORT : HINT_NARROW(mouse), HINT_TINY)
+            ? keyLine(projectHint(HINT_COMPACT_SHORT, "p proj", view.filter), projectHint(HINT_COMPACT_SHORTER, "p proj", view.filter), projectHint(HINT_TINY, "p proj", view.filter), HINT_TINY)
+            : keyLine(HINT_COMPACT(mouse), mouse === "board" ? HINT_COMPACT_SHORT : HINT_NARROW(mouse), ...(mouse === "board" ? [HINT_COMPACT_SHORTER] : []), HINT_TINY)
           : showStrip
             ? keyLine(
                 ...(several ? [projectHint(HINT(mouse, NEXT_COPY), view.filter ? "p next project" : "p project", view.filter)] : []),
@@ -4107,7 +4137,13 @@ export function renderBoard(view, opts = {}) {
                 projectHint(HINT_NARROW(mouse), "p proj", view.filter),
                 HINT_NARROW(mouse),
               )
-            : keyLine(...(several ? [HINT(mouse, NEXT_COPY)] : []), HINT(mouse), HINT_NARROW(mouse))
+            : keyLine(
+                ...(several ? [HINT(mouse, NEXT_COPY)] : []),
+                HINT(mouse),
+                // The mouse's usual mode needn't be said where room is short.
+                ...(mouse === "board" ? [HINT(mouse).replace(" · m mouse: board", "")] : []),
+                HINT_NARROW(mouse),
+              )
     const message = opts.footer?.message
     // The key line goes under the title, never on the last row (0.12.0): a terminal that keeps
     // its last row in view (a phone's) would scroll the cards at the top away. ? puts every key
@@ -4127,6 +4163,7 @@ export function renderBoard(view, opts = {}) {
     shownCards = shownCards.map((c) => ({ ...c, y: down(c.y) })).filter(kept)
     shownMore = shownMore.map((m) => ({ ...m, y: down(m.y) })).filter(kept)
     shownToggle = shownToggle && kept({ y: down(shownToggle.y) }) ? { ...shownToggle, y: down(shownToggle.y) } : null
+    shownTodoToggle = shownTodoToggle && kept({ y: down(shownTodoToggle.y) }) ? { ...shownTodoToggle, y: down(shownTodoToggle.y) } : null
     shownStrip = shownStrip.map((h) => ({ ...h, y: down(h.y) })).filter(kept)
     bars = bars.map((b) => ({ ...b, y: down(b.y) })).filter(kept)
     for (const r of Object.values(regions)) {
@@ -4156,6 +4193,7 @@ export function renderBoard(view, opts = {}) {
     cardHits: shownCards,
     moreHits: shownMore,
     doneToggle: shownToggle,
+    todoToggle: shownTodoToggle,
     bars,
     animated: bars.length,
     entries,
@@ -4198,8 +4236,8 @@ export function barTick(drawn, frame, color) {
 
 /**
  * The board as text, laid out by renderBoard with `opts`. `ls` shows everything: no height limit
- * and Done open (scroll { doneOpen: true }), as folding saves nothing there; the pane draws it
- * through renderBoard with its own size, scroll and frame.
+ * and To do and Done open (scroll { todoOpen: true, doneOpen: true }), as folding saves nothing
+ * there; the pane draws it through renderBoard with its own size, scroll and frame.
  */
 export function render(view, opts = {}) {
   return renderBoard(view, opts).text
@@ -4309,24 +4347,27 @@ const justMoved = (scroll, b, at) => Number.isFinite(at) && at - (scroll.seen?.[
  * and maybe an action for the pane to carry out: { type: "send", id, key, label },
  * { type: "other", id, key }, { type: "copy", key }, { type: "tab", key }, { type: "mouse" } or
  * { type: "order", id, key, where, among } (Shift+↑ ↓: move the card, see orderCard).
- * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them, skipping Done
- *   while it is folded; ↑ ↓ select a card in the section, scrolling to keep it in view; PgUp PgDn
- *   scroll a page, g G go to the ends; the mouse wheel scrolls the section under the pointer.
- * - d, or a click on Done's line (folded) or header (open), folds or opens Done. Nothing else
- *   moves: the selection stays, unless it was in Done as it folds (then To do is selected).
+ * - Tab / Shift-Tab select a section, as do ← → unless a card's buttons take them, skipping To
+ *   do and Done while folded; ↑ ↓ select a card in the section, scrolling to keep it in view;
+ *   PgUp PgDn scroll a page, g G go to the ends; the mouse wheel scrolls the section under the
+ *   pointer.
+ * - t (d), or a click on To do's (Done's) line when folded or header when open, folds or opens
+ *   it. Nothing else moves: the selection stays, unless it was in the section as it folds (then
+ *   the nearest open one above it is selected).
  * - Enter opens the selected card's details (Esc closes them), or, once ← → chose one of its
- *   buttons, presses that button; o is Other…; c copies, t goes to the job's tab, m toggles
- *   mouse capture. A click selects a card, a double click opens it, a click on a button
- *   presses it. A click on a card's question chooses its suggested button (or the first), so
- *   Enter sends it: it never sends by itself.
+ *   buttons, presses that button; o is Other…; c copies, m toggles mouse capture. A click
+ *   selects a card, a double click opens it, a click on a button presses it. A click on a
+ *   card's question chooses its suggested button (or the first), so Enter sends it: it never
+ *   sends by itself.
  * - Only buttons on the screen the user sees (`drawn.buttons`) are chosen or pressed: on a card
  *   cut short by a small pane, ← → and a click on the question choose none that is off screen,
  *   and Enter opens the details instead of pressing one.
  * - In the details: ↑ ↓ PgUp PgDn g G and the wheel scroll them; ← → choose one of the card's
  *   buttons and Enter presses it, as on the card; with no button chosen, Enter (or f, or a
- *   click on the line) shows or hides "More…", and when there is no more, Enter closes them.
- *   A click on the panel's buttons presses them, on its question chooses the suggested button
- *   (never sends); a click elsewhere on the panel does nothing, and above it closes the panel.
+ *   click on the line) shows or hides "More…", and when there is no more, Enter closes them;
+ *   t goes to the job's tab. A click on the panel's buttons presses them, on its question
+ *   chooses the suggested button (never sends); a click elsewhere on the panel does nothing,
+ *   and above it closes the panel.
  *   A button the panel has scrolled away is scrolled into view as it is chosen, and Enter on
  *   one still off screen scrolls to it instead of pressing it.
  * Events may carry `at` (ms), used for double clicks.
@@ -4352,8 +4393,8 @@ export function handleInput(scroll, event, drawn) {
     }
   }
   const at = (section) => drawn.sections[section]?.offset ?? 0
-  // Tab goes round the sections on screen: Done only while it is open.
-  const order = next.doneOpen ? SECTIONS : SECTIONS.filter((x) => x !== "done")
+  // Tab goes round the sections on screen: To do and Done only while open.
+  const order = openSections(next)
   const step = (dir) => order[(Math.max(0, order.indexOf(next.selected)) + dir + order.length) % order.length]
   // A card's buttons on screen, by index: in the details panel (`panel`) or on the board.
   const onScreen = (key, panel) => [...new Set((drawn.buttons || []).filter((b) => b.key === key && !b.panel === !panel).map((b) => b.index))].sort((a, b) => a - b)
@@ -4369,9 +4410,12 @@ export function handleInput(scroll, event, drawn) {
       next.button = -1
     }
   }
-  const toggleDone = () => {
-    next.doneOpen = !next.doneOpen
-    if (!next.doneOpen && next.selected === "done") selectSection("todo")
+  // t (d) folds or opens To do (Done). Folding the selected section selects the nearest open
+  // one above it.
+  const toggle = (section) => {
+    next[OPEN_KEY[section]] = next[OPEN_KEY[section]] !== true
+    const open = openSections(next)
+    if (!open.includes(next.selected)) selectSection(open.filter((x) => SECTIONS.indexOf(x) < SECTIONS.indexOf(next.selected)).at(-1) || "waiting")
   }
   // One project's cards ("" for all): the pane's own filter, not written to the board. The
   // selection and scroll positions start again, and details close.
@@ -4462,7 +4506,7 @@ export function handleInput(scroll, event, drawn) {
     delete next.detail
   }
 
-  const fold = drawn.doneToggle
+  const onToggle = (t) => event.type === "click" && t && t.y === event.y && event.x >= t.x0 && event.x <= t.x1
   const stripHit = event.type === "click" ? (drawn.stripHits || []).find((h) => h.y === event.y && event.x >= h.x0 && event.x <= h.x1) : null
   if (stripHit) {
     showProject(stripHit.project)
@@ -4473,8 +4517,8 @@ export function handleInput(scroll, event, drawn) {
     const list = drawn.strip || []
     if (list.length > 1 || next.project) showProject(list[(list.indexOf(next.project || "") + 1) % list.length] || "")
   } else if (name === "allProjects" && event.type === "key") showProject("")
-  else if (event.type === "click" && fold && fold.y === event.y && event.x >= fold.x0 && event.x <= fold.x1) {
-    toggleDone()
+  else if (onToggle(drawn.doneToggle) || onToggle(drawn.todoToggle)) {
+    toggle(onToggle(drawn.doneToggle) ? "done" : "todo")
     next.lastClick = null
   } else if (event.type === "click") {
     const hit = (drawn.buttons || []).find((b) => b.y === event.y && event.x >= b.x0 && event.x <= b.x1)
@@ -4556,10 +4600,9 @@ export function handleInput(scroll, event, drawn) {
     if (current?.buttons) action = press(current, current.buttons - 1)
   } else if (name === "copy") {
     if (current) action = { type: "copy", key: current.key }
-  } else if (name === "tab") {
-    if (current) action = { type: "tab", key: current.key }
-  } else if (name === "mouse") action = { type: "mouse" }
-  else if (name === "done") toggleDone()
+  } else if (name === "tab") toggle("todo")
+  else if (name === "mouse") action = { type: "mouse" }
+  else if (name === "done") toggle("done")
   else if (name === "next" || name === "right") selectSection(step(1))
   else if (name === "prev" || name === "left") selectSection(step(-1))
   else if (name === "up") scrollTo(s, at(s) - 1)
@@ -8244,7 +8287,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined
         const color = !env.NO_COLOR && Boolean(process.stdout.isTTY) && !io.out
         // Everything, Done open with today's finished cards: no height limit, so folding saves nothing.
-        raw(render(view, { width, color, now, repo: basename(file) === "board.json" ? scope.label : repoName(file), layout, scroll: { doneOpen: true, project: shownProject } }))
+        raw(render(view, { width, color, now, repo: basename(file) === "board.json" ? scope.label : repoName(file), layout, scroll: { todoOpen: true, doneOpen: true, project: shownProject } }))
         if (scope.hidden) out(`+${plural(scope.hidden, "open card")} in other projects: board.mjs ls --project all`)
         return 0
       }
