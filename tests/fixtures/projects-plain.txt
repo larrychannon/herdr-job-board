@@ -15,10 +15,10 @@ Projects: ▸all  sfc 3  ai 1  herdr  home                                      
  192 ! sfc   One Analytics page PR #146: merge                                           2 days
  204 ! ai    Git access on the LXC: narrower tokens instead of Touch-ID: pick              16 h
 
-QUEUE · 0 ▸
-
 DOING (1) ─────────────────────────────────────────────────────────────────────────────────────
  211   herdr Job board 0.5.0, one board for all projects: plan            working [=   ]  3 min
+
+QUEUE · 0 ▸
 
 TO DO (10) ▾ ──────────────────────────────────────────────────────────────────────────────────
  140   sfc   Bring sfc-app-track into sfc-integration                                    3 days
@@ -57,9 +57,9 @@ Projects: all  ▸sfc 3  ai 1  herdr  home                                      
            answers go to: sfc coordinator (w4:p6)
  192 ! sfc One Analytics page PR #146: merge                                             2 days
 
-QUEUE · 0 ▸
-
 DOING (0 · +1 other) · nothing running here ───────────────────────────────────────────────────
+
+QUEUE · 0 ▸
 
 TO DO (6 · +4 other) ▾ ────────────────────────────────────────────────────────────────────────
  140   sfc Bring sfc-app-track into sfc-integration                                      3 days
@@ -91,9 +91,9 @@ Tab · ↑↓ · Space · Enter · ? keys · p proj · q
  170 ! sfc  magicwan v343 fleet rollout: approve… 2 h 52 min
  192 ! sfc  One Analytics page PR #146: merge         2 days
  204 ! ai   Git access on the LXC: narrower tokens ins… 16 h
-QUEUE · 0 ▸
 DOING (1) ──────────────────────────────────────────────────
  211   herd Job board 0.5.0, one boar… working [=   ]  3 min
+QUEUE · 0 ▸
 TO DO (10) ▾ ───────────────────────────────────────────────
  140   sfc  Bring sfc-app-track into sfc-integration  3 days
  171   sfc  SFC-MKC-012: heartbeat flaps down/up eve… 3 days
@@ -130,8 +130,8 @@ all sfc 3 ▸ai 1 herd home                              p · P
           no ai coordinator is running: a press asks first,
           then sends to the board's coordinator (sfc, pane
           w4:p6)
-QUEUE · 0 ▸
 DOING (0 · +1 other) · nothing running here ────────────────
+QUEUE · 0 ▸
 TO DO (2 · +8 other) ▾ ─────────────────────────────────────
  206   ai Job board 0.4.0 follow-ups in ai-config and … 13 h
  209   ai Coordinator auto-restart supervisor (parked) 9 min
@@ -163,8 +163,6 @@ Projects: ▸all  sfc 3  ai 1  herdr  home                                      
           answers go to: sfc coordinator (w4:p6)
 ↓ 2 more
 
-QUEUE · 0 ▸
-
 DOING (1)                                                                        TO DO (10) ▾
 211 herdr Job board 0.5.0, one board for all projects: plan              3 min   140 sfc   Bring sfc-app-track into sfc-integration                      3 days
           working [=   ]
@@ -190,6 +188,8 @@ DOING (1)                                                                       
 
 
 
+
+QUEUE · 0 ▸
 DONE · 2 today ▸
 
 
@@ -199,8 +199,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · p
 Projects: all  sfc 3  ai 1  ▸herdr  home                                                                                                          p next · P all
 
 ▸ WAITING ON YOU (0 · +4 other)  Nothing needs you here
-
-QUEUE · 0 ▸
 
 DOING (1)                                                                        TO DO (1 · +9 other) ▾
 211 herdr Job board 0.5.0, one board for all projects: plan              3 min   207 herdr Board key binding + sidebar count (in 0.5.0)                   3 min
@@ -237,6 +235,8 @@ DOING (1)                                                                       
 
 
 
+
+QUEUE · 0 ▸
 DONE · 1 today · +1 other ▸
 
 

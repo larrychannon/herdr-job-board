@@ -47,7 +47,7 @@ const section = (text, head, next) => {
 
 test("compact: a sub-task in its parent's section is one row, straight under the parent and further in; the other section's one keeps its row there, 'for #231 …'", () => {
   const d = draw(board(), { layout: "compact" })
-  const doing = section(d.text, "DOING", "TO DO")
+  const doing = section(d.text, "DOING", "QUEUE")
   const rows = doing.map((l) => l.replace(/\s+$/, ""))
   // Parent first, then its sub-tasks in Doing's order (279 before 282), each with its state, then
   // the next top card (280).

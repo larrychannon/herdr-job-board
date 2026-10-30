@@ -16,8 +16,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running
 
 TO DO (0) ▾
@@ -37,6 +35,8 @@ nothing
 
 
 
+
+QUEUE · 0 ▸
 DONE · 0 today ▸
 
 ===== → chooses the suggested button · 120 columns =====
@@ -57,8 +57,6 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running
 
 TO DO (0) ▾
@@ -78,6 +76,8 @@ nothing
 
 
 
+
+QUEUE · 0 ▸
 DONE · 0 today ▸
 
 ===== a click on the question · 120 columns =====
@@ -98,8 +98,6 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running
 
 TO DO (0) ▾
@@ -119,6 +117,8 @@ nothing
 
 
 
+
+QUEUE · 0 ▸
 DONE · 0 today ▸
 
 ===== details, a click on the question · 120 columns =====
@@ -139,9 +139,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running
+
+TO DO (0) ▾
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -177,9 +177,9 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
+
+QUEUE · 0 ▸
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
@@ -218,9 +218,9 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
+
+QUEUE · 0 ▸
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
@@ -259,9 +259,9 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
+
+QUEUE · 0 ▸
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
@@ -300,9 +300,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
-QUEUE · 0 ▸
-
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
+
+QUEUE · 0 ▸
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 

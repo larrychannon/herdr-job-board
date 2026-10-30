@@ -14,11 +14,11 @@ selecting text: m gives the mouse and the columns back · ↑↓ card · Space o
      Question: Read all of it, then say go
      [ Go ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                                                                                                          working, report done  25 min
  4   Docs: fix links                                                                                                                            no agent  24 min
+
+QUEUE · 0 ▸
 
 TO DO (1) ▾ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  5   Export to CSV                                                                                                                                        23 min
@@ -58,11 +58,11 @@ selecting text: m gives the mouse and the columns back · ↑↓ card · Space o
      Question: Read all of it, then say go
      [ Go ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                                                                                                                                                  working, report done  25 min
  4   Docs: fix links                                                                                                                                                                    no agent  24 min
+
+QUEUE · 0 ▸
 
 TO DO (1) ▾ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  5   Export to CSV                                                                                                                                                                                23 min

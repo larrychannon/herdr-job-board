@@ -12,13 +12,13 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next lin
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (1)                                                    TO DO (3) ▾
 3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
   working                                                      From the roadmap.
   The order list and filters from the approved mockup.
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -53,13 +53,13 @@ Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (1)                                                    TO DO (3) ▾
 3 Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
   working                                                      From the roadmap.
   The order list and filters from the approved mockup.
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
 ── card 2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -94,13 +94,13 @@ WAITING ON YOU (2)
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 ▸ DOING (1)                                                  TO DO (3) ▾
 3▸Order history UI: build                           12 min   5 TODO-MARK Export to PDF                       3 h 30 min
   working                                                      From the roadmap.
   The order list and filters from the approved mockup.
                                                              6 TODO-MARK Nightly backup check                3 h 29 min
+                                                               From the roadmap.
+
 ── card 3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -135,13 +135,13 @@ WAITING ON YOU (2)
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (1)                                TO DO (3) ▾                              ▸ DONE (7) ▾
 3 Order history UI: build       12 min   5 TODO-MARK Export to PDF   3 h 30 min    4▸CSV export on the Orders page (PR
   working                                  From the roadmap.                         #48): try it, then merge      09:10
   The order list and filters from the
   approved mockup.                       6 TODO-MARK Nightly backup check         13 DONE-MARK shipped thing 6     06:40
+                                           From the roadmap.         3 h 29 min
+                                                                                  12 DONE-MARK shipped thing 5     05:40
 ── card 4 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
   Done at 09:10
@@ -175,10 +175,10 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab �
       [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-QUEUE · 0 ▸
-
 DOING (1) ──────────────────────────────────────────────────────────────────────────────
   3   Order history UI: build                                            working  12 min
+
+QUEUE · 0 ▸
 
 TO DO (3) ▾ ────────────────────────────────────────────────────────────────────────────
   5   TODO-MARK Export to PDF                                                 3 h 30 min
@@ -216,10 +216,10 @@ Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
       Question: Pick one
       [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]  [ Not now ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (1) ──────────────────────────────────────────────────────────────────────────────
   3   Order history UI: build                                            working  12 min
+
+QUEUE · 0 ▸
 
 TO DO (3) ▾ ────────────────────────────────────────────────────────────────────────────
   5   TODO-MARK Export to PDF                                                 3 h 30 min
@@ -252,11 +252,11 @@ WAITING ON YOU (2) ────────────────────�
   1 ! Checkout redesign mockup: approve                                       7 h 30 min
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-QUEUE · 0 ▸
-
 ▸ DOING (1) ────────────────────────────────────────────────────────────────────────────
 ▸ 3   Order history UI: build                                            working  12 min
       The order list and filters from the approved mockup.
+
+QUEUE · 0 ▸
 
 TO DO (3) ▾ ────────────────────────────────────────────────────────────────────────────
   5   TODO-MARK Export to PDF                                                 3 h 30 min
@@ -293,10 +293,10 @@ WAITING ON YOU (2) ────────────────────�
   1 ! Checkout redesign mockup: approve                                       7 h 30 min
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
-QUEUE · 0 ▸
-
 DOING (1) ──────────────────────────────────────────────────────────────────────────────
   3   Order history UI: build                                            working  12 min
+
+QUEUE · 0 ▸
 
 TO DO (3) ▾ ────────────────────────────────────────────────────────────────────────────
   5   TODO-MARK Export to PDF                                                 3 h 30 min

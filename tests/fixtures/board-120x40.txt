@@ -19,8 +19,6 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
   Question: Say go once merged
   [ Go ✓ ]  [ Not now ]  [ Other… ]
 
-QUEUE · 0 ▸
-
 DOING (2)                                                    TO DO (4) ▾
 6 Search filters: build                             25 min    8 Export to CSV                                     1 min
   working                                                       Let people download any table as CSV. Three customers
@@ -36,5 +34,7 @@ DOING (2)                                                    TO DO (4) ▾
 
                                                              11 Upgrade the test runner                           1 min
                                                                 The current version reaches end of life next month.
+
+QUEUE · 0 ▸
 DONE · 1 today ▸
 

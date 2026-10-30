@@ -449,7 +449,7 @@ export function projectLines(state, agents) {
     const p = state.projects[name]
     const cards = state.items.filter((i) => i.project === name)
     const n = (column) => cards.filter((i) => i.column === column).length
-    const counts = [n("waiting") && `${n("waiting")} need you`, n("queue") && `${n("queue")} queued`, n("doing") && `${n("doing")} doing`, n("todo") && `${n("todo")} to do`, n("done") && `${n("done")} done`].filter(Boolean)
+    const counts = [n("waiting") && `${n("waiting")} need you`, n("doing") && `${n("doing")} doing`, n("queue") && `${n("queue")} queued`, n("todo") && `${n("todo")} to do`, n("done") && `${n("done")} done`].filter(Boolean)
     const coordinators = Object.entries(state.coordinators)
       .filter(([, c]) => c?.project === name)
       .sort(([, a], [, b]) => String(b.seen).localeCompare(String(a.seen)))
@@ -2119,7 +2119,7 @@ export function jobAgent(agents, name, workspace = "") {
  * last stop (readStops), for "job finished — not reviewed yet" (`unreviewed`).
  */
 export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {} } = {}) {
-  const view = { waiting: [], queue: [], doing: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
+  const view = { waiting: [], doing: [], queue: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
   // Done shows today's cards; with `doneDays` (ls --done 30d), those of the last N days, each
   // with its date.
   const startOfDay = new Date(now)
@@ -2168,9 +2168,9 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     view.waiting.push({ id: null, title: a.name, desc: "", ask: "", job: a.name, live: "blocked", age: null, reportStatus: "" })
   }
   view.doneToday.sort((a, b) => new Date(b.since) - new Date(a.since))
-  // The cards drawn under a parent: by section (Waiting, Queue, Doing, To do), then in their order;
+  // The cards drawn under a parent: by section (Waiting, Doing, Queue, To do), then in their order;
   // each with its own state, its agent's (live) or its section's.
-  const open = [...view.waiting, ...view.queue, ...view.doing, ...view.todo]
+  const open = [...view.waiting, ...view.doing, ...view.queue, ...view.todo]
   const shown = new Map(open.filter((e) => e.id != null).map((e) => [e.id, e]))
   for (const e of open) {
     if (!e.under?.length) continue
@@ -2190,7 +2190,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
 }
 
 /** The sections of open cards, in the board's order. */
-const OPEN_SECTIONS = ["waiting", "queue", "doing", "todo"]
+const OPEN_SECTIONS = ["waiting", "doing", "queue", "todo"]
 
 // A blocked job's card shows under Waiting on you, whatever its column.
 const sectionRank = (c) => (c.live === "blocked" ? 0 : SECTIONS.indexOf(c.column))
@@ -2972,7 +2972,7 @@ const subSegs = (entry, ui = {}) =>
 
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
-export const SECTIONS = ["waiting", "queue", "doing", "todo", "done"]
+export const SECTIONS = ["waiting", "doing", "queue", "todo", "done"]
 // The sections the pane folds to one line until opened (scroll.todoOpen, scroll.doneOpen). The
 // Queue is open while it has cards and folded while empty, unless u (or a click) chose otherwise
 // (scroll.queueOpen true or false).
@@ -3963,7 +3963,7 @@ export function renderBoard(view, opts = {}) {
   // To do and Done folded: a line each (To do's first), on the last rows of the lower area
   // (after a blank line when nothing limits the height); a click anywhere on one opens it.
   // In the inbox they follow the last section, after a blank line; in compact, straight after it.
-  // The Queue folded keeps its own place, between Waiting and Doing (queueLine).
+  // The Queue folded keeps its own place, between Doing and To do (queueLine).
   const folds = ["todo", "done"].filter((s) => !opened.includes(s))
   const queueLine = () => {
     const y = out.length + 1
@@ -3993,7 +3993,7 @@ export function renderBoard(view, opts = {}) {
     // the columns; with To do and Done folded too there are no columns.
     const foldDoing = !view.doing.length
     const bottom = [...(foldDoing ? [] : ["doing"]), ...(todoOpen ? ["todo"] : []), ...(doneOpen ? ["done"] : [])]
-    // The Queue, under Waiting across the width: one row a card, at most a quarter of the rows
+    // The Queue, under the Doing columns across the width: one row a card, at most a quarter of the rows
     // (at least its header and one card) when the height is limited; folded, its line. Then a
     // blank line.
     const queued = queueOpen && view.queue.length
@@ -4027,16 +4027,6 @@ export function renderBoard(view, opts = {}) {
     } else place("waiting", wBlocks, 0)
     regions.waiting = { top: wTop, bottom: out.length, left: 1, right: width }
     out.push("")
-    if (!queueOpen) queueLine()
-    else {
-      const qTop = out.length + 1
-      out.push(paint(header("queue")).text)
-      queueToggle = { y: qTop, x0: 1, x1: width }
-      if (queued) for (const l of place("queue", uiFor("queue", 1, width, qH - 1, "row"), qH - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
-      else place("queue", [], 0)
-      regions.queue = { top: qTop, bottom: out.length, left: 1, right: width }
-    }
-    out.push("")
     if (foldDoing) {
       const y = out.length + 1
       out.push(paint(header("doing")).text)
@@ -4059,13 +4049,23 @@ export function renderBoard(view, opts = {}) {
       if (todoOpen) todoToggle = { y: bTop, x0: regions.todo.left, x1: regions.todo.right }
       if (doneOpen) doneToggle = { y: bTop, x0: regions.done.left, x1: regions.done.right }
     }
+    out.push("")
+    if (!queueOpen) queueLine()
+    else {
+      const qTop = out.length + 1
+      out.push(paint(header("queue")).text)
+      queueToggle = { y: qTop, x0: 1, x1: width }
+      if (queued) for (const l of place("queue", uiFor("queue", 1, width, qH - 1, "row"), qH - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
+      else place("queue", [], 0)
+      regions.queue = { top: qTop, bottom: out.length, left: 1, right: width }
+    }
     foldedLines()
   } else {
     // The inbox and compact: the sections stacked, one row a card, an empty one folded to its
     // header; a blank line between sections in the inbox, none in compact.
     const shown = opened
     const gaps = layout === "compact" ? 0 : shown.length - 1
-    // The Queue folded: its line between Waiting and Doing, after a blank line in the inbox.
+    // The Queue folded: its line between Doing and To do, after a blank line in the inbox.
     const queueRows = queueOpen ? 0 : layout === "inbox" ? 2 : 1
     // What each section wants with its selected card open; the selected section's comes first,
     // so the card open under its row shows whole when the pane can hold it.
@@ -4095,10 +4095,6 @@ export function renderBoard(view, opts = {}) {
       })
     }
     shown.forEach((s, i) => {
-      if (s === "doing" && !queueOpen) {
-        if (gaps) out.push("")
-        queueLine()
-      }
       if (i && gaps) out.push("")
       const sTop = out.length + 1
       out.push(paint(header(s)).text)
@@ -4108,6 +4104,10 @@ export function renderBoard(view, opts = {}) {
       if (all[i].length) for (const l of place(s, all[i], heights[i] - 1)) out.push(emit(l, out.length + 1, 1, width).text.trimEnd())
       else place(s, all[i], 0)
       regions[s] = { top: sTop, bottom: out.length, left: 1, right: width }
+      if (s === "doing" && !queueOpen) {
+        if (gaps) out.push("")
+        queueLine()
+      }
     })
     foldedLines()
   }

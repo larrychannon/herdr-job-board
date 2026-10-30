@@ -7,10 +7,10 @@
 //   node board-pane.mjs --once [--width N] [--height N] [--layout wide|inbox|compact] [--color] [--emoji] [--links] [--frame N] [--keys <input>] [--origin <pane>]
 //
 // `board.mjs open` starts it in a split right of the calling pane. The layout follows the
-// pane's size: from 120 cells wide, WAITING ON YOU across the top and DOING | TO DO in two
-// columns below; from 70, the inbox (the sections stacked, one row a card, the selected card
-// open under its row); under 70 cells or 24 rows, compact (rows only; Space opens the selected
-// one). TO DO and DONE (today) are folded to one line each ("TO DO · 12 ▸", "DONE · 3 today ▸";
+// pane's size: from 120 cells wide, WAITING ON YOU across the top, DOING | TO DO in two
+// columns below and the QUEUE under them; from 70, the inbox (the sections stacked in the order
+// Waiting on you, Doing, Queue, To do, Done, one row a card, the selected card open under its
+// row); under 70 cells or 24 rows, compact (rows only; Space opens the selected one). TO DO and DONE (today) are folded to one line each ("TO DO · 12 ▸", "DONE · 3 today ▸";
 // t or d, or a click, opens it, Done newest first, and folds it again). A card: the title, the
 // description over up to 3 lines, for Waiting the ask and its buttons, and the age; Doing shows its agent's live status from
 // `herdr agent list`, and a blocked agent shows under Waiting. Colours come from the 16-colour

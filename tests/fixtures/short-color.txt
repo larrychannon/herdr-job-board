@@ -10,8 +10,6 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
 [2m↓ card cut off: open it for the rest[0m
 
-[1;36mQUEUE · 0 ▸[0m
-
 [1;34mDOING (2)[0m                                                    [1mTO DO (3) ▾[0m
 [2m2 [0m[1mSearch filters: build[0m                             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                                      [2m1 min[0m
   The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
@@ -20,6 +18,8 @@
 [2m3 [0m[1mDocs site: fix links[0m                              [2m10 min[0m   [2m5 [0m[1mDark mode[0m                                          [2m1 min[0m
   Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
                                                              [2m↓ 1 more[0m
+
+[1;36mQUEUE · 0 ▸[0m
 [2;32mDONE · 0 today ▸[0m
 
 ===== details, → chooses and scrolls to it · 120x23 wide =====
@@ -34,7 +34,7 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4,
 [2m↓ card cut off: open it for the rest[0m
 
-[1;36mQUEUE · 0 ▸[0m
+[1;34mDOING (2)[0m                                                    [1mTO DO (3) ▾[0m
 [2m──[0m[1m card 1 · ↑ 5 lines above [0m[2m────────────────────────────────────────────────────────────────────────────────────────────[0m
   mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
 
@@ -58,8 +58,6 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
 [2m↓ card cut off: open it for the rest[0m
 
-[1;36mQUEUE · 0 ▸[0m
-
 [1;34mDOING (2)[0m                                    [1mTO DO (3) ▾[0m
 [2m2 [0m[1mSearch filters: build[0m             [2m25 min[0m   [2m4 [0m[1mExport to CSV[0m                      [2m1 min[0m
   The filter panel from the approved           Let people download any table as CSV;
@@ -68,6 +66,8 @@
 [2m3 [0m[1mDocs site: fix links[0m              [2m10 min[0m
   Check every link on the new docs site
   and fix the 404s.
+
+[1;36mQUEUE · 0 ▸[0m
 [2;32mDONE · 0 today ▸[0m
 
 ===== details, → chooses and scrolls to it · 88x23 wide =====
@@ -82,7 +82,7 @@
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then
 [2m↓ card cut off: open it for the rest[0m
 
-[1;36mQUEUE · 0 ▸[0m
+[1;34mDOING (2)[0m                                    [1mTO DO (3) ▾[0m
 [2m──[0m[1m card 1 · ↑ 6 lines above [0m[2m────────────────────────────────────────────────────────────[0m
   main), tag v1.4, deploy, then run the backfill.
 
@@ -104,9 +104,9 @@
      #16 dark mode). Plan: merge in order (each catches up …
      [2mQuestion:[0m Approve the whole release (merges, tag
 [2m↓ card cut off: open it for the rest[0m
-[1;36mQUEUE · 0 ▸[0m
 [1;34mDOING (2)[0m [34m──────────────────────────────────────────────────[0m
 [2m↓ 2 more[0m
+[1;36mQUEUE · 0 ▸[0m
 [1mTO DO (3) ▾[0m [2m────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m
@@ -138,9 +138,9 @@
      v1.4, deploy, then run the backfill.
      [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then the
 [2m↓ card cut off: open it for the rest[0m
-[1;36mQUEUE · 0 ▸[0m
 [1;34mDOING (2)[0m [34m─────────────────────────────────────────────────────────────────────────────────────[0m
 [2m↓ 2 more[0m
+[1;36mQUEUE · 0 ▸[0m
 [1mTO DO (3) ▾[0m [2m───────────────────────────────────────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m

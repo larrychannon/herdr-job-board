@@ -1,7 +1,7 @@
 # herdr-job-board
 
 A board beside your chat for work you hand to coding agents: **WAITING ON YOU** first, then
-the **QUEUE** (what the coordinator starts next, by itself), **DOING**, **TO DO** and **DONE**. It is a [Herdr](https://herdr.dev) plugin: the board
+**DOING**, the **QUEUE** (what the coordinator starts next, by itself), **TO DO** and **DONE**. It is a [Herdr](https://herdr.dev) plugin: the board
 opens in a split pane next to the pane you are in and redraws itself every 3 seconds.
 
 It is made for a *coordinator*: the agent (or person) that starts jobs in other panes and
@@ -48,13 +48,13 @@ Job board · my-app · 3 need you                                               
   2 ! Search filters mockup: approve                                                 1 h 30 min
   3 ! Billing fix (PR #12): review                                                       50 min
 
-📥 QUEUE (2) ▾ ─────────────────────────────────────────────────────────────────────────────────
-  6   Export to CSV: build                                                               30 min
-  7   Dark mode: follow the system theme                                                 30 min
-
 🔨 DOING (2) ──────────────────────────────────────────────────────────────────────────────────
   4   Search filters: build                                              working [=   ]  25 min
   5   Docs site: fix broken links                                                   idle  2 min
+
+📥 QUEUE (2) ▾ ─────────────────────────────────────────────────────────────────────────────────
+  6   Export to CSV: build                                                               30 min
+  7   Dark mode: follow the system theme                                                 30 min
 
 📋 TO DO · 4 ▸
 🏁 DONE · 1 today ▸
@@ -64,7 +64,7 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 | Pane | Layout |
 |---|---|
-| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), the QUEUE under it (one row a card, at most a quarter of the height), DOING below, and TO DO and DONE folded to a line each under it (opened, each a column beside Doing); an empty Doing folds to one line over them |
+| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), DOING below (opened, TO DO and DONE are each a column beside it; an empty Doing folds to one line over them), then the QUEUE across the width (one row a card, at most a quarter of the height), and TO DO and DONE folded to a line each under it |
 | 70 to 119 columns | **inbox**, as above: the sections stacked, one row a card (`id`, `!` for a card that waits on you, the title, the agent's state, the age), the selected card open; an empty section folds to its header ("DOING (0) · nothing running") |
 | under 70 columns, or under 24 rows | **compact**: the same rows, no blank lines, a shorter key line; `Space` opens the selected card under its row (a peek), `Enter` its details |
 
@@ -154,7 +154,7 @@ itself out again at once.
   coordinator write the Queue**: a job's pane can't add to it, move a card into it, reorder it,
   or edit or retag a queued card (the CLI refuses, and the job skill's guard blocks the first
   two). The Queue sits
-  between Waiting and Doing, open while it has cards; empty, it folds to `QUEUE · 0 ▸`. `u` (or
+  between Doing and To do, open while it has cards; empty, it folds to `QUEUE · 0 ▸`. `u` (or
   a click on its line or header) folds or opens it; the choice holds until the pane closes.
 - **TO DO** is folded to one line, `TO DO · 12 ▸`, so Waiting and Doing get the room. `t` or a
   click on that line opens it (its cards under `TO DO (12) ▾`; a column beside Doing in the
@@ -174,7 +174,7 @@ itself out again at once.
   never hidden without saying so. A card taller than its section (in a short pane) is cut with
   "↓ card cut off: open it for the rest" under it; open it to see the rest, buttons included.
 - **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
-  WAITING ON YOU amber, QUEUE cyan, DOING blue, TO DO plain, DONE dim green, each header followed by a rule
+  WAITING ON YOU amber, DOING blue, QUEUE cyan, TO DO plain, DONE dim green, each header followed by a rule
   in its colour in the inbox and compact layouts; the "need you" count amber; the selected row's
   id in reverse video; the agent's state green (working), red (blocked), cyan (idle or done) or
   grey (no agent); every button filled grey (the suggested one bold, with ✓; the chosen one
@@ -182,7 +182,7 @@ itself out again at once.
   after a day. Colour is never the only sign: the selection is marked `▸`, a waiting card `!`,
   the agent's state is a word, an empty section says so, and the buttons keep their `[ … ]` and
   `< … >`. `NO_COLOR` turns colour off.
-- **Emoji**: each section's header starts with one (🔔 Waiting, 📥 Queue, 🔨 Doing, 📋 To do, 🏁 Done) in a
+- **Emoji**: each section's header starts with one (🔔 Waiting, 🔨 Doing, 📥 Queue, 📋 To do, 🏁 Done) in a
   UTF-8 locale. Each is a single character that Unicode makes two cells wide, with no variation
   selector or joiner, so terminals agree on its width. `BOARD_EMOJI=0` turns them off
   (`BOARD_EMOJI=1` turns them on outside a UTF-8 locale).

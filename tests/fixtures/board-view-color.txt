@@ -9,8 +9,6 @@
                                                                  merge
                                                                [1;30;47m[ Merge ✓ ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
 
-[1;36mQUEUE · 0 ▸[0m
-
 [1;34mDOING (2)[0m                                                    [1mTO DO (1) ▾[0m
 [2m3 [0m[1mSearch filters: build[0m                             [2m25 min[0m   [2m5 [0m[1mExport to CSV[0m                                     [2m23 min[0m
   [32mworking, report done[0m                                         Let people download any table as CSV.
@@ -36,5 +34,7 @@
 
 
 
+
+[1;36mQUEUE · 0 ▸[0m
 [2;32mDONE · 1 today ▸[0m
 
