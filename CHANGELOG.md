@@ -3,7 +3,8 @@
 ## 0.14.0 · unreleased
 
 Jobs ask with buttons, cards keep their titles, a press that can't run says so, a card under
-a deploy says it waits for the deploy, and To do folds like Done.
+a deploy says it waits for the deploy, To do folds like Done, and a Queue the coordinator works
+through by itself.
 
 - **Why**: in one day the coordinator got eleven notes to rewrite a job's question before the
   card had buttons; four cards were renamed to their job's short name ("daily-review-1030");
@@ -46,6 +47,26 @@ a deploy says it waits for the deploy, and To do folds like Done.
   choice holds while the pane runs. `t` used to go to the selected card's job tab from the
   board: it still does in a card's details (`Enter`, then `t`). `ls` shows To do whole, as
   before. The key line and `?` list `t to do`.
+- **The Queue**: a column between Waiting and Doing for To do cards the coordinator starts by
+  itself, top first. A To do card's details have `Add to the Queue` (`u`, or a click; a queued
+  card's `Back to To do`); `move <ref> queue` and `add queue …` work too. A card goes in last;
+  `Shift+↑` `Shift+↓` and `order` reorder it. The pane shows it open while it has cards
+  (`QUEUE (3) ▾`, one row a card) and folded while empty (`QUEUE · 0 ▸`); `u` on the board, or a
+  click on its line or header, folds or opens it. `ls` shows it whole; the sidebar says
+  `3 queued`; `contract` lists the columns.
+  - The coordinator's turn reminder lists its queued cards, the room for jobs per repo (the
+    repo's `max_active_jobs` against the named agents working in its checkouts, and the host's
+    available memory against its `min_free_mb`, the rules of the job skill's mem-check) and the
+    cards that didn't start. When a repo has room, the Stop hook blocks with the top card that
+    fits: start its job on that card (`job-open … --id`), or move it to Waiting with one plain
+    question and buttons. A card whose title asks for a merge, deploy, release or access change
+    is handed over as a question only. Each card is handed over once as it is (`queue.json` in
+    the board's folder): still queued at a later stop, it didn't start, and it isn't handed over
+    again until it is edited or queued again (a reorder doesn't count). After a Queue block the
+    next stop may hand over the next card, so the coordinator works through the Queue in one go;
+    a question block or a status-line block still comes first. Room unknown (memory or Herdr
+    can't be read) hands over nothing.
+  - `job-start <slug>` without `--id` takes the job's queued card too.
 
 ## 0.13.1 · unreleased
 

@@ -211,7 +211,7 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     // Esc closes it.
     r = t.pane([], "\t\r\x1b")
     assert.doesNotMatch(r.stdout, /── card/)
-    assert.match(r.stdout.trimEnd().split("\n")[1], /^Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit/, "the board's key line again (at 88 without the mouse mode)")
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit/, "the board's key line again (at 88 without the mouse mode)")
     // Missing and garbled reports.
     rmSync(report)
     assert.match(t.pane([], "\t\rG").stdout, /What the job reported\n {2}Nothing yet: the job hasn't written its report\./)
@@ -706,9 +706,9 @@ test("copy: c again copies the card's next link, round to the first; a new card 
     assert.deepEqual(decode52(t.pane([], "\rcc\x1b\x1b[Ac").stdout), [canvas, pr, canvas], "the same in the details; closing them starts over")
     assert.deepEqual(decode52(t.pane([], "\rc\x1b\x1b[A\rc").stdout), [canvas, canvas], "closed and opened again between presses")
     // The long key line says so on such a card, where it fits; the short ones stay short.
-    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next link) · t to do · d done · m mouse: board · q quit")
-    assert.equal(last(t.pane(["--width", "88"])), "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit")
-    assert.equal(last(t.pane(["--width", "120"], "\x1b[B")), "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit", "a card without links: as before")
+    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next link) · u queue · t to do · d done · m mouse: board · q quit")
+    assert.equal(last(t.pane(["--width", "88"])), "Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit")
+    assert.equal(last(t.pane(["--width", "120"], "\x1b[B")), "Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit", "a card without links: as before")
   } finally {
     t.done()
   }
@@ -1431,13 +1431,13 @@ function seedShort(t) {
 // layout in a short pane (pinned with --layout: the pane draws compact under 24 rows), and
 // compact with the selected row open (Space), the card cut under its question.
 const SHORT = [
-  { width: 120, height: 21, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
-  { width: 88, height: 21, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
-  { width: 60, height: 15, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
-  { width: 95, height: 15, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
+  { width: 120, height: 23, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
+  { width: 88, height: 23, layout: "wide", keys: "", scroll: { selected: "todo", todoOpen: true } },
+  { width: 60, height: 16, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
+  { width: 95, height: 16, keys: " ", scroll: { selected: "waiting", open: true, todoOpen: true } },
 ]
 
-test("short panes (wide 120x21 and 88x21, compact 60x15 and 95x15 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
+test("short panes (wide 120x23 and 88x23, compact 60x16 and 95x16 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
   const t = setup({ agents, tabs })
   try {
     seedShort(t)

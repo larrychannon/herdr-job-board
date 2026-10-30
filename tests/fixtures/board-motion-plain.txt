@@ -1,6 +1,6 @@
 ===== To do and Done folded (default) · frame 0 · 120 columns =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -9,6 +9,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
                                                                Question: Try http://localhost:3000/invoices, then say
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+QUEUE · 0 ▸
 
 DOING (4)
 3 Search filters: build                                                                                           25 min
@@ -34,14 +36,12 @@ DOING (4)
 
 
 
-
-
 TO DO · 1 ▸
 DONE · 1 today ▸
 
 ===== To do open (t), Done folded · frame 0 · 120 columns =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -50,6 +50,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
                                                                Question: Try http://localhost:3000/invoices, then say
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+QUEUE · 0 ▸
 
 DOING (4)                                                    TO DO (1) ▾
 3 Search filters: build                             25 min   5 Export to CSV                                     23 min
@@ -76,13 +78,11 @@ DOING (4)                                                    TO DO (1) ▾
 
 
 
-
-
 DONE · 1 today ▸
 
 ===== To do and Done open (t d) · frame 3 · 120 columns =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -91,6 +91,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
                                                                Question: Try http://localhost:3000/invoices, then say
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
+
+QUEUE · 0 ▸
 
 DOING (4)                                TO DO (1) ▾                              DONE (1) ▾
 3 Search filters: build         25 min   5 Export to CSV                 23 min   6 Nightly backup check           09:30
@@ -119,16 +121,16 @@ DOING (4)                                TO DO (1) ▾                          
 
 
 
-
-
 ===== To do and Done folded (default) · frame 0 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸1 ! Old question: pick a name                                                    2 days
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
+
+QUEUE · 0 ▸
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
@@ -160,16 +162,16 @@ DONE · 1 today ▸
 
 
 
-
-
 ===== To do open (t), Done folded · frame 0 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸1 ! Old question: pick a name                                                    2 days
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
+
+QUEUE · 0 ▸
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
@@ -201,16 +203,16 @@ DONE · 1 today ▸
 
 
 
-
-
 ===== To do and Done open (t d) · frame 3 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸1 ! Old question: pick a name                                                    2 days
      Needs you: Reply with a name
  2 ! Billing fix (PR #12): review                                                 30 min
+
+QUEUE · 0 ▸
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [   =]  25 min
@@ -223,8 +225,6 @@ TO DO (1) ▾ ──────────────────────
 
 DONE (1) ▾ ─────────────────────────────────────────────────────────────────────────────
  6 ✓ Nightly backup check                                                          09:30
-
-
 
 
 

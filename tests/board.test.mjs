@@ -182,7 +182,7 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
       assert.ok(lines.every((l) => [...l].length <= width), `no line wider than ${width}`)
       assert.equal(lines.length, height, `exactly ${height} lines`)
       assert.match(lines[1], /^Tab\b.* · t to do · d done · .*\bq(?: quit)?$/, "the key hint, with t and d, is right under the title, never the last line")
-      if (width >= 120) assert.equal(lines[1], "Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit")
+      if (width >= 120) assert.equal(lines[1], "Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit")
       return r.stdout
     }
     // 88 is the board's 30% of a full-screen Herdr tab.
@@ -240,16 +240,19 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     const quiet = frame(120, 30, calm).split("\n")
     assert.equal(quiet[3], "▸ WAITING ON YOU (0)  Nothing needs you")
     assert.equal(quiet[4], "")
-    // Doing with nothing in it folds to its header, and To do has the width.
-    assert.equal(quiet[5], "DOING (0) · nothing running")
+    // The empty Queue folded to its line, in its place under Waiting.
+    assert.equal(quiet[5], "QUEUE · 0 ▸")
     assert.equal(quiet[6], "")
-    assert.match(quiet[7], /^TO DO \(1\) ▾$/)
+    // Doing with nothing in it folds to its header, and To do has the width.
+    assert.equal(quiet[7], "DOING (0) · nothing running")
+    assert.equal(quiet[8], "")
+    assert.match(quiet[9], /^TO DO \(1\) ▾$/)
     assert.equal(quiet.at(-3), "DONE · 0 today ▸", "right above the empty last row")
     // The inbox folds every empty section to its header, with a rule.
     const calmInbox = frame(88, 30, calm).split("\n")
     assert.deepEqual(
-      calmInbox.slice(3, 11).map((l) => l.replace(/ ─+$/, " ─")),
-      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "DOING (0) · nothing running ─", "", "TO DO (1) ▾ ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
+      calmInbox.slice(3, 13).map((l) => l.replace(/ ─+$/, " ─")),
+      ["▸ WAITING ON YOU (0)  Nothing needs you ─", "", "QUEUE · 0 ▸", "", "DOING (0) · nothing running ─", "", "TO DO (1) ▾ ─", " 1   Export to CSV                                                              just now", "", "DONE · 0 today ▸"],
     )
   } finally {
     done()

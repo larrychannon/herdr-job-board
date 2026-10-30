@@ -105,6 +105,7 @@ import {
   tokenFor,
   nextCopy,
   orderCard,
+  queueCard,
   atLeast,
   COPY_FILES,
   lastRestart,
@@ -198,7 +199,7 @@ function compose(data, file, env, layout, origin = "") {
 /**
  * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
  * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
- * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab. m switches mouse capture off and on. Resolves to
+ * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab; u there moves the card between To do and the Queue. m switches mouse capture off and on. Resolves to
  * the footer message, if any.
  */
 async function perform(action, ctx) {
@@ -216,6 +217,13 @@ async function perform(action, ctx) {
   if (action.type === "order") {
     try {
       return orderCard(ctx.file(), action.id, action.where, action.among, clockNow(ctx.env)) ?? `card ${action.id} can't go further ${action.where}`
+    } catch (e) {
+      return `couldn't move the card: ${String(e?.message ?? "").slice(0, 100)}`
+    }
+  }
+  if (action.type === "queue") {
+    try {
+      return queueCard(ctx.file(), action.id, action.to, clockNow(ctx.env)) ?? `card ${action.id} isn't in ${action.to === "queue" ? "To do" : "the Queue"} any more`
     } catch (e) {
       return `couldn't move the card: ${String(e?.message ?? "").slice(0, 100)}`
     }
