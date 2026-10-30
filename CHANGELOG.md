@@ -64,7 +64,8 @@ through by itself.
     the board's folder): still queued at a later stop, it didn't start, and it isn't handed over
     again until it is edited or queued again (a reorder doesn't count). After a Queue block the
     next stop may hand over the next card, so the coordinator works through the Queue in one go;
-    a question block or a status-line block still comes first. Room unknown (memory or Herdr
+    a question block or a status-line block still comes first, and right after a hand-over a
+    question asked in the chat without a Waiting card is still sent back once. Room unknown (memory or Herdr
     can't be read) hands over nothing.
   - `job-start <slug>` without `--id` takes the job's queued card too.
 
