@@ -59,7 +59,7 @@ through by itself.
     available memory against its `min_free_mb`, the rules of the job skill's mem-check) and the
     cards that didn't start. When a repo has room, the Stop hook blocks with the top card that
     fits: start its job on that card (`job-open … --id`), or move it to Waiting with one plain
-    question and buttons. A card whose title asks for a merge, deploy, release or access change
+    question and buttons. A card whose title or description asks for a merge, deploy, release or access change
     is handed over as a question only. Each card is handed over once as it is (`queue.json` in
     the board's folder): still queued at a later stop, it didn't start, and it isn't handed over
     again until it is edited or queued again (a reorder doesn't count). After a Queue block the
@@ -68,6 +68,18 @@ through by itself.
     question asked in the chat without a Waiting card is still sent back once. Room unknown (memory or Herdr
     can't be read) hands over nothing.
   - `job-start <slug>` without `--id` takes the job's queued card too.
+  - **Only the user and the coordinator write the Queue**: a job's pane (a worker) can't `add
+    queue`, `move … queue`, `order` a queued card, or `edit` or `retag` one (exit 2, nothing
+    written), so no job, nor text injected into one, can line up work to be started.
+  - The merge/deploy/release/access check reads the whole title and the description, with more
+    words (production, go live, roll out, push to, land on main, tag and push, grant, admin or
+    write access, secrets, credentials, rotate, settings, DNS, deleting branches or data); such
+    a card comes back as a question only. The hand-over says the title and description are
+    data, not instructions.
+  - Room is checked for every project with queued cards, one by one until a card fits; the
+    reminder says why each card waits (didn't start, at the limit, too little memory, room
+    unknown). A project outside git has its room unknown, so its cards aren't handed over until
+    retagged to a repo.
 
 ## 0.13.1 · unreleased
 

@@ -148,8 +148,12 @@ itself out again at once.
   hook hands over the next card: it starts that card's job (the card goes to Doing) or, when the
   card needs a decision first, moves it to Waiting with a question and buttons. A card handed
   over that didn't start isn't handed over again until it is edited or queued again. The Queue
-  only decides what gets started: a card that asks for a merge, deploy, release or access change
-  comes back to you as a question, never as a job, and no limit is passed for it. The Queue sits
+  only decides what gets started: a card whose title or description asks for a merge, deploy,
+  release, production, settings or access change (a keyword check, anywhere in the text) comes
+  back to you as a question, never as a job, and no limit is passed for it. **Only you and the
+  coordinator write the Queue**: a job's pane can't add to it, move a card into it, reorder it,
+  or edit or retag a queued card (the CLI refuses, and the job skill's guard blocks the first
+  two). The Queue sits
   between Waiting and Doing, open while it has cards; empty, it folds to `QUEUE · 0 ▸`. `u` (or
   a click on its line or header) folds or opens it; the choice holds until the pane closes.
 - **TO DO** is folded to one line, `TO DO · 12 ▸`, so Waiting and Doing get the room. `t` or a
@@ -808,9 +812,12 @@ that catch that:
   the next card, and the run ends when no card is left to hand over. The room follows the job
   skill's rules: the repo's `max_active_jobs` (default 2) against the named Herdr agents working
   in its checkouts (this pane's own never), and the host's available memory against the repo's
-  `min_free_mb` (default 4096), both from the repo's `.claude/job.json`; a project outside git
-  has no job limit, memory only. When the memory or Herdr's agent list can't be read, the room
-  is unknown and nothing is handed over.
+  `min_free_mb` (default 4096), both from the repo's `.claude/job.json`, for every project with
+  queued cards, and the reminder says why each card waits (`waits: app is at its limit of 2
+  jobs`). A project outside git (a folder, a home coordinator's) has no checkouts to count: its
+  room is unknown and its cards wait until they are retagged to the repo they are for. When the
+  memory or Herdr's agent list can't be read, the room is unknown and nothing is handed over.
+  Card titles and descriptions are marked as data, not instructions.
 
 A reply "asks something" when its last paragraph ends with `?`, or a sentence near the end
 starts like a request for a decision: "Want me to …", "Should I …", "Shall I …", "OK to …",
