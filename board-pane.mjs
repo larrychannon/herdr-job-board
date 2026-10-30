@@ -105,6 +105,7 @@ import {
   tokenFor,
   nextCopy,
   orderCard,
+  markStart,
   queueCard,
   atLeast,
   COPY_FILES,
@@ -199,7 +200,7 @@ function compose(data, file, env, layout, origin = "") {
 /**
  * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
  * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
- * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab; u there moves the card between To do and the Queue. m switches mouse capture off and on. Resolves to
+ * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab; u there moves the card between To do and the Queue, s queues it marked "start without asking" (or marks or unmarks a queued one). m switches mouse capture off and on. Resolves to
  * the footer message, if any.
  */
 async function perform(action, ctx) {
@@ -226,6 +227,13 @@ async function perform(action, ctx) {
       return queueCard(ctx.file(), action.id, action.to, clockNow(ctx.env)) ?? `card ${action.id} isn't in ${action.to === "queue" ? "To do" : "the Queue"} any more`
     } catch (e) {
       return `couldn't move the card: ${String(e?.message ?? "").slice(0, 100)}`
+    }
+  }
+  if (action.type === "start") {
+    try {
+      return markStart(ctx.file(), action.id, action.on, clockNow(ctx.env)) ?? `card ${action.id} isn't in To do or the Queue any more`
+    } catch (e) {
+      return `couldn't mark the card: ${String(e?.message ?? "").slice(0, 100)}`
     }
   }
   const entry = ctx.drawn?.entries?.[action.key]

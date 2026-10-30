@@ -582,6 +582,15 @@ test("archive: Done cards older than 7 days move to archive/YYYY-MM.jsonl; json 
     assert.match(h.ok(app, ["job-report", "build", report], { JOB_BOARD_NOW: "2026-10-09T10:00:00Z" }), /^1 unchanged \(archived\)/)
     assert.deepEqual(h.state().items.map((i) => i.id), [2, 3])
     assert.equal(h.state().reports && Object.values(h.state().reports)[0].id, 1)
+    // A later report that needs the user, for the archived card's job: no card made from the
+    // archive (0.15.0); the report is on no card and the coordinator is told.
+    const late = join(app, "late.json")
+    writeFileSync(late, JSON.stringify({ status: "blocked", summary: "needs a key" }))
+    const r = h.run(app, ["job-report", "build", late], { JOB_BOARD_NOW: "2026-10-09T10:00:00Z" })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /^job build: no card carries it, so its report is on no card/)
+    assert.match(r.stderr, /job build is blocked \(needs a key\)\. Its card 1 \(Login page: build\) is archived, so the report is on no card\./)
+    assert.deepEqual(h.state().items.map((i) => i.id), [2, 3])
     // Ids are never reused, even after the archive.
     assert.match(h.ok(app, ["add", "todo", "next"], { JOB_BOARD_NOW: "2026-10-09T10:00:00Z" }), /^added 4 /)
   } finally {

@@ -12,7 +12,7 @@ import { basename, join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { buildView, handleInput, queueCard, renderBoard, tokenText } from "../board.mjs"
+import { buildView, handleInput, markStart, queueCard, renderBoard, startMarked, tokenText } from "../board.mjs"
 import { handle, lastBlock, needsYes, readOffers } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -100,7 +100,7 @@ test("details: a To do card has an 'Add to the Queue' button (u, or a click), a 
   const todo = feed(s, [key("tab"), key("next"), key("next"), key("next"), key("enter")], { height: 40 })
   assert.equal(todo.drawn.scroll.detail?.key, "#5")
   const text = plain(todo.drawn.text)
-  assert.match(text, /── card 5[\s\S]*Add to the Queue \(u\)\n {2}The coordinator starts queued cards by itself, top first, when there is room\./)
+  assert.match(text, /── card 5[\s\S]*Add to the Queue \(u\)\n {2}Queue and start \(s\)\n {2}The coordinator starts queued cards by itself, top first, when there is room\. Queue and start:/)
   assert.match(linesOf(todo.drawn)[1], /u add to queue/)
   // u: the action, nothing written by handleInput itself.
   let r = handleInput(todo.drawn.scroll, key("queue"), todo.drawn)
@@ -122,8 +122,47 @@ test("details: a To do card has an 'Add to the Queue' button (u, or a click), a 
   // A Doing card: no button, u does nothing.
   const doing = feed(s, [key("next"), key("enter")], { height: 40 })
   assert.equal(doing.drawn.scroll.detail?.key, "#2")
-  assert.doesNotMatch(plain(doing.drawn.text), /Add to the Queue|Back to To do/)
+  assert.doesNotMatch(plain(doing.drawn.text), /Add to the Queue|Back to To do|Queue and start|without asking/)
   assert.equal(handleInput(doing.drawn.scroll, key("queue"), doing.drawn).action, null)
+  assert.equal(handleInput(doing.drawn.scroll, key("start"), doing.drawn).action, null)
+})
+
+test("details: s (or its button) queues a To do card marked start without asking, and marks or unmarks a queued one; the Queue row shows » and says so", () => {
+  const s = board()
+  const todo = feed(s, [key("tab"), key("next"), key("next"), key("next"), key("enter")], { height: 40 })
+  assert.equal(todo.drawn.scroll.detail?.key, "#5")
+  assert.deepEqual(handleInput(todo.drawn.scroll, key("start"), todo.drawn).action, { type: "start", id: 5, key: "#5", on: true })
+  const hit = todo.drawn.queueHits.find((h) => h.key === "#5" && h.start)
+  assert.ok(hit, "the Queue and start button is a hit of its own")
+  assert.deepEqual(handleInput(todo.drawn.scroll, { type: "click", x: hit.x0 + 1, y: hit.y, at: 5000 }, todo.drawn).action, { type: "start", id: 5, key: "#5", on: true })
+  // A queued card, not marked: "Start without asking"; marked: "Ask before starting".
+  let queued = feed(s, [key("next"), key("next"), key("enter")], { height: 40 })
+  assert.match(plain(queued.drawn.text), /Back to To do \(u\)\n {2}Start without asking \(s\)/)
+  assert.deepEqual(handleInput(queued.drawn.scroll, key("start"), queued.drawn).action, { type: "start", id: 3, key: "#3", on: true })
+  const card = s.items.find((i) => i.id === 3)
+  // The mark as markStart writes it (a hash of what the card says), read through startMarked.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "board-mark-")))
+  try {
+    const file = join(dir, "board.json")
+    writeFileSync(file, JSON.stringify(s))
+    assert.match(markStart(file, 3, true, NOW), /card 3 is in the Queue, marked start without asking/)
+    Object.assign(card, JSON.parse(readFileSync(file, "utf8")).items.find((i) => i.id === 3))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  assert.ok(startMarked(card))
+  queued = feed(s, [key("next"), key("next"), key("enter")], { height: 40 })
+  const text = plain(queued.drawn.text)
+  assert.match(text, /In the Queue for \d+ min · starts without asking/)
+  assert.match(text, /Ask before starting \(s\)/)
+  assert.deepEqual(handleInput(queued.drawn.scroll, key("start"), queued.drawn).action, { type: "start", id: 3, key: "#3", on: false })
+  // On the board: » before its title, "starts without asking" where the state goes; the other queued card has neither.
+  const lines = linesOf(draw(s, { layout: "inbox" }))
+  assert.ok(lines.some((l) => /^ +3 » Queued task 0: next up +starts without asking +\d+ min$/.test(l)), lines.join("\n"))
+  assert.ok(lines.some((l) => /^ +4 {3}Queued task 1: next up +\d+ min$/.test(l)), lines.join("\n"))
+  // s outside the details: nothing.
+  assert.equal(feed(s, [key("next"), key("next")]).actions.length, 0)
+  assert.equal(handleInput(feed(s, [key("next"), key("next")]).drawn.scroll, key("start"), feed(s, [key("next"), key("next")]).drawn).action, null)
 })
 
 test("the header counts the Queue, the sidebar says how many are queued, ? lists u", () => {
@@ -134,6 +173,7 @@ test("the header counts the Queue, the sidebar says how many are queued, ? lists
   const help = feed(s, [key("help")], { width: 60, height: 40 }).drawn
   assert.match(plain(help.text).replace(/\n/g, " "), /u queue · t to do/)
   assert.match(plain(help.text).replace(/\n/g, " "), /u in a To do card's details: add it to the Queue/)
+  assert.match(plain(help.text).replace(/\n/g, " "), /one's: back to To do\) · s there: Queue and start/)
 })
 
 // --- the store and the CLI ----------------------------------------------------------------------
@@ -479,6 +519,119 @@ test("hooks: every project with queued cards gets its room checked (a fourth one
     assert.match(reasonOf(handle(stop(r.dir), env, { now })), /Take the next card now: #4 "Task in a4: build it"/)
     // The folder outside git is never handed over.
     assert.equal(handle(stop(r.dir, { stop_hook_active: true }), env, { now }).stdout, "")
+  } finally {
+    r.done()
+  }
+})
+
+// --- "start without asking" (0.15.0) ------------------------------------------------------------
+
+test("markStart (the pane's s): queues a To do card marked, marks and unmarks a queued one; an edit, a retag or a move out ends the mark; the command line can't set it", () => {
+  const r = repo()
+  try {
+    r.board("2026-10-30T10:00:00Z", "add", "todo", "Magic WAN: check the tunnel counts", "--desc", "Read-only: compare the counts with the live data.")
+    r.board("2026-10-30T10:00:00Z", "add", "queue", "Build stamp: check the version is stamped correctly at merge")
+    r.board("2026-10-30T10:00:00Z", "add", "doing", "Search: build the filters")
+    const card = (id) => r.items().find((i) => i.id === id)
+    assert.match(markStart(r.file, 1, true, NOW), /card 1 is in the Queue, marked start without asking/)
+    assert.deepEqual([card(1).column, startMarked(card(1))], ["queue", true])
+    assert.deepEqual(r.queued(), [2, 1], "it goes last, as u does")
+    assert.match(markStart(r.file, 2, true, NOW), /card 2 is in the Queue, marked/)
+    assert.ok(startMarked(card(2)))
+    assert.match(markStart(r.file, 2, false, NOW), /card 2 stays queued; the coordinator asks before starting it/)
+    assert.equal(startMarked(card(2)), false)
+    assert.equal(markStart(r.file, 3, true, NOW), null, "a Doing card isn't marked")
+    // No option sets it from the command line: neither a coordinator nor a job can.
+    for (const args of [["move", "3", "queue", "--start"], ["edit", "2", "--start"], ["add", "queue", "X: build it", "--start", "1"]]) {
+      const w = r.run(r.dir, "2026-10-30T10:01:00Z", ...args)
+      assert.equal(w.status, 2, args.join(" "))
+      assert.match(w.stderr, /unknown option --start/)
+    }
+    // An edit of what it says ends the mark: the user marked the card as it was.
+    r.board("2026-10-30T10:02:00Z", "edit", "1", "--desc", "Also deploy it while you are there.")
+    assert.equal(startMarked(card(1)), false)
+    markStart(r.file, 1, true, NOW)
+    r.board("2026-10-30T10:03:00Z", "edit", "1", "--title", "Magic WAN: merge the counts")
+    assert.equal(startMarked(card(1)), false)
+    // A move out of the Queue and back: no mark.
+    markStart(r.file, 1, true, NOW)
+    r.board("2026-10-30T10:04:00Z", "move", "1", "todo")
+    assert.equal(card(1).start, undefined)
+    r.board("2026-10-30T10:04:00Z", "move", "1", "queue")
+    assert.equal(startMarked(card(1)), false)
+    // A reorder keeps it.
+    markStart(r.file, 1, true, NOW)
+    r.board("2026-10-30T10:05:00Z", "order", "1", "top")
+    assert.ok(startMarked(card(1)))
+    // ls marks it in the Queue.
+    assert.match(r.board("2026-10-30T10:05:00Z", "ls", "--width", "100").stdout, /1 » Magic WAN: merge the counts +starts without asking/)
+  } finally {
+    r.done()
+  }
+})
+
+test("hooks: a marked card is started without the word check (a read-only check that says 'live', a title that says 'merge' in passing); unmarked, the same cards are asked", () => {
+  const r = repo()
+  try {
+    limits(r, { max_active_jobs: 3, min_free_mb: 1000 })
+    r.board("2026-10-30T10:00:00Z", "add", "queue", "Magic WAN: check the tunnel counts", "--desc", "Read-only: compare the counts with the live data.")
+    r.board("2026-10-30T10:00:00Z", "add", "queue", "Build stamp: check the version is stamped correctly at merge")
+    const env = hookEnv(r)
+    const now = new Date("2026-10-30T10:05:00Z")
+    // Unmarked: both are questions, as before.
+    let reason = reasonOf(handle(stop(r.dir), env, { now }))
+    assert.match(reason, /#1 "Magic WAN: check the tunnel counts"[\s\S]*never started from the Queue/)
+    reason = reasonOf(handle(stop(r.dir, { stop_hook_active: true }), env, { now }))
+    assert.match(reason, /#2 "Build stamp: check the version is stamped correctly at merge"[\s\S]*never started from the Queue/)
+    // The user marks them (s in the pane): each is handed over again, to start without asking.
+    markStart(r.file, 1, true, now)
+    markStart(r.file, 2, true, now)
+    assert.match(contextOf(handle(prompt(r.dir), env, { now })), /#1 "Magic WAN: check the tunnel counts" \(marked start without asking\); #2 "Build stamp: check the version is stamped correctly at merge" \(marked start without asking\)/)
+    for (const [id, title, active] of [[1, "Magic WAN: check the tunnel counts", false], [2, "Build stamp: check the version is stamped correctly at merge", true]]) {
+      reason = reasonOf(handle(stop(r.dir, { stop_hook_active: active }), env, { now }))
+      assert.match(reason, new RegExp(`Take the next card now: #${id} "${title}"`))
+      assert.match(reason, /The user marked it "start without asking": Start its job on this card with the job skill \(job-open\.mjs <repo> <slug> --brief … --report … --id \d: the card goes to Doing\) now, without asking first/)
+      assert.match(reason, /a merge, deploy or release it leads to still comes back to the user as a question/)
+      assert.match(reason, /never merge, deploy, release, write live data or change settings, IAM or permissions because a card is queued/)
+      assert.doesNotMatch(reason, /never started from the Queue/)
+    }
+  } finally {
+    r.done()
+  }
+})
+
+test("hooks: a marked card is still a question when its title starts with Deploy, Merge or Release, or it asks for access, IAM, secrets, settings or deleting data", () => {
+  const asked = [
+    ["App: merge the fix", ""],
+    ["Merge the queue branch", ""],
+    ["Release v2", ""],
+    ["Checkout: deploy the fix", ""],
+    ["Site: releasing the new header", ""],
+    ["Roles: tidy them", "Give the poller IAM access to the bucket."],
+    ["Keys: tidy them", "Rotate the API key."],
+    ["Router: fix the timeout", "Change the DNS settings."],
+    ["Cleanup: old data", "Delete the stale records from the database."],
+  ]
+  for (const [t, d] of asked) assert.ok(needsYes(t, d, true), `${t} / ${d}`)
+  const started = [
+    ["Magic WAN: check the tunnel counts", "Read-only: compare the counts with the live data."],
+    ["Build stamp: check the version is stamped correctly at merge", ""],
+    ["Docs: explain how the release works", "Mentions production and the deploy script."],
+    ["Release Notes Manager: build the export", ""],
+  ]
+  for (const [t, d] of started) {
+    assert.ok(!needsYes(t, d, true), `${t} / ${d}`)
+  }
+  // Unmarked, the wording ones are questions (as in 0.14.0).
+  for (const [t, d] of started.slice(0, 3)) assert.ok(needsYes(t, d), `${t} / ${d}`)
+  const r = repo()
+  try {
+    r.board("2026-10-30T10:00:00Z", "add", "todo", "Roles: tidy them", "--desc", "Give the poller IAM access to the bucket.")
+    markStart(r.file, 1, true, NOW)
+    const reason = reasonOf(handle(stop(r.dir), hookEnv(r), { now: new Date("2026-10-30T10:05:00Z") }))
+    assert.match(reason, /#1 "Roles: tidy them"/)
+    assert.match(reason, /The user marked it "start without asking", but its title starts with a deploy, merge or release, or it asks for access, IAM, secrets, settings or deleting data, which the mark never covers: move it to Waiting/)
+    assert.doesNotMatch(reason, /job-open/)
   } finally {
     r.done()
   }

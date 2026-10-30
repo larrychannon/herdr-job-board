@@ -150,7 +150,18 @@ itself out again at once.
   over that didn't start isn't handed over again until it is edited or queued again. The Queue
   only decides what gets started: a card whose title or description asks for a merge, deploy,
   release, production, settings or access change (a keyword check, anywhere in the text) comes
-  back to you as a question, never as a job, and no limit is passed for it. **Only you and the
+  back to you as a question, never as a job, and no limit is passed for it.
+  **Queue and start** (0.15.0): `s` in a To do card's details (or a click on `Queue and start`)
+  queues it marked **start without asking**; on a queued card `s` marks it (`Start without
+  asking`) or takes the mark off (`Ask before starting`). A marked card shows `»` and `starts
+  without asking` in the Queue, and the coordinator starts its job without the keyword check, so
+  a read-only check that mentions "live", or a title that says "merge" in passing, isn't sent
+  back as a question. Still a question, marked or not: a title whose action starts with Deploy,
+  Merge or Release (`App: merge the fix`), and a card that asks for access, IAM, secrets,
+  credentials, settings, DNS or deleting data. The coordinator still never merges, deploys or
+  releases because a card is queued. Only you set the mark, from the pane: no command sets it, so
+  neither a job nor the coordinator can. It holds for the card as you marked it: an edit of its
+  title or description, a retag or a move out of the Queue ends it. **Only you and the
   coordinator write the Queue**: a job's pane can't add to it, move a card into it, reorder it,
   or edit or retag a queued card (the CLI refuses, and the job skill's guard blocks the first
   two). The Queue sits
@@ -212,7 +223,7 @@ itself out again at once.
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
 | `o` | Other… on a card with buttons |
-| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `u` puts a To do card in the Queue (last), or a queued one back in To do; `Esc` closes them |
+| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `u` puts a To do card in the Queue (last), or a queued one back in To do; `s` queues a To do card marked start without asking, or marks or unmarks a queued one; `Esc` closes them |
 | `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
 | `u` | open the Queue or fold it to its one line (it opens by itself while it has cards); a click on the line, or on the open header, does the same. In a To do card's details `u` puts it in the Queue (a queued card's: back to To do) |
 | `t` | open To do (a column beside Doing) or fold it back to its one line; a click on the line, or on the open header, does the same. In a card's details `t` goes to the job's tab |
@@ -646,7 +657,7 @@ this list.
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
 | `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`. |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. |
-| `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
+| `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). It never makes a card (0.15.0): with no card for the job, the coordinator gets a `[job note]`. |
 | `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's lineage too (the cards above it and every open card under it, not its siblings) unless `--only`. `--event merge\|deploy\|…` notes that event on the lineage first. Words checked as for a card. See Status lines below. |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
 | `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
@@ -759,7 +770,16 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    without `job-start`, after its card was done, or read by a restarted coordinator) uses the
    job's most recent card: one your pane owns or in your workspace, else a Done one. A report
    that needs nothing from you leaves a Done card as it is (`<id> stays done`); one that does
-   (`needs_user`, `blocked`, `failed`) reopens it. No new card titled with the job's slug.
+   (`needs_user`, `blocked`, `failed`) reopens it. **A report never makes a card** (0.15.0):
+   after `job-close` unlinked the card (`edit <id> --job ""`; the card keeps the old slug in
+   `former_jobs`), a late report goes on the card that carried the job (that link, the card with
+   the same report file, or the card in the job skill's record of the job,
+   `~/.local/state/job-skill/jobs/<slug>.json` or its newest `<slug>.closed-*.json`), never on a
+   card linked to another job since. That card stays where it is, with the report and the status
+   line `the job reported after it was closed: read its report`, and you get a `[job note]`. With
+   no such card on the board (a job opened by hand, an archived card) no card gets the report:
+   you get a `[job note]` with its status, summary and path, and add a card yourself if it needs
+   one.
 6. **It stops**: you hear at once (see Job messages below). A job's Stop hook writes one line
    to your inbox, and the `board.mjs inbox wait` you keep running in the background returns with
    it: `[job finished] search-ui — done — <the report's summary>` (`no report yet` and its last

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.15.0 · unreleased
+
+Queue and start: a card you mark starts without the word check. A job's report never makes a card.
+
+- **Why**: of five cards queued in one evening, four came back as questions, two only because of
+  a word in their text (a read-only check that said "live", a title that said "merge" in
+  passing). And late job reports made cards titled with the job's short name: one from a check
+  job opened by hand (no card carried it), one that came after `job-close` had unlinked the
+  job's card.
+- **Queue and start**: `s` in a To do card's details, or a click on its new `Queue and start`
+  button, puts it in the Queue (last, like `u`) marked **start without asking**. On a queued
+  card `s` marks it (`Start without asking`) or takes the mark off (`Ask before starting`). A
+  marked card shows `»` before its title and `starts without asking` in the Queue (also in
+  `ls`), and its details say `In the Queue for 5 min · starts without asking`. `?` lists `s`.
+- **The Stop hook and a marked card**: handed over to start now, without the keyword check, and
+  with the same rules (never merge, deploy, release, write live data or change settings, IAM or
+  permissions because a card is queued). Still handed over as a question, marked or not: a
+  title whose action (after its last `: `) starts with deploy, merge or release, and a card
+  whose title or description asks for access, IAM, permissions, secrets, credentials, keys,
+  settings, DNS or deleting branches or data. The turn reminder marks such cards `(marked start
+  without asking)`. Marking a card that was handed over and didn't start hands it over again.
+- **Only the user sets the mark**: only the pane writes it (`markStart`); no command-line option
+  does (`--start` is an unknown option), so neither a job nor the coordinator can. The mark
+  holds a hash of the card's title, description, project and time in the Queue: an edit of the
+  title or description, a retag or a move out of the Queue and back ends it. A reorder doesn't.
+  Unmarked cards are handed over exactly as in 0.14.0.
+- **A report never makes a card** (`job-report`): when no card carries the job, the report goes
+  on the card that carried it before (an unlinked card now keeps the old slug in `former_jobs`;
+  else the card with the same report file; else the card in the job skill's record of the job,
+  `job-skill/jobs/<slug>.json` or its newest `<slug>.closed-*.json`), never on one linked to
+  another job since. That card stays where it is (a Done card stays Done), gets the report and
+  the status line `the job reported after it was closed: read its report`, and the coordinator
+  gets a `[job note]` with the job's status, summary, what it asks, and the card. With no such
+  card on the board (none at all, or only in the archive), no card is made, not even from the
+  archive: the `[job note]` gives the status, summary and report path. A repeat of the same
+  report changes nothing and sends no second note.
+
 ## 0.14.0 · unreleased
 
 Jobs ask with buttons, cards keep their titles, a press that can't run says so, a card under

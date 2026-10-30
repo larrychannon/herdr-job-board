@@ -394,10 +394,13 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     ok(dir, ["job-report", "qa", report])
     assert.deepEqual([items(dir)[2].column, items(dir)[2].ask], ["waiting", "failed: the dev server would not start\nLog in to the cloud console"])
 
-    // A report for a job that is not on the board yet adds it.
+    // A report for a job that is not on the board: no card (0.15.0: a report never makes one),
+    // not even the card of another job with the same report file.
     write({ status: "blocked", summary: "needs approval for a deploy" })
-    ok(dir, ["job-report", "other", report])
-    assert.deepEqual([items(dir)[3].title, items(dir)[3].column, items(dir)[3].ask], ["other", "waiting", "blocked: needs approval for a deploy"])
+    const count = items(dir).length
+    assert.match(ok(dir, ["job-report", "other", report]), /^job other: no card carries it/)
+    assert.equal(items(dir).length, count)
+    assert.ok(!items(dir).some((i) => i.title === "other"))
 
     // Only a regular file is read as a report.
     const fifo = join(base, "fifo")

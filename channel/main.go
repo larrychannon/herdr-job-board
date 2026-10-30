@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-const version = "0.14.0"
+const version = "0.15.0"
 
 var (
 	pollEvery = time.Second
