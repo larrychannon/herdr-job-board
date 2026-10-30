@@ -13,31 +13,38 @@ the board pane's key line moves to the top.
   whose card waited on its child check had an FYI turned into the card's question, and another
   round closed the card while the check was still open; and a follow-up round on a Waiting
   card made a second card titled with the job's slug.
-- **Messages for a Done card**: a job's stop and its `tell` lines use the job's newest card in
-  any column when it has no open one, so they go to that card's owner, with the report's status
-  and summary instead of "no report yet".
+- **Messages for a Done card**: a job's stop and its `tell` lines use the job's newest Done card
+  changed in the last 24 hours when it has no open one, so they go to that card's owner, with the
+  report's status and summary instead of "no report yet". An older Done card is another run's (a
+  slug used again later without a card), and isn't used.
 - **Messages nobody reads**: the coordinator's turn-start reminder counts the messages not acked
   in a workspace where no coordinator ever wrote to the board (`w8: 7`), with the first few;
   `inbox ls --stray` lists them all, and `inbox ack <id>` acks any of them.
-- **A new round on the same card**: `job-start <slug>` without `--id` now takes the job's Waiting
-  card when it has no To do or Doing one (the ask and buttons go, as with `--id`), instead of
-  making a new card titled with the slug.
+- **A new round on the same card**: `job-start <slug> --id N` puts the round on card N (back to
+  Doing, on the new report) and refuses a card linked to another job, so a mistyped number moves
+  nothing (`edit N --job <slug>` first when that is meant). Without `--id` it takes the job's
+  Waiting card only when the card asks nothing (no question, no buttons, no other `--title`); a
+  Waiting card with a question stays the user's, the round gets a new card, and job-start says
+  how to use `--id` instead.
 - **Rewritten reports apply again**: the outcome a card remembers (`reported`) includes the
-  report's summary, so a final report rewritten with a new summary moves the card again. Keys
-  written before 0.12.0 (without the summary) still count, so a repeat of an old report keeps
-  the coordinator's edits.
+  report's summary, so a final report rewritten with a new summary moves the card again, and the
+  coordinator gets a `[job note]` with the new summary (the wait that applied the first one has
+  ended), even when the card stays Done. Keys written before 0.12.0 (without the summary) still
+  count, so a repeat of an old report keeps the coordinator's edits.
 - **Cards with open cards under them**: `job-report` never closes such a card, and never puts it
   in Waiting. It stays in Doing (moved there if it was elsewhere) with the report stored on it,
   and the coordinator gets one `[job note]` with the report's status, what it asks, and the
-  open cards' ids. Once they are done, the next report applies as usual.
+  open cards' ids. Once they are done, the next report applies as usual; the same report run
+  again (a restarted wait, a `--once` check) changes nothing, so the coordinator's move stands.
 - **`notes`**: a report's FYIs (`"notes": ["…"]`) never become the card's question; the card's
   details show them under "For your information". `needs_user` is for decisions only.
 - **The key line at the top**: the pane's key line is drawn right under the title at every
-  width, never on the last row. In a terminal that keeps its last row in view (a phone's, in
-  Collie), a key line at the bottom scrolled the cards at the top out of sight. Where none of
-  its forms fits, it reads `? keys · q quit`; the new `?` key shows every key there, wrapped,
-  until `?` or `Esc`. The rows below move down one line, and the details panel now runs to the
-  last row.
+  width, and the pane's last row stays empty. In a terminal that keeps its last row or its
+  cursor in view (a phone's, in Collie), a key line at the bottom scrolled the cards at the top
+  out of sight; the hidden cursor is now parked on the first row after every frame too. Where
+  none of the key line's forms fits, it reads `? keys · q quit`; the new `?` key shows every key
+  there, wrapped, until `?` or `Esc`. The board has one row less: the rows below the title move
+  down one line, and the bottom one is left empty.
 
 ## 0.11.0 · unreleased
 

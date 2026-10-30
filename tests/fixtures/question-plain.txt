@@ -37,8 +37,8 @@ nothing
 
 
 
-
 DONE · 0 today ▸
+
 ===== → chooses the suggested button · 120 columns =====
 Job board · all projects                                                                                           10:30
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
@@ -78,8 +78,8 @@ nothing
 
 
 
-
 DONE · 0 today ▸
+
 ===== a click on the question · 120 columns =====
 Job board · all projects                                                                                           10:30
 Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
@@ -119,8 +119,8 @@ nothing
 
 
 
-
 DONE · 0 today ▸
+
 ===== details, a click on the question · 120 columns =====
 Job board · all projects                                                                                           10:30
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
@@ -142,7 +142,6 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 DOING (0) · nothing running
 
 TO DO (0)
-nothing
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -162,6 +161,7 @@ Release v1.4: all reviewed, approve?
 
 
 ── end of card 1 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
 ===== nothing chosen · 88 columns =====
 Job board · all projects · 3 need you                                              10:30
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit
@@ -306,7 +306,6 @@ TO DO (0) · nothing to do ─────────────────�
 
 DONE · 0 today ▸
 
-
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -326,3 +325,4 @@ Release v1.4: all reviewed, approve?
 
 
 ── end of card 1 ───────────────────────────────────────────────────────────────────────
+

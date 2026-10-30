@@ -435,7 +435,7 @@ function workerJob(input, env, roleEnv) {
 export function workerStop(input, env, { roleEnv = "JOB_AGENT_ROLE", now = new Date() } = {}) {
   const job = workerJob(input, env, roleEnv)
   if (!job) return null
-  const card = jobCard(readBoard(job.file), job.slug, job.workspace)
+  const card = jobCard(readBoard(job.file), job.slug, job.workspace, now)
   const message = stopMessage(job.slug, input, card?.report ? reportNow(card.report).report : null)
   if (!message) return null
   const last = readStop(job.file, job.slug)
@@ -500,7 +500,7 @@ export async function deliver(stop, env = process.env, { delayMs, checkMs, budge
     }
     if (!stop.flush && !went) {
       const state = readBoard(stop.file)
-      message = inboxMessage(state, jobCard(state, stop.slug, stop.workspace), { slug: stop.slug, kind: stop.state, text: stop.text, workspace: stop.workspace, pane: stop.pane, key: stop.key, at: new Date(stop.at) })
+      message = inboxMessage(state, jobCard(state, stop.slug, stop.workspace, new Date(stop.at)), { slug: stop.slug, kind: stop.state, text: stop.text, workspace: stop.workspace, pane: stop.pane, key: stop.key, at: new Date(stop.at) })
     }
     const pending = pendingOf(stop.file, stop.slug)
     const records = [...pending, ...(message ? [message] : [])]
@@ -663,10 +663,10 @@ async function main(argv = process.argv.slice(2)) {
     const input = JSON.parse(text)
     // A job's stop: its line goes to the coordinator's inbox from the background; with no new
     // stop, what is pending from before goes.
-    const stop = workerStop(input, process.env, { roleEnv }) || workerFlush(input, process.env, { roleEnv })
-    if (stop) startDeliver(stop)
     // JOB_BOARD_NOW: the clock, as for board.mjs and the pane (tests).
     const now = process.env.JOB_BOARD_NOW ? new Date(process.env.JOB_BOARD_NOW) : new Date()
+    const stop = workerStop(input, process.env, { roleEnv, now }) || workerFlush(input, process.env, { roleEnv, now })
+    if (stop) startDeliver(stop)
     const { stdout, replay } = handle(input, process.env, { roleEnv, now })
     if (replay) startReplay(replay)
     if (stdout) process.stdout.write(`${stdout}\n`)

@@ -37,8 +37,8 @@ DOING (4)                                                    TO DO (1)
 
 
 
-
 DONE · 1 today ▸
+
 ===== Done open (d) · frame 3 · 120 columns =====
 Job board · all projects                                                                                           10:30
 Tab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit

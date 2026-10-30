@@ -334,9 +334,10 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
           screen.pop()
           assert.equal(screen.length, height)
           const top = screen.findIndex((l) => /^── card \d/.test(l))
-          assert.equal(top, height / 2 + 1, `${card} at ${width}: the panel starts half way down (under the key line at the top)`)
-          const bottom = screen.length - 1
-          assert.match(screen[bottom], /^── (end of card \d+|↓ \d+ more lines?) ─+$/, `${card} at ${width}: the closing rule, on the bottom row`)
+          assert.equal(top, Math.floor((height - 1) / 2) + 1, `${card} at ${width}: the panel starts half way down (under the key line at the top)`)
+          assert.equal(screen.at(-1), "", `${card} at ${width}: the pane's last row is empty`)
+          const bottom = screen.length - 2
+          assert.match(screen[bottom], /^── (end of card \d+|↓ \d+ more lines?) ─+$/, `${card} at ${width}: the closing rule, on the row above the empty last one`)
           assert.equal([...screen[bottom]].length, width, "the closing rule spans the pane")
           assert.equal([...screen[top]].length, width, "and so does the top one")
           assert.match(screen[1], /^Esc /, "the key line under the title")
@@ -350,10 +351,11 @@ test("details panel: opaque from its top rule to the key line, closed by a rule;
     const state = JSON.parse(readFileSync(t.file, "utf8"))
     const view = buildView(state, null, { now: new Date(NOW) })
     const opened = renderBoard(view, { width: 88, height: 30, interactive: true, now: new Date(NOW), scroll: { selected: "waiting", anchors: {}, detail: { key: "#2", offset: 0 } } })
-    assert.deepEqual([opened.regions.detail.top, opened.regions.detail.bottom], [17, 30])
+    assert.deepEqual([opened.regions.detail.top, opened.regions.detail.bottom], [16, 29])
     const rows = opened.text.split("\n")
     assert.equal(rows.length, 30)
-    assert.match(rows[29], /^── (end of card 2|↓ \d+ more lines?) ─+$/)
+    assert.match(rows[28], /^── (end of card 2|↓ \d+ more lines?) ─+$/)
+    assert.equal(rows[29], "", "the last row is empty")
   } finally {
     t.done()
   }
@@ -1189,7 +1191,10 @@ test("the live pane: the bar moves about 6 times a second rewriting only its lin
     // the bar, in place, just after "working".
     const first = live.out.indexOf(`${ESC}[J`)
     assert.ok(first > 0, "the first draw")
-    const plain = live.out.slice(first + 3).replace(/\x1b\[\?2026[hl]/g, "")
+    // Every frame ends with the cursor parked at the top (a phone's terminal follows the cursor).
+    const frames = live.out.slice(first + 3).split(`${ESC}[?2026l`).slice(0, -1)
+    assert.ok(frames.length >= 5 && frames.every((f) => f.endsWith(`${ESC}[H`)), "each frame parks the cursor at row 1")
+    const plain = live.out.slice(first + 3).replace(/\x1b\[\?2026[hl]/g, "").replace(/\x1b\[H/g, "")
     const ticks = [...plain.matchAll(/\x1b\[(\d+);(\d+)H (\[[ =]{4}\])/g)]
     assert.ok(ticks.length >= 5, `about 6 ticks a second (saw ${ticks.length} in 1.5 s)`)
     assert.deepEqual([...new Set(ticks.map((m) => `${m[1]};${m[2]}`))], [`${ticks[0][1]};10`], "always the same place: after '  working'")
@@ -1423,13 +1428,13 @@ function seedShort(t) {
 // layout in a short pane (pinned with --layout: the pane draws compact under 24 rows), and
 // compact with the selected row open (Space), the card cut under its question.
 const SHORT = [
-  { width: 120, height: 20, layout: "wide", keys: "", scroll: { selected: "todo" } },
-  { width: 88, height: 20, layout: "wide", keys: "", scroll: { selected: "todo" } },
-  { width: 60, height: 14, keys: " ", scroll: { selected: "waiting", open: true } },
-  { width: 95, height: 14, keys: " ", scroll: { selected: "waiting", open: true } },
+  { width: 120, height: 21, layout: "wide", keys: "", scroll: { selected: "todo" } },
+  { width: 88, height: 21, layout: "wide", keys: "", scroll: { selected: "todo" } },
+  { width: 60, height: 15, keys: " ", scroll: { selected: "waiting", open: true } },
+  { width: 95, height: 15, keys: " ", scroll: { selected: "waiting", open: true } },
 ]
 
-test("short panes (wide 120x20 and 88x20, compact 60x14 and 95x14 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
+test("short panes (wide 120x21 and 88x21, compact 60x15 and 95x15 opened with Space): a card cut off above its buttons says so; a click on the question, ← → and Enter never choose or press a button off screen", () => {
   const t = setup({ agents, tabs })
   try {
     seedShort(t)

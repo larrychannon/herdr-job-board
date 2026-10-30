@@ -69,6 +69,7 @@ test("every size from 40x15 to 200x60: exactly the pane's lines, none wider, and
           const lines = d.text.split("\n")
           const size = `${width}x${height} ${d.layout} ${JSON.stringify(scroll)}${color ? " colour" : ""}`
           assert.equal(lines.length, height, `${size}: ${height} lines`)
+          assert.equal(lines.at(-1), "", `${size}: the last row is empty (a phone's terminal keeps it in view)`)
           for (const l of lines) assert.ok(textWidth(plain(l)) <= width, `${size}: wider than ${width}: ${plain(l)}`)
           if (!scroll.doneOpen) assert.ok(lines.some((l) => plain(l).includes("DONE · 2 today ▸")), `${size}: Done's folded line`)
           if (color) continue
@@ -247,14 +248,14 @@ test("live resize: the same board re-laid out at each new size, the selection an
   }
 })
 
-test("the key line is under the title at every width, never the last row; on a phone it shortens to ? keys, and ? shows every key", () => {
+test("the key line is under the title at every width, and the last row is empty; on a phone it shortens to ? keys, and ? shows every key", () => {
   const state = board()
   for (const [width, height] of [[160, 45], [95, 40], [60, 30], [40, 24], [24, 20]]) {
     const d = draw(state, { width, height })
     const lines = plain(d.text).split("\n")
     assert.equal(lines.length, height, `${width}x${height}: the pane's height`)
     assert.match(lines[1], /q(?: quit)?$/, `${width}x${height}: the key line is the second row: ${lines[1]}`)
-    assert.doesNotMatch(lines.at(-1), /· q(?: quit)?$/, `${width}x${height}: nothing pinned to the last row`)
+    assert.equal(lines.at(-1), "", `${width}x${height}: nothing on the last row`)
     assert.ok(textWidth(lines[1]) <= width, `${width}: one line`)
   }
   const phone = draw(state, { width: 30, height: 20 })
@@ -266,6 +267,7 @@ test("the key line is under the title at every width, never the last row; on a p
   const help = draw(state, { width: 30, height: 20, scroll: opened.scroll })
   const rows = plain(help.text).split("\n")
   assert.equal(rows.length, 20)
+  assert.equal(rows.at(-1), "", "the last row stays empty with the list open")
   assert.match(rows[1], /^Keys \(\? or Esc hides them\):$/)
   const last = rows.findIndex((l, i) => i > 1 && /q quit$/.test(l))
   const list = rows.slice(2, last + 1).join(" ")

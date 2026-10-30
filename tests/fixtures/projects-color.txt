@@ -114,8 +114,8 @@
                                                                                  [2m200 [0m[32mhome [0m [1m3CX SSL certificate: renew before ~25 Oct 2026[0m                  [2m26 h[0m
 
                                                                                  [2m206 [0m[36mai   [0m [1mJob board 0.4.0 follow-ups in ai-config and the job skill[0m       [2m13 h[0m
+                                                                                 [2m↓ 2 more[0m
 
-                                                                                 [2m207 [0m[34mherdr[0m [1mBoard key binding + sidebar count (in 0.5.0)[0m                   [2m3 min[0m
-                                                                                 [2m↓ 1 more[0m
 [2;32mDONE · 2 today ▸[0m
+
 

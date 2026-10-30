@@ -37,8 +37,8 @@
 
 
 
-
 [2;32mDONE · 1 today ▸[0m
+
 ===== Done open (d) · frame 3 · 120 columns =====
 [1mJob board · all projects[0m                                                                                           [2m10:30[0m
 [2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m

@@ -189,9 +189,10 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
       const snap = join(FIXTURES, `board-${width}x${height}.txt`)
       if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snap, text)
       assert.equal(text, readFileSync(snap, "utf8"), `snapshot ${snap} (UPDATE_SNAPSHOTS=1 to rewrite)`)
-      // Done is folded to one line: at the bottom of the lower area, one blank line above the
-      // pane's last row, in the wide layout; right after the last section in the inbox and compact.
-      if (width >= 120) assert.equal(text.split("\n").at(-2), "DONE · 1 today ▸")
+      // Done is folded to one line: at the bottom of the lower area, right above the pane's last
+      // row (always empty), in the wide layout; right after the last section in the inbox and compact.
+      assert.equal(text.split("\n").at(-2), "", "the last row is empty")
+      if (width >= 120) assert.equal(text.split("\n").at(-3), "DONE · 1 today ▸")
       else assert.match(text, /\n 11   Upgrade the test runner +1 min\n(?:\n)?DONE · 1 today ▸\n/)
       assert.doesNotMatch(text, /Nightly backup check|DONE \(/)
       // d opens it: today's cards, with the time they finished.
@@ -237,7 +238,7 @@ test("board-pane: wide from 120 (Waiting on top, Doing | To do below); the inbox
     assert.equal(quiet[5], "DOING (0) · nothing running")
     assert.equal(quiet[6], "")
     assert.match(quiet[7], /^TO DO \(1\)$/)
-    assert.equal(quiet.at(-2), "DONE · 0 today ▸", "on the bottom row")
+    assert.equal(quiet.at(-3), "DONE · 0 today ▸", "right above the empty last row")
     // The inbox folds every empty section to its header, with a rule.
     const calmInbox = frame(88, 30, calm).split("\n")
     assert.deepEqual(
@@ -369,24 +370,26 @@ test("board: job-start and job-report move a job's item; needs_user becomes the 
     assert.deepEqual([items(dir)[0].column, items(dir)[0].ask], ["waiting", "Review and merge the range control\nDeploy: ./deploy.sh"])
     assert.match(ok(dir, ["ls", "--width", "60"]), /Needs you: Review and merge the range control\n {5}Needs you: Deploy: \.\/deploy\.sh\n/)
 
-    // A follow-up round of the same job (0.12.0) goes on its Waiting card, not a new one titled
-    // with the slug: back to Doing, the ask gone, the new report on it.
+    // A follow-up run of the same job gets its own item; the open question stays in Waiting, and
+    // job-start says how to put the round on that card instead (--id).
     const round2 = join(base, "r2.json")
-    ok(dir, ["job-start", "range", "--title", "Range control: fixes", "--report", round2])
-    assert.deepEqual(items(dir).map((i) => [i.id, i.column, i.title, i.ask, i.report]), [[1, "doing", "Range control: fixes", "", round2]])
+    const started = board(dir, ["job-start", "range", "--title", "Range control: fixes", "--report", round2])
+    assert.equal(started.status, 0, started.stderr)
+    assert.match(started.stderr, /card 1 of job range still waits on the user, so this round has a new card \(2\)\. For a round on card 1 instead: board\.mjs job-start range --id 1/)
+    assert.deepEqual(items(dir).map((i) => [i.id, i.column, i.ask]), [[1, "waiting", "Review and merge the range control\nDeploy: ./deploy.sh"], [2, "doing", ""]])
     writeFileSync(round2, JSON.stringify({ status: "done", summary: "fixed", needs_user: [] }))
     ok(dir, ["job-report", "range"])
-    assert.deepEqual(items(dir).map((i) => [i.id, i.column]), [[1, "done"]])
+    assert.deepEqual(items(dir).map((i) => [i.id, i.column]), [[1, "waiting"], [2, "done"]])
 
     ok(dir, ["job-start", "qa", "--title", "QA the range control"])
     write({ status: "failed", summary: "the dev server would not start", needs_user: "Log in to the cloud console" })
     ok(dir, ["job-report", "qa", report])
-    assert.deepEqual([items(dir)[1].column, items(dir)[1].ask], ["waiting", "failed: the dev server would not start\nLog in to the cloud console"])
+    assert.deepEqual([items(dir)[2].column, items(dir)[2].ask], ["waiting", "failed: the dev server would not start\nLog in to the cloud console"])
 
     // A report for a job that is not on the board yet adds it.
     write({ status: "blocked", summary: "needs approval for a deploy" })
     ok(dir, ["job-report", "other", report])
-    assert.deepEqual([items(dir)[2].title, items(dir)[2].column, items(dir)[2].ask], ["other", "waiting", "blocked: needs approval for a deploy"])
+    assert.deepEqual([items(dir)[3].title, items(dir)[3].column, items(dir)[3].ask], ["other", "waiting", "blocked: needs approval for a deploy"])
 
     // Only a regular file is read as a report.
     const fifo = join(base, "fifo")

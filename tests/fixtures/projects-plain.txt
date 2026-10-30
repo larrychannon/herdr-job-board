@@ -188,10 +188,10 @@ DOING (1)                                                                       
                                                                                  200 home  3CX SSL certificate: renew before ~25 Oct 2026                  26 h
 
                                                                                  206 ai    Job board 0.4.0 follow-ups in ai-config and the job skill       13 h
+                                                                                 ↓ 2 more
 
-                                                                                 207 herdr Board key binding + sidebar count (in 0.5.0)                   3 min
-                                                                                 ↓ 1 more
 DONE · 2 today ▸
+
 
 ===== wide 160x45 · p p p (herdr) =====
 Job board · herdr-job-board                                                                                                                                11:57
@@ -237,6 +237,6 @@ DOING (1)                                                                       
 
 
 
-
 DONE · 1 today · +1 other ▸
+
 

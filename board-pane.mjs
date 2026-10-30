@@ -129,6 +129,10 @@ import { osc52 } from "./links.mjs"
 
 const MOUSE_ON = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l"
+// After every frame the (hidden) cursor goes back to row 1 (0.12.0): a terminal that keeps the
+// cursor's row in view (a phone's, with its keyboard up) would otherwise scroll to the last row
+// written and push the cards at the top away.
+const PARK = "\x1b[H"
 
 function parse(argv) {
   const opts = { interval: 3, once: false, color: null, links: false, emoji: null, keys: "", origin: "", frame: null, layout: "", asPlugin: false }
@@ -331,7 +335,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     frame = (frame + 1) % WORKING_FRAMES.length
     const patch = barTick(drawn, frame, color)
     if (!patch) return
-    out.write(`\x1b[?2026h${patch}\x1b[?2026l`)
+    out.write(`\x1b[?2026h${patch}${PARK}\x1b[?2026l`)
     for (const { y } of drawn.bars) shownLines[y - 1] = null
   })
   const ctx = { answers, env, file: () => file, wait: false, mouse: true, drawn: null, copy: null, write: (text) => out.write(text) }
@@ -373,7 +377,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     // Only the lines that changed: a tick of the working bar rewrites just its lines.
     const lines = drawn.text.split("\n")
     const diff = screenDiff(shownLines, lines, cols, (l) => textWidth(l.replace(ANSI, "")))
-    if (diff) out.write(`\x1b[?2026h${diff}\x1b[?2026l`)
+    if (diff) out.write(`\x1b[?2026h${diff}${PARK}\x1b[?2026l`)
     shownLines = lines
     if (result.token !== null && result.token !== lastToken) {
       reportToken(result.token, env, { wait: false })
@@ -541,7 +545,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   process.on("uncaughtException", crash)
   process.on("unhandledRejection", crash)
 
-  out.write(`\x1b[?1049h\x1b[?25l${MOUSE_ON}\x1b[2J`)
+  out.write(`\x1b[?1049h\x1b[?25l${MOUSE_ON}\x1b[2J${PARK}`)
   out.on("resize", () => {
     shownLines = []
     paint()

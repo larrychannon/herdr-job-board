@@ -157,10 +157,12 @@ test("Done: folded by default; d or a click on its line opens it, d or a click o
     const at = { width, height, layout }
     const folded = draw(s, at)
     const lines = folded.text.split("\n")
-    // Wide: on the bottom row (the key hint is under the title); the inbox and compact: after the last section.
-    const y = folded.layout === "wide" ? height : lines.indexOf("DONE · 1 today ▸") + 1
+    // Wide: on the row above the pane's last one, which stays empty (the key hint is under the
+    // title); the inbox and compact: after the last section.
+    const y = folded.layout === "wide" ? height - 1 : lines.indexOf("DONE · 1 today ▸") + 1
     assert.equal(lines[y - 1], "DONE · 1 today ▸", `${width} ${folded.layout}: one line`)
-    if (folded.layout === "wide") assert.equal(y, height, "at the bottom")
+    assert.equal(lines[height - 1], "", `${width} ${folded.layout}: the last row is empty`)
+    if (folded.layout === "wide") assert.equal(y, height - 1, "at the bottom")
     else assert.match(lines[y - 2 - (folded.layout === "inbox" ? 1 : 0)], /^ +\d+ {3}Later \d+ +30 min$/, "right after To do")
     assert.equal(folded.sections.done, undefined, "no Done section to scroll or select")
     assert.deepEqual(folded.doneToggle, { y, x0: 1, x1: width })

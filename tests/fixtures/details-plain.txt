@@ -19,7 +19,6 @@ DOING (1)                                                    TO DO (3)
                                                                From the roadmap.
 
                                                              7 TODO-MARK Rotate the API keys                 3 h 28 min
-                                                               From the roadmap.
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -39,6 +38,7 @@ Checkout redesign mockup: approve
   has 12 boards, before and after, e.g. Cart, Address and the payment step.
   Needs you:
 ── ↓ 10 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
 ===== card 2 · 120 columns =====
 Job board · all projects                                                                                           10:30
 Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
@@ -60,7 +60,6 @@ DOING (1)                                                    TO DO (3)
                                                                From the roadmap.
 
                                                              7 TODO-MARK Rotate the API keys                 3 h 28 min
-                                                               From the roadmap.
 ── card 2 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -80,6 +79,7 @@ Coupons AND gift cards discount an order twice: fix?
 
 
 ── end of card 2 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
 ===== card 3 · 120 columns =====
 Job board · all projects                                                                                           10:30
 Esc close · ↑↓ scroll · c copy · t go to tab · q quit
@@ -101,7 +101,6 @@ WAITING ON YOU (2)
                                                                From the roadmap.
 
                                                              7 TODO-MARK Rotate the API keys                 3 h 28 min
-                                                               From the roadmap.
 ── card 3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Order history UI: build
   Doing for 12 min
@@ -121,6 +120,7 @@ Order history UI: build
 
 
 ── end of card 3 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
 ===== card 4 · 120 columns =====
 Job board · all projects                                                                                           10:30
 Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
@@ -142,7 +142,6 @@ DOING (1)                                TO DO (3)                              
                                            From the roadmap.         3 h 29 min
                                                                                   12 DONE-MARK shipped thing 5     05:40
                                          7 TODO-MARK Rotate the API keys
-                                           From the roadmap.         3 h 28 min   11 DONE-MARK shipped thing 4     04:40
 ── card 4 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
   Done at 09:10
@@ -162,6 +161,7 @@ CSV export on the Orders page (PR #48): try it, then merge
   Added 08:00 · last changed 09:10
 
 ── end of card 4 ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
 ===== card 1 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
@@ -183,7 +183,6 @@ TO DO (3) ───────────────────────�
   7   TODO-MARK Rotate the API keys                                           3 h 28 min
 
 DONE · 7 today ▸
-
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
@@ -203,6 +202,7 @@ Checkout redesign mockup: approve
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
   'Checkout, before and after'). It has 12 boards, before and after, e.g. Cart, Address
 ── ↓ 13 more lines ─────────────────────────────────────────────────────────────────────
+
 ===== card 2 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
@@ -224,7 +224,6 @@ TO DO (3) ───────────────────────�
   6   TODO-MARK Nightly backup check                                          3 h 29 min
   7   TODO-MARK Rotate the API keys                                           3 h 28 min
 
-DONE · 7 today ▸
 ── card 2 ──────────────────────────────────────────────────────────────────────────────
 Coupons AND gift cards discount an order twice: fix?
   Waiting on you for 7 h 47 min
@@ -244,6 +243,7 @@ Coupons AND gift cards discount an order twice: fix?
 
 
 ── end of card 2 ───────────────────────────────────────────────────────────────────────
+
 ===== card 3 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Esc close · ↑↓ scroll · c copy · t go to tab · q quit
@@ -262,7 +262,6 @@ TO DO (3) ───────────────────────�
   7   TODO-MARK Rotate the API keys                                           3 h 28 min
 
 DONE · 7 today ▸
-
 
 
 
@@ -285,6 +284,7 @@ Order history UI: build
 
 
 ── end of card 3 ───────────────────────────────────────────────────────────────────────
+
 ===== card 4 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
@@ -306,7 +306,6 @@ TO DO (3) ───────────────────────�
  13 ✓ DONE-MARK shipped thing 6                                                    06:40
  12 ✓ DONE-MARK shipped thing 5                                                    05:40
  11 ✓ DONE-MARK shipped thing 4                                                    04:40
- 10 ✓ DONE-MARK shipped thing 3                                                    03:40
 ── card 4 ──────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
   Done at 09:10
@@ -326,3 +325,4 @@ CSV export on the Orders page (PR #48): try it, then merge
 
   Added 08:00 · last changed 09:10
 ── end of card 4 ───────────────────────────────────────────────────────────────────────
+

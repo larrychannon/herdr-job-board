@@ -1,4 +1,4 @@
-===== as drawn · 120x20 wide =====
+===== as drawn · 120x21 wide =====
 [1mJob board · all projects[0m                                                                                           [2m10:30[0m
 [2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
 
@@ -19,7 +19,8 @@
   Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
                                                              [2m↓ 1 more[0m
 [2;32mDONE · 0 today ▸[0m
-===== details, → chooses and scrolls to it · 120x20 wide =====
+
+===== details, → chooses and scrolls to it · 120x21 wide =====
 [1mJob board · all projects[0m                                                                                           [2m10:30[0m
 [1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
 
@@ -40,7 +41,8 @@
 
   [2mAdded 03:14[0m
 [2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-===== as drawn · 88x20 wide =====
+
+===== as drawn · 88x21 wide =====
 [1mJob board · all projects[0m                                                           [2m10:30[0m
 [2mTab section · ↑↓ card · Enter details · c copy · d done · m mouse: board · q quit[0m
 
@@ -61,7 +63,8 @@
   Check every link on the new docs site
   and fix the 404s.
 [2;32mDONE · 0 today ▸[0m
-===== details, → chooses and scrolls to it · 88x20 wide =====
+
+===== details, → chooses and scrolls to it · 88x21 wide =====
 [1mJob board · all projects[0m                                                           [2m10:30[0m
 [1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
 
@@ -82,7 +85,8 @@
 
   [2mAdded 03:14[0m
 [2m──[0m[1m end of card 1 [0m[2m───────────────────────────────────────────────────────────────────────[0m
-===== as drawn · 60x14 (Space) =====
+
+===== as drawn · 60x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                      [2m10:30[0m
 [2mTab · ↑↓ · Space peek · Enter · c copy · d done · q[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m───────────────────────────────────────[0m
@@ -97,7 +101,8 @@
 [1mTO DO (3)[0m [2m──────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m
-===== details, → chooses and scrolls to it · 60x14 (Space) =====
+
+===== details, → chooses and scrolls to it · 60x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                      [2m10:30[0m
 [1mEnter: send[0m[2m · [0m[2mEsc · ↑↓ · ←→ · c copy · t tab · q[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m───────────────────────────────────────[0m
@@ -112,7 +117,8 @@
   [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m
   [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
 [2m──[0m[1m ↓ 2 more lines [0m[2m──────────────────────────────────────────[0m
-===== as drawn · 95x14 (Space) =====
+
+===== as drawn · 95x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                                                         [2m10:30[0m
 [2mTab · ↑↓ · Space peek · Enter · c copy · d done · mouse: board · q[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m──────────────────────────────────────────────────────────────────────────[0m
@@ -127,7 +133,8 @@
 [1mTO DO (3)[0m [2m─────────────────────────────────────────────────────────────────────────────────────[0m
 [2m↓ 3 more[0m
 [2;32mDONE · 0 today ▸[0m
-===== details, → chooses and scrolls to it · 95x14 (Space) =====
+
+===== details, → chooses and scrolls to it · 95x15 (Space) =====
 [1mall[0m[2m · [0m[1;33m1 needs you[0m                                                                         [2m10:30[0m
 [1mEnter to send[0m[2m · [0m[2mEsc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit[0m
 [1m▸ [0m[1;7;33mWAITING ON YOU (1)[0m [33m──────────────────────────────────────────────────────────────────────────[0m
@@ -142,3 +149,4 @@
   [1;97;44m< Approve, include #16 ✓ >[0m  [30;47m[ Approve, #16 later ][0m  [30;47m[ Not yet ][0m  [30;47m[ Other… ][0m
 
 [2m──[0m[1m ↓ 1 more line [0m[2m──────────────────────────────────────────────────────────────────────────────[0m
+
