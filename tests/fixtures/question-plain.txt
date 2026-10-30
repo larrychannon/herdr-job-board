@@ -1,6 +1,6 @@
 ===== nothing chosen · 120 columns =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (3)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min   2 Pick a name                                       30 min
@@ -16,12 +16,12 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running
 
 TO DO (0) ▾
 nothing
-
-
 
 
 
@@ -57,12 +57,12 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running
 
 TO DO (0) ▾
 nothing
-
-
 
 
 
@@ -98,12 +98,12 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running
 
 TO DO (0) ▾
 nothing
-
-
 
 
 
@@ -139,9 +139,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 3 Docs move (PR #14): merge                         20 min
   Needs you: Say merge (after #12)
 
-DOING (0) · nothing running
+QUEUE · 0 ▸
 
-TO DO (0) ▾
+DOING (0) · nothing running
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?
   Waiting on you for 7 h 16 min
@@ -164,7 +164,7 @@ Release v1.4: all reviewed, approve?
 
 ===== nothing chosen · 88 columns =====
 Job board · all projects · 3 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (3) ───────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                     7 h 16 min
@@ -177,13 +177,13 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q 
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
-
-
 
 
 
@@ -218,13 +218,13 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
-
-
 
 
 
@@ -259,13 +259,13 @@ Enter to send · ←→ choose · Esc cancel · ↑↓ card · c copy · q quit
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
 
 DONE · 0 today ▸
-
-
 
 
 
@@ -300,11 +300,11 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
  2 ! Pick a name                                                                  30 min
  3 ! Docs move (PR #14): merge                                                    20 min
 
+QUEUE · 0 ▸
+
 DOING (0) · nothing running ────────────────────────────────────────────────────────────
 
 TO DO (0) ▾ · nothing to do ────────────────────────────────────────────────────────────
-
-DONE · 0 today ▸
 
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Release v1.4: all reviewed, approve?

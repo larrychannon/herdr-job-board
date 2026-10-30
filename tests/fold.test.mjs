@@ -182,7 +182,7 @@ test("t in a card's details goes to the job's tab; t on the board folds To do an
 
 test("ls shows To do whole, with no fold line", () => {
   const view = buildView(board(), [], { now: NOW, workspace: "w9" })
-  const text = plain(render(view, { width: 120, now: NOW, scroll: { todoOpen: true, doneOpen: true } }))
+  const text = plain(render(view, { width: 120, now: NOW, scroll: { queueOpen: true, todoOpen: true, doneOpen: true } }))
   for (let i = 0; i < 3; i++) assert.ok(text.includes(`Later task ${i}`))
   assert.ok(!text.includes("▸"))
 })

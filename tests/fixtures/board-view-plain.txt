@@ -1,5 +1,5 @@
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Old question: pick a name                         2 days   2 Billing fix (PR #12): review                      30 min
@@ -9,6 +9,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
                                                                  merge
                                                                [ Merge ✓ ]  [ Not yet ]  [ Other… ]
 
+QUEUE · 0 ▸
+
 DOING (2)                                                    TO DO (1) ▾
 3 Search filters: build                             25 min   5 Export to CSV                                     23 min
   working, report done                                         Let people download any table as CSV.
@@ -16,8 +18,6 @@ DOING (2)                                                    TO DO (1) ▾
 
 4 Docs: fix links                                   24 min
   no agent
-
-
 
 
 

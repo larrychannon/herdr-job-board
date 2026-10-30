@@ -159,7 +159,7 @@ test("what the views say: the strip, the title's counts, filtered headers, the o
     assert.match(all, /^ {13}answers go to: sfc coordinator \(w4:p6\)$/m)
     assert.match(all, /^ 211   herdr Job board 0\.5\.0, one board for all projects: plan +working \[= {3}\] +3 min$/m)
     assert.match(all, /^ 200   home  3CX SSL certificate/m)
-    assert.match(all, /t to do · p project · d done/)
+    assert.match(all, /u queue · t to do · p proj · d done/)
 
     const sfc = t.pane(95, 40, "p").stdout
     assert.match(sfc, /^Job board · sfc-integration · 3 need you  \(\+1 in other projects\) +11:57$/m)

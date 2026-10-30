@@ -1,7 +1,7 @@
 # herdr-job-board
 
 A board beside your chat for work you hand to coding agents: **WAITING ON YOU** first, then
-**DOING**, **TO DO** and **DONE**. It is a [Herdr](https://herdr.dev) plugin: the board
+the **QUEUE** (what the coordinator starts next, by itself), **DOING**, **TO DO** and **DONE**. It is a [Herdr](https://herdr.dev) plugin: the board
 opens in a split pane next to the pane you are in and redraws itself every 3 seconds.
 
 It is made for a *coordinator*: the agent (or person) that starts jobs in other panes and
@@ -48,6 +48,10 @@ Job board · my-app · 3 need you                                               
   2 ! Search filters mockup: approve                                                 1 h 30 min
   3 ! Billing fix (PR #12): review                                                       50 min
 
+📥 QUEUE (2) ▾ ─────────────────────────────────────────────────────────────────────────────────
+  6   Export to CSV: build                                                               30 min
+  7   Dark mode: follow the system theme                                                 30 min
+
 🔨 DOING (2) ──────────────────────────────────────────────────────────────────────────────────
   4   Search filters: build                                              working [=   ]  25 min
   5   Docs site: fix broken links                                                   idle  2 min
@@ -55,12 +59,12 @@ Job board · my-app · 3 need you                                               
 📋 TO DO · 4 ▸
 🏁 DONE · 1 today ▸
 
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 ```
 
 | Pane | Layout |
 |---|---|
-| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), DOING below, and TO DO and DONE folded to a line each under it (opened, each a column beside Doing); an empty Doing folds to one line over them |
+| 120 columns or wider | **wide**: WAITING ON YOU across the top (two cards a row, each with its description, question and buttons), the QUEUE under it (one row a card, at most a quarter of the height), DOING below, and TO DO and DONE folded to a line each under it (opened, each a column beside Doing); an empty Doing folds to one line over them |
 | 70 to 119 columns | **inbox**, as above: the sections stacked, one row a card (`id`, `!` for a card that waits on you, the title, the agent's state, the age), the selected card open; an empty section folds to its header ("DOING (0) · nothing running") |
 | under 70 columns, or under 24 rows | **compact**: the same rows, no blank lines, a shorter key line; `Space` opens the selected card under its row (a peek), `Enter` its details |
 
@@ -82,7 +86,7 @@ itself out again at once.
   so the motion itself says what is running.
 - **Order**: To do, Doing and Waiting on you are in your order, so the cards that matter most
   can sit on top. A new card goes on top of its section, and so does a card that moves into
-  another section (To do → Doing, Doing → Waiting, back to To do). `Shift+↑` `Shift+↓` move the
+  another section (To do → Doing, Doing → Waiting, back to To do), except into the Queue, where it goes last. `Shift+↑` `Shift+↓` move the
   selected card one place up or down in the pane; `order <ref> top|up|down|bottom` does it from
   the command line (a coordinator, when you ask it to). One rule stays above your order: in
   Waiting, a **blocked** job shows first, since it is stuck until you answer it. Done is newest
@@ -135,6 +139,23 @@ itself out again at once.
   DOING (1) ──────────────────────────────────────────────────
    1   Node health: goes live after… ready to resume  just now
   ```
+- **QUEUE** (0.14.0): To do cards you want started next, without asking for each. Put a To do
+  card in it from its details (`u`, or a click on `Add to the Queue`; `Back to To do` takes a
+  queued one out) or with `move <ref> queue`; a card goes in last, and `Shift+↑` `Shift+↓` (or
+  `order`) change the order. The coordinator works it **top first, by itself**: its turn
+  reminder lists the Queue with the room for jobs (each repo's `max_active_jobs` and the host's
+  memory floor, `min_free_mb`, as the job skill counts them), and when a repo has room its Stop
+  hook hands over the next card: it starts that card's job (the card goes to Doing) or, when the
+  card needs a decision first, moves it to Waiting with a question and buttons. A card handed
+  over that didn't start isn't handed over again until it is edited or queued again. The Queue
+  only decides what gets started: a card whose title or description asks for a merge, deploy,
+  release, production, settings or access change (a keyword check, anywhere in the text) comes
+  back to you as a question, never as a job, and no limit is passed for it. **Only you and the
+  coordinator write the Queue**: a job's pane can't add to it, move a card into it, reorder it,
+  or edit or retag a queued card (the CLI refuses, and the job skill's guard blocks the first
+  two). The Queue sits
+  between Waiting and Doing, open while it has cards; empty, it folds to `QUEUE · 0 ▸`. `u` (or
+  a click on its line or header) folds or opens it; the choice holds until the pane closes.
 - **TO DO** is folded to one line, `TO DO · 12 ▸`, so Waiting and Doing get the room. `t` or a
   click on that line opens it (its cards under `TO DO (12) ▾`; a column beside Doing in the
   wide layout); `t` or a click on its header folds it again. Folded, `Tab` skips it. A card
@@ -153,7 +174,7 @@ itself out again at once.
   never hidden without saying so. A card taller than its section (in a short pane) is cut with
   "↓ card cut off: open it for the rest" under it; open it to see the rest, buttons included.
 - **Colour**, from the terminal's standard 16 colours so it reads on dark and light themes:
-  WAITING ON YOU amber, DOING blue, TO DO plain, DONE dim green, each header followed by a rule
+  WAITING ON YOU amber, QUEUE cyan, DOING blue, TO DO plain, DONE dim green, each header followed by a rule
   in its colour in the inbox and compact layouts; the "need you" count amber; the selected row's
   id in reverse video; the agent's state green (working), red (blocked), cyan (idle or done) or
   grey (no agent); every button filled grey (the suggested one bold, with ✓; the chosen one
@@ -161,7 +182,7 @@ itself out again at once.
   after a day. Colour is never the only sign: the selection is marked `▸`, a waiting card `!`,
   the agent's state is a word, an empty section says so, and the buttons keep their `[ … ]` and
   `< … >`. `NO_COLOR` turns colour off.
-- **Emoji**: each section's header starts with one (🔔 Waiting, 🔨 Doing, 📋 To do, 🏁 Done) in a
+- **Emoji**: each section's header starts with one (🔔 Waiting, 📥 Queue, 🔨 Doing, 📋 To do, 🏁 Done) in a
   UTF-8 locale. Each is a single character that Unicode makes two cells wide, with no variation
   selector or joiner, so terminals agree on its width. `BOARD_EMOJI=0` turns them off
   (`BOARD_EMOJI=1` turns them on outside a UTF-8 locale).
@@ -184,15 +205,16 @@ itself out again at once.
 
 | | |
 |---|---|
-| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); To do and Done only while open |
+| `Tab` / `Shift-Tab`, `←` `→` | select a section (its header is marked ▸); the Queue, To do and Done only while open |
 | `↑` `↓`, `j` `k` | select a card in the section (marked ▸); the view follows. In the inbox the selected card is open under its row |
-| `Shift+↑` `Shift+↓` | move the selected card one place up or down in its section, and save it (To do, Doing, Waiting; not Done). In a view of one project (`p`) it steps over that project's cards; the key line says `card 3 moved up`, or that it can't go further |
+| `Shift+↑` `Shift+↓` | move the selected card one place up or down in its section, and save it (Queue, To do, Doing, Waiting; not Done). In a view of one project (`p`) it steps over that project's cards; the key line says `card 3 moved up`, or that it can't go further |
 | `Space` | in the inbox and compact layouts: open or close the selected card under its row (the inbox opens it by itself, compact doesn't) |
 | `Enter` | open the selected card's details (with no button chosen); `Esc` closes them |
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
 | `o` | Other… on a card with buttons |
-| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `Esc` closes them |
+| in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `u` puts a To do card in the Queue (last), or a queued one back in To do; `Esc` closes them |
 | `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
+| `u` | open the Queue or fold it to its one line (it opens by itself while it has cards); a click on the line, or on the open header, does the same. In a To do card's details `u` puts it in the Queue (a queued card's: back to To do) |
 | `t` | open To do (a column beside Doing) or fold it back to its one line; a click on the line, or on the open header, does the same. In a card's details `t` goes to the job's tab |
 | `d` | open Done (a column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
@@ -599,7 +621,7 @@ this list.
 
 | Command | What it does |
 |---|---|
-| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
+| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
@@ -781,6 +803,21 @@ that catch that:
   changed during that turn, the hook sends it back
   once: "add or update a Waiting card first". It never does so twice in a row, nor more than
   once in a turn.
+- **The Queue** (0.14.0): the turn-start reminder lists the coordinator's queued cards (top
+  first, up to 8), the room for jobs in each of their repos (`app: 1 of 2 jobs, 12000 MB free
+  (minimum 4096)`) and the cards that didn't start when handed over. At a Stop with nothing
+  above to block for, when a repo of a queued card has room, the hook sends the coordinator
+  back with the top such card: start its job on that card, or move it to Waiting with one
+  question. A card is handed over once as it is; after such a block the next stop may hand over
+  the next card, and the run ends when no card is left to hand over. The room follows the job
+  skill's rules: the repo's `max_active_jobs` (default 2) against the named Herdr agents working
+  in its checkouts (this pane's own never), and the host's available memory against the repo's
+  `min_free_mb` (default 4096), both from the repo's `.claude/job.json`, for every project with
+  queued cards, and the reminder says why each card waits (`waits: app is at its limit of 2
+  jobs`). A project outside git (a folder, a home coordinator's) has no checkouts to count: its
+  room is unknown and its cards wait until they are retagged to the repo they are for. When the
+  memory or Herdr's agent list can't be read, the room is unknown and nothing is handed over.
+  Card titles and descriptions are marked as data, not instructions.
 
 A reply "asks something" when its last paragraph ends with `?`, or a sentence near the end
 starts like a request for a decision: "Want me to …", "Should I …", "Shall I …", "OK to …",
@@ -1095,7 +1132,8 @@ board.json.lock/      the write lock
 archive/2026-10.jsonl Done cards older than 7 days, one JSON line each (json --archive, ls --done)
 backups/              board-<date>.json (the first write of each day, 7 kept; restore puts one back),
                       import-<time>/<repo>.json (each 0.4 board an import brought in)
-turns/                the Stop hook's turn records
+turns/                the Stop hook's turn records, and the kind of its last block per session
+queue.json            the Queue's cards handed over, as they were (0.14.0)
 jobs/<slug>.json      each job's last stop (finished or waiting, when, whether it was sent) and
                       its messages pending while the inbox couldn't take them
 inbox.jsonl           job messages and their acks (see Job messages); inbox.jsonl.lock/ its lock

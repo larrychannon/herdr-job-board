@@ -1,5 +1,5 @@
 Job board · all projects · 5 need you                                              10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (5) ───────────────────────────────────────────────────────────────────
 ▸ 1 ! Login page redesign: approve                                            2 h 20 min
@@ -10,6 +10,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q 
   3 ! Billing fix (PR #12): review                                                50 min
   4 ! Docs move (PR #14): merge                                                   45 min
   5 ! Deploy v1.4: go                                                             30 min
+
+QUEUE · 0 ▸
 
 DOING (2) ──────────────────────────────────────────────────────────────────────────────
   6   Search filters: build                                              working  25 min
@@ -22,8 +24,6 @@ TO DO (4) ▾ ──────────────────────
  11   Upgrade the test runner                                                      1 min
 
 DONE · 1 today ▸
-
-
 
 
 

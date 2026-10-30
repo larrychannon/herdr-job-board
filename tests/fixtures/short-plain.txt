@@ -1,6 +1,6 @@
-===== as drawn · 120x21 wide =====
+===== as drawn · 120x23 wide =====
 Job board · all projects                                                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m mouse: board · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit
 
 ▸ WAITING ON YOU (1)
 1▸Release v1.4: all reviewed, approve?          7 h 16 min
@@ -9,6 +9,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · m 
   #16 dark mode). Plan: merge in order (each catches up w…
   Question: Approve the whole release (merges, tag v1.4,
 ↓ card cut off: open it for the rest
+
+QUEUE · 0 ▸
 
 DOING (2)                                                    TO DO (3) ▾
 2 Search filters: build                             25 min   4 Export to CSV                                      1 min
@@ -20,7 +22,7 @@ DOING (2)                                                    TO DO (3) ▾
                                                              ↓ 1 more
 DONE · 0 today ▸
 
-===== details, → chooses and scrolls to it · 120x21 wide =====
+===== details, → chooses and scrolls to it · 120x23 wide =====
 Job board · all projects                                                                                           10:30
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 
@@ -32,7 +34,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Question: Approve the whole release (merges, tag v1.4,
 ↓ card cut off: open it for the rest
 
-── card 1 · ↑ 6 lines above ────────────────────────────────────────────────────────────────────────────────────────────
+QUEUE · 0 ▸
+── card 1 · ↑ 5 lines above ────────────────────────────────────────────────────────────────────────────────────────────
+  mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
@@ -42,9 +46,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Added 03:14
 ── end of card 1 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-===== as drawn · 88x21 wide =====
+===== as drawn · 88x23 wide =====
 Job board · all projects                                                           10:30
-Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q quit
+Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit
 
 ▸ WAITING ON YOU (1)
 1▸Release v1.4: all reviewed, approve?                                        7 h 16 min
@@ -53,6 +57,8 @@ Tab section · ↑↓ card · Enter details · c copy · t to do · d done · q 
   main), tag v1.4, deploy, then run the backfill.
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
 ↓ card cut off: open it for the rest
+
+QUEUE · 0 ▸
 
 DOING (2)                                    TO DO (3) ▾
 2 Search filters: build             25 min   4 Export to CSV                      1 min
@@ -64,7 +70,7 @@ DOING (2)                                    TO DO (3) ▾
   and fix the 404s.
 DONE · 0 today ▸
 
-===== details, → chooses and scrolls to it · 88x21 wide =====
+===== details, → chooses and scrolls to it · 88x23 wide =====
 Job board · all projects                                                           10:30
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 
@@ -76,7 +82,9 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
 ↓ card cut off: open it for the rest
 
-── card 1 · ↑ 7 lines above ────────────────────────────────────────────────────────────
+QUEUE · 0 ▸
+── card 1 · ↑ 6 lines above ────────────────────────────────────────────────────────────
+  main), tag v1.4, deploy, then run the backfill.
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then
@@ -86,7 +94,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
   Added 03:14
 ── end of card 1 ───────────────────────────────────────────────────────────────────────
 
-===== as drawn · 60x15 (Space) =====
+===== as drawn · 60x16 (Space) =====
 all · 1 needs you                                      10:30
 Tab · ↑↓ · Space peek · Enter · t to do · d done · q
 ▸ WAITING ON YOU (1) ───────────────────────────────────────
@@ -96,13 +104,14 @@ Tab · ↑↓ · Space peek · Enter · t to do · d done · q
      #16 dark mode). Plan: merge in order (each catches up …
      Question: Approve the whole release (merges, tag
 ↓ card cut off: open it for the rest
+QUEUE · 0 ▸
 DOING (2) ──────────────────────────────────────────────────
 ↓ 2 more
 TO DO (3) ▾ ────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸
 
-===== details, → chooses and scrolls to it · 60x15 (Space) =====
+===== details, → chooses and scrolls to it · 60x16 (Space) =====
 all · 1 needs you                                      10:30
 Enter: send · Esc · ↑↓ · ←→ · c copy · t tab · q
 ▸ WAITING ON YOU (1) ───────────────────────────────────────
@@ -111,16 +120,17 @@ Enter: send · Esc · ↑↓ · ←→ · c copy · t tab · q
      move, #15 search filters, #17 export to CSV (+ optional
      #16 dark mode). Plan: merge in order (each catches up …
      Question: Approve the whole release (merges, tag
-── card 1 · ↑ 11 lines above ───────────────────────────────
+── card 1 · ↑ 10 lines above ───────────────────────────────
+  Question: Approve the whole release (merges, tag v1.4,
     deploy to production, then the data backfill)? Include
     #16 or keep it for later?
   < Approve, include #16 ✓ >  [ Approve, #16 later ]
   [ Not yet ]  [ Other… ]
 ── ↓ 2 more lines ──────────────────────────────────────────
 
-===== as drawn · 95x15 (Space) =====
+===== as drawn · 95x16 (Space) =====
 all · 1 needs you                                                                         10:30
-Tab · ↑↓ · Space peek · Enter · c copy · t to do · d done · mouse: board · q
+Tab · ↑↓ · Space peek · Enter · c copy · u queue · t to do · d done · mouse: board · q
 ▸ WAITING ON YOU (1) ──────────────────────────────────────────────────────────────────────────
 ▸1 ! Release v1.4: all reviewed, approve?                                            7 h 16 min
      All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export
@@ -128,13 +138,14 @@ Tab · ↑↓ · Space peek · Enter · c copy · t to do · d done · mouse: bo
      v1.4, deploy, then run the backfill.
      Question: Approve the whole release (merges, tag v1.4, deploy to production, then the
 ↓ card cut off: open it for the rest
+QUEUE · 0 ▸
 DOING (2) ─────────────────────────────────────────────────────────────────────────────────────
 ↓ 2 more
 TO DO (3) ▾ ───────────────────────────────────────────────────────────────────────────────────
 ↓ 3 more
 DONE · 0 today ▸
 
-===== details, → chooses and scrolls to it · 95x15 (Space) =====
+===== details, → chooses and scrolls to it · 95x16 (Space) =====
 all · 1 needs you                                                                         10:30
 Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 ▸ WAITING ON YOU (1) ──────────────────────────────────────────────────────────────────────────
@@ -148,5 +159,6 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
     backfill)? Include #16 or keep it for later?
   < Approve, include #16 ✓ >  [ Approve, #16 later ]  [ Not yet ]  [ Other… ]
 
-── ↓ 1 more line ──────────────────────────────────────────────────────────────────────────────
+  Added 03:14
+── end of card 1 ──────────────────────────────────────────────────────────────────────────────
 
