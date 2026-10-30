@@ -112,7 +112,14 @@ itself out again at once.
   else with its link (`#290 … (for #231 …)`). One level: a card's own cards are drawn under that
   card. When the last of them is done, the parent says **ready to resume** (amber, bold) with
   what it waited on, goes on top of its section, and the coordinator's turn-start reminder names
-  it. Moving, editing, ordering or starting the parent clears the mark. In a 60-column pane:
+  it. Moving, editing, ordering or starting the parent clears the mark. **Under a deploy**
+  (0.14.0): when the parent's title says deploy in its action (after its last `: `, as in
+  `Release Notes Manager: deploy the three merged changes`), the cards under it wait for that
+  deploy, so the words turn round: a card under it says `waits for the deploy on #417 Release
+  Notes Manager` (`deployed with #417 … (done)` once it is done), and the deploy card says
+  `deploys 2` where its state goes and `Deploys: PDF file names [waiting on you] · Forum posts
+  [to do]`; `add --parent` prints `#417 deploys #410, #415`, not `#417 now waits on #410`. In
+  a 60-column pane:
 
   ```
   WAITING ON YOU (1) ─────────────────────────────────────────
@@ -351,6 +358,15 @@ button itself. A click on the question never sends.
   says so, and you press again later or use Other… and type the answer.
 - Up to 4 buttons of up to 24 characters; `--clear-options` removes them. They are for Waiting
   cards only and go away when the card leaves Waiting.
+- **A press that couldn't run** (0.14.0): some answers need your own typed words (a settings or
+  permission change, a live database write), so the coordinator can't carry out the press. It
+  then runs `not-run <id> --type "<words>"` (or `--run "<command>"`): the card goes to Waiting
+  asking `Your press couldn't run this: type "deploy the fixes" in the coordinator's chat` (or
+  `run this command: …`), its status line says the same, the pressed button is gone, and the
+  card shows `couldn't run: the "Deploy the fixes" press · 10:36` in amber. The other buttons
+  stay. A new question (`--ask` or `--option`) ends it. For an action the coordinator knows no
+  press can run, it does the same before anything is pressed (a Waiting card without `--ask`,
+  then `not-run`): `A press can't run this: type "…" in the coordinator's chat`, no button.
 
 ## Install
 
@@ -584,6 +600,7 @@ this list.
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `doing`, `waiting`, `done`. `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
@@ -603,8 +620,8 @@ this list.
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, and `waiting_on` (the open ids under it) when it has any. |
-| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`. |
+| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). |
 | `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's lineage too (the cards above it and every open card under it, not its siblings) unless `--only`. `--event merge\|deploy\|…` notes that event on the lineage first. Words checked as for a card. See Status lines below. |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
@@ -693,6 +710,13 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
      never become the card's question; the details show them under "For your information".
    - `done` with `needs_user` → Waiting, asking what `needs_user` says (one `Needs you:` line each). An
      entry may be text or an object such as `{ "question": "…", "suggested_answer": "…" }`.
+   - **The job's own question with buttons** (0.14.0): a `needs_user` of one entry
+     `{ "ask": "Merge the login fix now, or wait for the review?", "options": ["Merge the login
+     fix", "Wait for the review"], "suggest": "Merge the login fix" }` goes on the card as its
+     question and buttons when it passes the wording check (2 to 4 labels, each a verb plus the
+     thing in 24 characters at most, one suggested, no numbers), for `done`, `blocked` and
+     `failed` alike; you get no note to rewrite it. When it fails, the card gets its words without
+     buttons, and the `[job note]` says why.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
    - A card with open cards under it (`--parent`: its checks, its sub-tasks) is never closed or
@@ -1008,11 +1032,12 @@ The user reads a card with no other context: not the chat, not the job's instruc
 | desc | – | `New sign-in screen with SSO buttons and a clearer error message. 3 small choices to confirm.` |
 | ask | `Pick the 3 choices` | `Open the mockup, reply ok or change` |
 
-When `job-report` moves a job to Waiting, rewrite its title and ask for the user, with its
-buttons, in one edit: `edit <id> --title "…: approve" --ask "…" --option "…" --option "…"
+When `job-report` moves a job to Waiting with the job's own words and no buttons (the job didn't
+send its question with buttons, or they failed the check), rewrite its title and ask for the
+user, with its buttons, in one edit: `edit <id> --title "…: approve" --ask "…" --option "…" --option "…"
 --suggest "…"`. The CLI prints a tip when a card has no `--desc`, or a Waiting card no `--ask`.
 
-#### The wording check (0.11.0; the answer list 0.13.1)
+#### The wording check (0.11.0; the answer list 0.13.1; short-name titles 0.14.0)
 
 The rules above are checked, so a card that breaks them never reaches the board. `add`,
 `edit`, `move … waiting` and `job-start` check the whole card they leave (an edit of one field
@@ -1032,6 +1057,7 @@ board: card 12 is not in plain words yet, so nothing was written:
 | version strings | description | warned: there it is often the thing itself (the firmware a customer runs) |
 | a question (`--ask`) on a Waiting card without 2 to 4 buttons, or none suggested | Waiting cards | refused |
 | a label of one word (`Go`, `Hold`), with `+`, `/` or `&`, `next` / `then` / `continue`, a step number (`steps 3–5`), an option letter (`Only A and C`) or a code (`1P`, `M3`) | button labels | refused |
+| a title that is only a job's short name (`daily-review-1030`: one lower-case word with dashes, or the card's job) | title | refused by the command that sets it (`add`, `edit --title`, a new card from `job-start`); on an old card a warning, so `job-start --id` still starts its job's next round (0.14.0) |
 | an `Each answer:` list (one `- <label>: …` line per button; `=`, `→` or a spaced dash work too, and quotes or bold around the label; a `- Either way: …` line is skipped) that names a button the card doesn't have, or misses one it has (the buttons changed, the list didn't) | description of a card with buttons | refused; `lint` warns. Change the buttons and the list in one edit |
 
 Links (`https://…/pull/83`) and card numbers (`card 373`) are fine. When the exact text is
@@ -1042,9 +1068,11 @@ there.
 `job-report` never refuses (a wait script runs it, and nobody sees its output). A
 `needs_user` or `summary` that names numbers stays off the ask: the card asks "The job needs a
 decision from you: its coordinator is writing the question in plain words." The details panel
-shows such a summary or need only under More…. Every card it puts in Waiting (the job's own
-words, no buttons), and every report that names numbers, is also a `[job note]` in the
-coordinator's inbox, naming the card and the one `edit` that fixes it.
+shows such a summary or need only under More…. Every card it puts in Waiting with the job's own
+words and no buttons, and every report that names numbers, is also a `[job note]` in the
+coordinator's inbox, naming the card and the one `edit` that fixes it. A job's own question
+with buttons (`needs_user: [{ "ask", "options", "suggest" }]`) that passes the check goes on the
+card as it is, with no note (0.14.0).
 
 `lint` lists the open cards that fail, for cards written before the check.
 

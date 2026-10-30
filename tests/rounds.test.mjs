@@ -145,9 +145,14 @@ test("job-start without --id: a Waiting card with a question or buttons stays th
     assert.match(started.stdout, /^2 → doing: Export fix: try it on the test server \(job rnm-tryout\)/)
     assert.match(started.stderr, /card 1 of job rnm-tryout still waits on the user, so this round has a new card \(2\)\. For a round on card 1 instead: board\.mjs job-start rnm-tryout --id 1/)
     assert.deepEqual(s.card(1), before, "the question card is untouched: its ask, its buttons, its column")
-    // No --title either: still a new card while the card asks something.
+    // No --title either: still a new card while the card asks something, so it needs a title of
+    // its own: the job's short name alone is refused (0.14.0), and nothing is written.
     s.board(at(4), "move", "2", "done")
-    assert.match(s.board(at(5), "job-start", "rnm-tryout", "--report", s.report("round3", { status: "running" })).stdout, /^3 → doing/)
+    const r3 = s.report("round3", { status: "running" })
+    const bare = s.run(s.coordEnv, at(5), "job-start", "rnm-tryout", "--report", r3)
+    assert.equal(bare.status, 2)
+    assert.match(bare.stderr, /the title says "rnm-tryout", a job's short name/)
+    assert.match(s.board(at(5), "job-start", "rnm-tryout", "--title", "Export fix: try it again", "--report", r3).stdout, /^3 → doing/)
     assert.deepEqual(s.card(1), before)
     // A Waiting card that asks nothing (moved there by hand) takes the next round: no duplicate.
     s.board(at(6), "move", "3", "done")

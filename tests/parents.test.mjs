@@ -75,7 +75,7 @@ test("add --parent links a card: the child is 'for' its parent, the parent waits
     // The parent lists grandchildren too, as ids; a child names its direct parent only.
     assert.deepEqual(t.entry(1).waitingOn, [2, 3])
     assert.deepEqual(t.entry(2).waitingOn, [3])
-    assert.deepEqual(t.entry(2).parentOf, { id: 1, title: "Node health", tag: "", done: false })
+    assert.deepEqual(t.entry(2).parentOf, { id: 1, title: "Node health", tag: "", done: false, deploy: false })
     // A child keeps its own project; its parent's tag shows when the projects differ.
     assert.equal(t.item(3).project, "ops")
     assert.equal(t.entry(3).parentOf.tag, "app")
@@ -211,7 +211,7 @@ test("done on a parent with open cards: allowed with a warning; they keep their 
     const r = t.ok(["done", "2"])
     assert.match(r.stderr, /board: #2 had open cards for it: #3\. They keep their link, shown as "for #2 AI agents' AWS switch \(done\)"\./)
     assert.equal(t.item(3).parent, 2)
-    assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: true })
+    assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: true, deploy: false })
     const details = detailLines({ ...t.entry(3), column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((seg) => seg.t).join("")).join("\n")
     assert.match(details, /For app #2 AI agents' AWS switch \(done\)/)
     // Drawn under 1 now (0.7.3), it still says whose it is: cut to the column, never wrapped.
@@ -511,6 +511,33 @@ test("grouped (0.7.1): one level under each card; a Done card's open cards show 
     const narrow = t.ls(60)
     assert.match(narrow, /\n 1 [^\n]*\n {5}ops   ↳ 3  ~\/work backup[^\n]*just now\n/)
     assert.equal(narrow.match(/↳ 3 /g).length, 1, "drawn once, under 1")
+  } finally {
+    t.done()
+  }
+})
+
+test("under a deploy card (0.14.0): the merged cards wait for the deploy, and the deploy card deploys them, in the CLI, the pane and the details", () => {
+  const t = setup()
+  try {
+    t.ok(["add", "doing", "Release Notes Manager: deploy the three merged changes"])
+    const one = t.ok(["add", "waiting", "PDF file names: merge", "--parent", "1", "--ask", "Merge the file names change?", "--option", "Merge the change", "--option", "Wait for a check", "--suggest", "Merge the change"]).stdout
+    assert.equal(one.trim(), "added 2 (waiting on you): PDF file names: merge · waits for the deploy on #1 Release Notes Manager; #1 deploys #2")
+    assert.match(t.ok(["add", "todo", "Forum posts: merge", "--parent", "1"]).stdout, /· waits for the deploy on #1 Release Notes Manager; #1 deploys #2, #3$/m)
+    assert.equal(t.entry(2).parentOf.deploy, true)
+    assert.equal(t.entry(1).deploys, true)
+    const wide = t.ls(120)
+    assert.match(wide, /\n {2}Deploys:\n {4}PDF file names \[waiting on you\]\n {4}Forum posts \[to do\]\n/)
+    assert.doesNotMatch(wide, /Waiting on:/)
+    assert.match(t.ls(80), /^ 1 .*Release Notes Manager: deploy the three merged changes.* deploys 2 /m)
+    const details = (id) => detailLines(t.entry(id), 100).lines.map((l) => l.map((s) => s.t).join("").trimEnd()).join("\n")
+    assert.match(details(2), /\n {2}Waits for the deploy on #1 Release Notes Manager\n/)
+    assert.match(details(1), /\n {2}Deploys: PDF file names \[waiting on you\] · Forum posts \[to do\]\n/)
+    // The deploy done: its cards say they went out with it.
+    t.ok(["done", "1"])
+    assert.match(details(2), /Deployed with #1 Release Notes Manager \(done\)/)
+    // A card under any other card is still a part of it, and that card waits on it.
+    t.ok(["add", "doing", "Node health: goes live"])
+    assert.match(t.ok(["add", "todo", "Badge fixes", "--parent", "4"]).stdout, /· for #4 Node health; #4 now waits on #5$/m)
   } finally {
     t.done()
   }

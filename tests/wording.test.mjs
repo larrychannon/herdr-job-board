@@ -13,7 +13,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { answerLabels, cardWording, detailLines, labelProblems, numberedIn, readBoard, readInbox } from "../board.mjs"
+import { answerLabels, cardWording, deploysTitle, detailLines, labelProblems, numberedIn, readBoard, readInbox, slugTitle } from "../board.mjs"
 
 const BOARD = fileURLToPath(new URL("../board.mjs", import.meta.url))
 const plain = (lines) => lines.map((l) => l.map((s) => s.t).join("").trimEnd())
@@ -343,4 +343,162 @@ test("Each answer: lists that do match the buttons pass, whatever their dash, qu
   } finally {
     s.done()
   }
+})
+
+test("job-report: a job's own question with buttons goes on the card when it passes the check; else today's note, saying why", () => {
+  const s = setup()
+  try {
+    const report = join(s.base, "report.json")
+    const question = { ask: "Merge the login fix now, or wait for the review?", options: ["Merge the login fix", "Wait for the review"], suggest: "Merge the login fix" }
+    s.ok("job-start", "login", "--title", "Login fix: build", "--report", report)
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Built and checked.", needs_user: [question] }))
+    const r = s.ok("job-report", "login")
+    const card = s.card(1)
+    assert.equal(card.column, "waiting")
+    assert.equal(card.ask, question.ask)
+    assert.deepEqual(card.options, [{ label: "Merge the login fix", suggested: true }, { label: "Wait for the review" }])
+    assert.match(r.stdout, /^1 → waiting on you: Login fix: build\n {2}ask: Merge the login fix now, or wait for the review\?\n {2}buttons: Merge the login fix ✓ · Wait for the review$/m)
+    assert.equal(r.stderr, "", "nothing for the coordinator to rewrite")
+    assert.equal(readInbox(s.file).messages.length, 0)
+    assert.deepEqual(cardWording(card), [])
+    // The same report again: unchanged. Other buttons in the same report: applied again.
+    assert.match(s.ok("job-report", "login").stdout, /1 unchanged/)
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Built and checked.", needs_user: { ...question, options: ["Merge the login fix", "Hold it until Monday"] } }))
+    s.ok("job-report", "login")
+    assert.deepEqual(s.card(1).options.map((o) => o.label), ["Merge the login fix", "Hold it until Monday"])
+
+    // A blocked job may ask with buttons too: the question is the ask.
+    s.ok("job-start", "aws", "--title", "AWS access: set up", "--report", report)
+    writeFileSync(report, JSON.stringify({ status: "blocked", summary: "No permission to change the role.", needs_user: [{ ask: "Change the role yourself, or skip it?", options: ["Change it myself", "Skip the role change"], suggest: "Change it myself" }] }))
+    s.ok("job-report", "aws", report)
+    assert.equal(s.card(2).ask, "Change the role yourself, or skip it?")
+    assert.equal(s.card(2).options.length, 2)
+
+    // Refused by the check (a one-word label, no suggestion, a number, 5 buttons): today's way,
+    // the question's words on the card, no buttons, and the note says why.
+    const refused = [
+      [{ ask: "Merge it?", options: ["Merge", "Wait for the review"], suggest: "Merge" }, /the button "Merge" says "Merge", one word/],
+      [{ ask: "Merge it?", options: ["Merge the login fix", "Wait for the review"] }, /no suggested answer/],
+      [{ ask: "Merge PR #83?", options: ["Merge the login fix", "Wait for the review"], suggest: "Merge the login fix" }, /the ask says "PR #83", a PR number/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one", "Pick the third one", "Pick the fourth one", "Pick the fifth one"], suggest: "Pick the first one" }, /at most 4/],
+      [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one"], suggest: "Pick the other one" }, /is not one of the/],
+    ]
+    let id = 3
+    for (const [q, why] of refused) {
+      s.ok("job-start", `q${id}`, "--title", `Question check ${id}: build`, "--report", report)
+      writeFileSync(report, JSON.stringify({ status: "done", summary: "Built.", needs_user: [q] }))
+      const out = s.ok("job-report", `q${id}`, report)
+      assert.equal(s.card(id).options, undefined, JSON.stringify(q))
+      assert.equal(s.card(id).column, "waiting")
+      assert.match(out.stderr, /The job's question came with buttons, kept off the card because /)
+      assert.match(out.stderr, why)
+      assert.match(out.stderr, /Rewrite it in one edit/)
+      id++
+    }
+    assert.equal(s.card(3).ask, "Merge it?", "the question's words, as a plain ask")
+    // Two entries, one of them a question: not one question, so today's way.
+    s.ok("job-start", "two", "--title", "Two asks: build", "--report", report)
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Built.", needs_user: ["Read the notes", question] }))
+    s.ok("job-report", "two", report)
+    assert.equal(s.card(id).options, undefined)
+    assert.equal(s.card(id).ask, `Read the notes\n${question.ask}`)
+  } finally {
+    s.done()
+  }
+})
+
+test("a title that is only a job's short name: refused where a command sets it; an old one only warns, so a job's next round still starts", () => {
+  assert.equal(slugTitle("daily-review-1030"), true)
+  assert.equal(slugTitle("sfc-image-pin"), true)
+  assert.equal(slugTitle("build", "build"), true, "the card's own job")
+  for (const t of ["Daily review: run the first one", "Wi-Fi", "build", "Login fix: build", "e-mail digest"]) assert.equal(slugTitle(t), false, t)
+  const s = setup()
+  try {
+    let r = s.run("add", "todo", "daily-review-1030")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /the title says "daily-review-1030", a job's short name, which says nothing to the user: --title "<the thing>: <action>"/)
+    r = s.run("job-start", "sfc-image-pin")
+    assert.equal(r.status, 2, "a new card titled with the slug")
+    assert.match(r.stderr, /the title says "sfc-image-pin"/)
+    assert.equal(s.run("job-start", "pin", "--title", "pin").status, 2, "a title that is the job's own name")
+    s.ok("add", "todo", "Daily review: run the first one", "--job", "daily-review-1030")
+    assert.equal(s.run("edit", "1", "--title", "daily-review-1030").status, 2)
+    // A card already titled so (job-open wrote the slug before): its round starts, with a warning.
+    const state = readBoard(s.file)
+    state.items[0].title = "daily-review-1030"
+    writeFileSync(s.file, JSON.stringify(state))
+    const report = join(s.base, "round.json")
+    r = s.ok("job-start", "daily-review-1030", "--id", "1", "--report", report)
+    assert.match(r.stdout, /^1 → doing: daily-review-1030/)
+    assert.match(r.stderr, /card 1: the title says "daily-review-1030", a job's short name.*\(a warning: written as it is\)/)
+    // Other edits warn too; lint warns (exit 0); a new title fixes it.
+    assert.match(s.ok("edit", "1", "--desc", "The first daily review.").stderr, /a warning/)
+    r = s.run("lint")
+    assert.equal(r.status, 0)
+    assert.match(r.stdout, /^ {2}warn the title says "daily-review-1030"/m)
+    s.ok("job-start", "daily-review-1030", "--id", "1", "--title", "Daily review: run the first one", "--report", report)
+    assert.equal(s.card(1).title, "Daily review: run the first one")
+  } finally {
+    s.done()
+  }
+})
+
+test("not-run: a press its coordinator couldn't carry out shows on its card: the words to type or the command, its button gone", () => {
+  const s = setup()
+  try {
+    s.ok("add", "waiting", "Release Notes Manager: deploy the fixes", "--ask", "Deploy the fixes now?", "--option", "Deploy the fixes", "--option", "Wait until Monday", "--suggest", "Deploy the fixes")
+    const state = readBoard(s.file)
+    state.items[0].sent = { label: "Deploy the fixes", at: "2026-10-29T09:50:00.000Z" }
+    writeFileSync(s.file, JSON.stringify(state))
+    let r = s.ok("not-run", "1", "--type", "deploy the fixes")
+    assert.match(r.stdout, /^1 → waiting on you: Release Notes Manager: deploy the fixes\n {2}ask: Your press couldn't run this: type "deploy the fixes" in the coordinator's chat\n {2}the "Deploy the fixes" button is gone from the card \(buttons left: Wait until Monday\)\n$/)
+    let card = s.card(1)
+    assert.equal(card.ask, `Your press couldn't run this: type "deploy the fixes" in the coordinator's chat`)
+    assert.deepEqual(card.options, [{ label: "Wait until Monday" }])
+    assert.equal(card.sent, undefined)
+    assert.deepEqual(card.not_run, { label: "Deploy the fixes", at: "2026-10-29T10:00:00.000Z", type: "deploy the fixes" })
+    assert.equal(card.now.text, card.ask, "the status line says it too")
+    assert.deepEqual(cardWording(card), [], "one button left and no suggestion is fine here")
+    const ls = s.run("ls", "--width", "100").stdout
+    assert.match(ls, /Your press couldn't run this: type "deploy the fixes"/)
+    assert.match(ls, /couldn't run: the "Deploy the fixes" press · 10:00 \(see the question\)/)
+    assert.doesNotMatch(ls, /\[ Deploy the fixes/)
+    assert.match(plain(detailLines(s.card(1), 100).lines).join("\n"), /couldn't run: the "Deploy the fixes" press/)
+    // An edit of something else is fine; a new question ends it.
+    s.ok("edit", "1", "--desc", "The fixes are merged.")
+    s.ok("edit", "1", "--ask", "Deploy them now?", "--option", "Deploy the fixes", "--option", "Wait until Monday", "--suggest", "Deploy the fixes")
+    assert.equal(s.card(1).not_run, undefined)
+
+    // A command, from a card in Doing (the press moved it there): back in Waiting, with --label.
+    s.ok("move", "1", "doing")
+    r = s.ok("not-run", "1", "--run", "aws iam attach-role-policy --role-name agents --policy-arn arn:aws:iam::123456789012:policy/v1.2.3", "--label", "Change the role")
+    card = s.card(1)
+    assert.equal(card.column, "waiting")
+    assert.equal(card.ask, "Your press couldn't run this: run this command: aws iam attach-role-policy --role-name agents --policy-arn arn:aws:iam::123456789012:policy/v1.2.3")
+    assert.equal(card.options, undefined)
+    assert.equal(card.not_run.label, "Change the role")
+    assert.match(r.stdout, /the "Change the role" button is gone/)
+    s.ok("edit", "1", "--desc", "Needs the account's admin.")
+    // Before any press: a card for an action no press can run, with no dead button.
+    s.ok("add", "waiting", "Agents' AWS role: change it", "--desc", "The agents need one more permission.")
+    r = s.ok("not-run", "2", "--type", "attach the policy")
+    assert.equal(s.card(2).ask, `A press can't run this: type "attach the policy" in the coordinator's chat`)
+    assert.match(r.stdout, /no press on record: the card says a press can't run this/)
+    assert.deepEqual(cardWording(s.card(2)), [])
+    assert.match(s.run("ls", "--width", "100").stdout, /no button for this: a press can't run it \(see the question\)/)
+    // Usage: one of --type and --run, an open card.
+    assert.equal(s.run("not-run", "1").status, 2)
+    assert.equal(s.run("not-run", "1", "--type", "x", "--run", "y").status, 2)
+    assert.equal(s.run("not-run", "1", "--type", " ").status, 2)
+    s.ok("done", "1")
+    assert.equal(s.run("not-run", "1", "--type", "deploy it").status, 2)
+  } finally {
+    s.done()
+  }
+})
+
+test("deploysTitle: the title's action after the last colon says deploy", () => {
+  assert.equal(deploysTitle("Release Notes Manager: deploy the three merged changes"), true)
+  assert.equal(deploysTitle("Deploy the login fix"), true)
+  for (const t of ["Release Notes Manager: new PDF file name pattern for new releases", "Release checklist: ship it", "Deploy notes: write them", "Fleet: roll out the waves"]) assert.equal(deploysTitle(t), false, t)
 })
