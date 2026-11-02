@@ -136,7 +136,7 @@ test("job-start without --id: a Waiting card with a question or buttons stays th
     const r1 = s.report("round1", { status: "done", summary: "Added the rows.", needs_user: ["Keep the test server running?"] })
     s.board(at(0), "job-start", "rnm-tryout", "--title", "Export fix: try it", "--report", r1)
     s.board(at(1), "job-report", "rnm-tryout")
-    s.board(at(2), "edit", "1", "--title", "Test server: keep it running?", "--ask", "Keep the test server running while you try it?", "--option", "Keep it running", "--option", "Stop it", "--suggest", "Keep it running")
+    s.board(at(2), "edit", "1", "--title", "Test server: keep it running?", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Keep the test server running while you try it?", "--option", "Keep it running", "--option", "Stop it", "--suggest", "Keep it running")
     const before = s.card(1)
     // The replay: job-start with a new --title used to turn this card into the round, dropping
     // the question and its buttons without a word.
@@ -209,7 +209,7 @@ test("a final report rewritten with a new summary applies again (a partial 'done
     s.board(at(19), "job-report", "review", "--if-final")
     assert.deepEqual([s.card(1).column, s.card(1).ask], ["waiting", "Fix the Inspector crash before release?"])
     // The same outcome, a new summary only: applied again (the card is touched).
-    s.board(at(20), "edit", "1", "--title", "Inspector crash: fix before release", "--ask", "Fix it before the release?", "--option", "Fix it first", "--option", "Release as is", "--suggest", "Fix it first")
+    s.board(at(20), "edit", "1", "--title", "Inspector crash: fix before release", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Fix it before the release?", "--option", "Fix it first", "--option", "Release as is", "--suggest", "Fix it first")
     assert.match(s.board(at(21), "job-report", "review").stdout, /^1 unchanged \(waiting on you\)/, "a repeat keeps the coordinator's words")
     assert.equal(s.card(1).ask, "Fix it before the release?")
     writeFileSync(path, JSON.stringify({ status: "done", summary: "Fix first: the Inspector crashes on an empty row; repro attached.", needs_user: ["Fix the Inspector crash before release?"] }))

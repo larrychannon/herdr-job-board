@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.16.0 · unreleased
+
+A new question says where things stand; parent cards build their own status line; the
+question check reads Telegram replies; per-command help.
+
+- **Why**: a card moved on to its second question with nothing on it explaining what it meant,
+  and a command for the user went only to the chat. On one evening the Stop hook asked eight
+  times for a parent card's status line to be rewritten, each time because a card under it
+  changed, and each rewrite produced a chat message. A question sent on Telegram got no card
+  for nine hours, because the check read only the chat reply, and that reply ended with "I'm
+  waiting for your yes", a Sources list and the Memory line. And `edit --help` failed with
+  "unknown option".
+- **A new question brings its explanation**: `edit` and `move` that change a card's `--ask`
+  also set `--desc` in the same call, with a line that starts `Now:` (where things stand, what
+  the answer decides). Without it: exit 2, nothing written; `--allow-wording` doesn't skip it.
+  The same question again, or clearing it, needs nothing; `add` is unchanged. The error, the
+  usage, the guide and the README say that a command the user must run (a line starting `! `,
+  or a code line) goes on the card in that same edit, never only in the chat. The commands the
+  board suggests (the job-report rewrite hint, the tip after a Waiting card with no question,
+  the Queue hand-over, the Stop hook's reason) include the `--desc … Now: …` part.
+- **Parent cards build their status line**: a parent with no job and no question of its own,
+  with open cards under it and a line (written on it, or copied up from a card under it),
+  shows a line built from those cards instead: `Now: #437 working · #438 waiting on you · #439
+  to do · 2 done` (each card's section, or its job's live agent status), cut to fit with `+N
+  more`. It is never out of date, so the turn reminder and the Stop hook don't ask about it.
+  `now` on such a parent keeps its text and says the built line shows instead. A parent that
+  never had a line keeps its `Waiting on: …` list alone; a parent with a job or a question
+  writes its line as before.
+- **The question check** (Stop): trailing `Sources:` (with their link lists) and `Memory
+  read:` paragraphs are skipped before the last two paragraphs are read; "waiting for your yes
+  / OK / pick / answer" and "your yes is still pending" ask, anywhere in a sentence; and the
+  texts this turn sent with the Telegram reply tool (`mcp__plugin_telegram_telegram__reply`,
+  read from the last 4 MB of `transcript_path`, after its last prompt) are checked too. The
+  block's reason says when the question went out on Telegram. A worker's `[job waiting]` line
+  quotes the question, not the Memory line.
+- **`<command> --help`** (and `help <command>`): that command's usage lines and the flags it
+  takes; an unknown command exits 2. Bare `--help` prints the whole list and exits 0.
+
 ## 0.15.0 · unreleased
 
 Queue and start: a card you mark starts without the word check. A job's report never makes a card.

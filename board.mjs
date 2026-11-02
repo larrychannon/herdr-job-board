@@ -4,6 +4,7 @@
 // writes it. Agents (a coordinator that starts jobs) and people use the same commands.
 //
 //   node board.mjs <command> …        (installed as a Herdr plugin: "$HERDR_PLUGIN_ROOT/board.mjs")
+//   node board.mjs <command> --help   that command's usage and the flags it takes
 //
 //   add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]
 //                           add an item to this folder's project (or P); prints its id. --option
@@ -18,7 +19,11 @@
 //        [--parent ID | --no-parent]                           set or remove the card it is made for
 //                           add, edit, move to waiting and job-start check the card's words (see
 //                           "Wording" below) and write nothing when they fail; --allow-wording
-//                           writes it anyway
+//                           writes it anyway. edit and move that change the question (--ask) also
+//                           set --desc in the same call, with a line that starts "Now:" (where it
+//                           stands, what the answer decides); else nothing is written. A command
+//                           the user must run ("! …", a code line) goes on the card in that same
+//                           edit, never only in the chat
 //   not-run <ref> --type "<words>" | --run "<command>" [--label L]
 //                           a press its coordinator couldn't carry out (the user's own typed words
 //                           are needed): the card goes to Waiting asking "Your press couldn't run
@@ -1377,7 +1382,7 @@ function wordingNote(item, column, numbered, refused = null) {
   if (column !== "waiting") return `card ${item.id} (${item.title}) is done.${found} Put what the job did in plain words in its description: board.mjs edit ${item.id} --desc "…"`
   // The job sent its question with buttons, and the check refused them: say why.
   const why = refused?.length ? ` The job's question came with buttons, kept off the card because ${refused.slice(0, 3).join("; ")}.` : ""
-  return `card ${item.id} (${item.title}) is waiting on the user with the job's own words and no answer buttons.${why}${found} Rewrite it in one edit: board.mjs edit ${item.id} --title "<the thing>: <action>" --ask "<one plain question>" --option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"`
+  return `card ${item.id} (${item.title}) is waiting on the user with the job's own words and no answer buttons.${why}${found} Rewrite it in one edit: board.mjs edit ${item.id} --title "<the thing>: <action>" --desc "<what and why>, then a line: Now: <where it stands>" --ask "<one plain question>" --option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"`
 }
 
 /**
@@ -1515,6 +1520,28 @@ function moveItem(state, item, column, now, woke = []) {
   }
   item.updated = at
   return item
+}
+
+// A new question brings its own explanation (0.16.0): edit and move that change a card's --ask
+// also set --desc, in the same call, with a line that starts "Now:" saying where things stand and
+// what the answer decides. The user reads the card, not the chat.
+const NOW_LINE = /^[\s>*_-]*now\s*:\s*\S/im
+export const COMMAND_ON_CARD = 'A command the user must run (a line starting "! ", or a code line) goes on the card too, in --desc or --ask, in this same edit: never only in the chat.'
+
+/** Why this edit or move can't change the card's question: "" when it may (no new ask, or a "Now:" line with it). */
+export function askWithoutNow(item, opts) {
+  if (opts.ask === undefined) return ""
+  const ask = cleanLines(opts.ask)
+  // Clearing the question, or giving the same one again, asks nothing new.
+  if (!ask || ask === cleanLines(item.ask ?? "")) return ""
+  // As the description is stored: a literal "\n" (a shell's one-line --desc) is a line break too.
+  if (opts.desc !== undefined && NOW_LINE.test(cleanDesc(opts.desc))) return ""
+  return [
+    `card ${item.id}: a new question needs its explanation in the same call, so nothing was written.`,
+    `  Add --desc with the card's description and a line that starts "Now:": where things stand and what the answer decides`,
+    `  (--desc "<what it is and why>` + "\n" + `  Now: <where it stands; what each answer does>").`,
+    `  ${COMMAND_ON_CARD}`,
+  ].join("\n")
 }
 
 /** Change a card's fields (and its parent: --parent, --no-parent); an edit clears "ready to resume". */
@@ -1823,6 +1850,37 @@ export function staleWhy(item) {
   const e = item.event || {}
   return `${clean(e.kind) || "a change"}${e.card && e.card !== item.id ? ` on #${Number(e.card)}` : ""} since`
 }
+
+// A card under a parent, in a word or two for the parent's built line.
+const UNDER_WORD = { waiting: "waiting on you", queue: "queued", doing: "doing", todo: "to do" }
+const underWord = (c, live = "") => (live === "blocked" ? "waiting on you" : c.column === "doing" && (live === "working" || live === "idle") ? live : UNDER_WORD[c.column] || c.column)
+
+/**
+ * The status line of a parent card with no job and no question of its own (0.16.0), built from
+ * the open cards under it: "#437 doing · #438 waiting on you · #439 to do · 2 done". It replaces
+ * the line such a card has (written on it, or on a card above or under it: `now` writes the
+ * lineage) and is never out of date, so the turn reminder and the Stop hook leave it alone. A
+ * parent that never had a line keeps its "Waiting on: …" list alone. "" for any other card (one
+ * with a job or a question, no line, nothing open under it, or done). `liveOf(card)`: its job's
+ * live agent status, when known ("working", "idle", "blocked").
+ */
+export function builtStatus(state, item, liveOf = () => "") {
+  if (!item || item.column === "done" || clean(item.job) || clean(item.ask) || !clean(item.now?.text)) return ""
+  const open = openUnder(state, item).sort((a, b) => a.id - b.id)
+  if (!open.length) return ""
+  const done = doneUnder(state, item).length
+  const parts = open.map((c) => `#${Number(c.id)} ${underWord(c, liveOf(c))}`)
+  const tail = done ? [`${done} done`] : []
+  for (let n = parts.length; n >= 1; n--) {
+    const more = parts.length - n
+    const line = [...parts.slice(0, n), ...(more ? [`+${more} more`] : []), ...tail].join(" · ")
+    if (line.length <= STATUS_MAX) return line
+  }
+  return `${parts.length} open under it${done ? ` · ${done} done` : ""}`
+}
+
+/** Whether a card's status line is built from the cards under it (builtStatus): never out of date. */
+export const statusBuilt = (state, item) => Boolean(builtStatus(state, item))
 
 /** The status line job-report writes on a job's card. */
 export function reportStatusLine(status, column, held = false) {
@@ -2189,6 +2247,10 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     if (entry.ready) entry.age = now - new Date(entry.ready)
     // Its status line, out of date when a card above or under it changed since it was written (0.13.0).
     entry.stale = statusStale(item)
+    // A parent with no job or question of its own: its line is built from the cards under it
+    // (0.16.0), with their agents' live status, and is never out of date.
+    const built = builtStatus(all, item, (c) => (c.job && agents ? jobAgent(agents, c.job, c.workspace || workspace)?.agent_status || "" : ""))
+    if (built) [entry.now, entry.stale] = [{ text: built, at: now.toISOString(), built: true }, false]
     // The user's "start without asking", while it holds (0.15.0).
     if (item.column === "queue") entry.startMarked = startMarked(item)
     if (item.column === "done") {
@@ -6875,7 +6937,12 @@ Writing cards
   for you to rewrite; read the report before you merge or deploy on such a press). Any other
   needs_user, a blocked or failed report, or a question that fails is copied as text (numbers
   kept off the ask), and you get a "[job note]" for the card: rewrite it in one edit.
-- Before you ask the user something, add or update a Waiting card (the Stop hook checks).
+- A new question brings its explanation: edit or move that changes --ask also sets --desc in
+  the same call, with a line that starts "Now:" (where things stand, what the answer decides);
+  otherwise nothing is written. A command the user must run (a line starting "! ", or a code
+  line) goes on the card in that same edit (--desc or --ask), never only in the chat.
+- Before you ask the user something, add or update a Waiting card (the Stop hook checks: your
+  reply, and this turn's Telegram replies).
 - Order: each section is in the user's order, new cards and cards that change section on top
   (the Queue: last). When the user asks to move a card: order <id> top|up|down|bottom.
 
@@ -6919,6 +6986,9 @@ Status lines (0.13.0)
   it, under it and its own written before it out of date; a sub-card added or removed, the
   lines above it. The card says "status out of date", your turn reminder lists it, and the
   Stop hook blocks once while a card you own has one. Write the line again (now <id> …).
+- A parent with no job or question of its own builds its line from the cards under it
+  ("#437 working · #438 waiting on you · #439 to do"): never out of date, never asked about.
+  Don't write it by hand, and don't tell the user when the only thing done was a status line.
 
 Buttons
 - A Waiting card can carry up to 4 answers: --option "<label>" (repeat) --suggest "<label>".
@@ -7806,7 +7876,7 @@ function usage(message) {
 }
 
 const FLAGS = new Set(["type", "run", "label", "event", "timeout", "parent", "desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
-const SWITCHES = new Set(["only", "clear", "all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator"])
+const SWITCHES = new Set(["only", "clear", "all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator", "help"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -7875,6 +7945,31 @@ export const COMMAND_FLAGS = {
   version: [],
 }
 
+/** The usage at the top of this file, without the comment marks. */
+function helpLines() {
+  const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1)
+  return lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, ""))
+}
+
+/**
+ * One command's usage (`board.mjs edit --help`): its entries in the usage above (each starts two
+ * spaces in with the command's name and runs until the next one), then the flags it takes. A
+ * command with no entry there (token, path, …) gets a usage line from its flags.
+ */
+export function commandHelp(command) {
+  const lines = helpLines()
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^  \S/.test(lines[i]) || lines[i].trim().split(/\s+/)[0] !== command) continue
+    out.push(lines[i])
+    while (i + 1 < lines.length && /^ {3,}\S/.test(lines[i + 1])) out.push(lines[++i])
+  }
+  const flags = (COMMAND_FLAGS[command] || []).map((f) => `--${f}`)
+  if (!out.length) out.push(`  ${command}${flags.length ? ` [${flags.join("] [")}]` : ""}`)
+  out.push("", flags.length ? `${command} takes: ${flags.join(", ")}` : `${command} takes no options`, "board.mjs help: every command; board.mjs guide: the instructions for agents")
+  return out.join("\n")
+}
+
 function only(opts, command) {
   const allowed = COMMAND_FLAGS[command] || []
   for (const key of Object.keys(opts)) if (!allowed.includes(key)) throw usage(`${command} does not take --${key}`)
@@ -7895,10 +7990,16 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
   try {
     const { args, opts } = parse(argv)
     const [command, ...rest] = args
-    if (!command || command === "help" || command === "--help") {
-      const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1)
-      out(lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"))
-      return command ? 0 : 2
+    // `<command> --help` and `help <command>`: that command's lines only; else the whole list.
+    const asked = command === "help" ? rest[0] : opts.help ? command : undefined
+    if (asked) {
+      if (!Object.hasOwn(COMMAND_FLAGS, asked)) throw usage(`unknown command ${asked}: board.mjs help lists them`)
+      out(commandHelp(asked))
+      return 0
+    }
+    if (!command || command === "help" || opts.help) {
+      out(helpLines().join("\n"))
+      return command || opts.help ? 0 : 2
     }
     if (command === "open") {
       only(opts, command)
@@ -8055,6 +8156,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           woke = []
           warnings = []
           const target = owned(s, findItem(s, rest[0], me))
+          const noNow = askWithoutNow(target, opts)
+          if (noNow) throw usage(noNow)
           open = column === "done" && target.column !== "done" ? waitingOn(s, target) : []
           const it = moveItem(s, target, column, now, woke)
           const edited = opts.ask !== undefined || opts.desc !== undefined || opts.option !== undefined || opts.suggest !== undefined ? editItem(s, it, opts, now) : it
@@ -8077,6 +8180,8 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           warnings = []
           const target = owned(s, findItem(s, rest[0], me))
           if (target.column === "queue") queueWrite(me, "edit its cards")
+          const noNow = askWithoutNow(target, opts)
+          if (noNow) throw usage(noNow)
           const it = editItem(s, target, opts, now)
           // The whole card as it is left, not only what this edit wrote: a card is fixed when it is touched.
           if (it.column !== "done") checkWording(it, opts, (w) => warnings.push(w), { title: opts.title !== undefined })
@@ -8547,12 +8652,17 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           error.wording = true
           throw error
         }
+        let built = ""
         const { item, cards } = change((s) => {
           const it = owned(s, findItem(s, rest[0], me))
-          return { item: it, cards: setStatus(s, it, text, { only: Boolean(opts.only), event: kind, by: me.pane || "" }, now) }
+          const r = { item: it, cards: setStatus(s, it, text, { only: Boolean(opts.only), event: kind, by: me.pane || "" }, now) }
+          built = builtStatus(s, it)
+          return r
         })
         const others = cards.filter((c) => c.id !== item.id).map((c) => c.id)
         out(`${item.id} ${text ? `now: ${text}` : "status line cleared"}${others.length ? ` (also ${idList(others)})` : ""}${kind ? ` · event: ${kind}` : ""}`)
+        // A parent with no job or question of its own shows the line built from its cards instead.
+        if (built) err(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); yours is kept for when that changes`)
         return 0
       }
       case "not-run": {
@@ -8698,7 +8808,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
 /** Nudge the writer when a card won't make sense on its own (see README, "Writing cards"). */
 function hint(err, item) {
   if (!item.desc) err(`board: tip: add --desc "<what it is and why it matters>" (board.mjs edit ${item.id} --desc …)`)
-  if (item.column === "waiting" && !item.ask) err(`board: tip: add the question and its buttons: board.mjs edit ${item.id} --ask "<one plain question>" --option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"`)
+  if (item.column === "waiting" && !item.ask) err(`board: tip: add the question and its buttons: board.mjs edit ${item.id} --desc "<what and why>, then a line: Now: <where it stands>" --ask "<one plain question>" --option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>"`)
 }
 
 // A workspace's token is reported again after this long, even unchanged.

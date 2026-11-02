@@ -633,13 +633,14 @@ nothing.
 `node board.mjs <command>`, from anywhere: one board for every project. A new card goes to the
 current folder's project (its repo; a worktree counts as its repo; outside git, the folder, or
 `home` for `~`), unless `--project` or `--worktree` says another. `node board.mjs help` prints
-this list.
+this list; `node board.mjs <command> --help` (or `help <command>`) prints one command's usage
+and the flags it takes.
 
 | Command | What it does |
 |---|---|
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
-| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call (see Writing cards). `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
@@ -711,6 +712,16 @@ DOING (1)
 - **The coordinator hears of it**: its turn reminder lists its cards with a line out of date,
   and its Stop hook blocks once per card and event while a card its pane owns has one (after
   the Waiting-card check). Cards with no line, and Done cards, are never out of date.
+- **A parent with no job or question of its own builds its line** (0.16.0) from the open cards
+  under it, instead of showing the line written on it (or copied up from a card under it):
+  `Now: #437 working · #438 waiting on you · #439 to do · 2 done`. Each card's word is its
+  section (`to do`, `queued`, `doing`, `waiting on you`), or its job's agent status when live
+  (`working`, `idle`; a blocked job is `waiting on you`). Too many cards for one line: the first
+  ones, then `+N more`. Such a line is never out of date, so the turn reminder and the Stop hook
+  don't ask about it. `now` on such a parent keeps what it writes (and says so), for when the
+  parent gets a job or a question; a parent that never had a line keeps its `Waiting on: …`
+  list alone. Once every card under it is done it shows its stored line again (and is ready
+  to resume).
 - `json` shows `now` ({ text, at, by }) and `event` ({ kind, at, card }) on a card.
 
 ## For agents: running jobs with the board
@@ -828,7 +839,13 @@ that catch that:
   of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
   changed during that turn, the hook sends it back
   once: "add or update a Waiting card first". It never does so twice in a row, nor more than
-  once in a turn.
+  once in a turn. "Asks" (0.16.0): the reply's last paragraph ends with `?`, or a sentence in
+  its last two opens like `Want me to …`, `Should I …`, `OK to …`, or says it waits on your
+  word (`waiting for your yes / OK / pick / answer`, `your yes is still pending`); trailing
+  `Sources:` (with their link lists) and `Memory read:` paragraphs are skipped first. A question
+  sent on Telegram this turn counts too: the hook reads the end of the session's transcript
+  (`transcript_path`, the last 4 MB) for calls to the Telegram reply tool
+  (`mcp__plugin_telegram_telegram__reply`) after the last prompt, and checks their `text`.
 - **The Queue** (0.14.0): the turn-start reminder lists the coordinator's queued cards (top
   first, up to 8), the room for jobs in each of their repos (`app: 1 of 2 jobs, 12000 MB free
   (minimum 4096)`) and the cards that didn't start when handed over. At a Stop with nothing
@@ -1092,6 +1109,13 @@ The user reads a card with no other context: not the chat, not the job's instruc
   answers:`; up to four words, then a colon) are kept and shown so in the card details and in
   `ls`. Pass real newlines in `--desc`, or `\n`.
 - **ask** (Waiting): exactly what the user should do.
+- **A new question brings its explanation** (0.16.0): `edit` or `move` that changes `--ask`
+  also sets `--desc` in the same call, with a line that starts `Now:` (where things stand and
+  what the answer decides), e.g. `--desc "The fix is merged.\nNow: the deploy waits for your
+  word."`; otherwise exit 2 and nothing is written (`--allow-wording` doesn't skip it). The
+  same question again, or clearing it, needs nothing. A command the user must run (a line
+  starting `! `, or a code line) goes on the card in that same edit, in `--desc` or `--ask`,
+  never only in the chat: the board can't see the chat, so that part is a rule, not a check.
 
 | | Bad | Good |
 |---|---|---|
