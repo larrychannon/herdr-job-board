@@ -14,7 +14,9 @@
 //                           the cards under it until they are done; under a card whose title's
 //                           action says deploy: "waits for the deploy on #ID", and ID "deploys N")
 //   move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]
-//                           <ref> is an item id or a job slug
+//                           <ref> is an item id or a job slug. A new question (--ask) needs
+//                           --desc with a line that starts "Now:" in the same call, and a command
+//                           the user must run goes on the card too (see edit)
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //        [--parent ID | --no-parent]                           set or remove the card it is made for
 //                           add, edit, move to waiting and job-start check the card's words (see

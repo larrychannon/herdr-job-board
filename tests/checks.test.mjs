@@ -65,6 +65,11 @@ test("<command> --help prints that command's usage and flags, for every command;
     assert.match(edit, /never only in the chat/, "and the command-on-the-card rule")
     assert.doesNotMatch(edit, /^ {2}add </m, "no other command's lines")
     assert.equal(t.run(T, "help", "edit").stdout, edit)
+    const move = t.run(T, "move", "--help").stdout
+    assert.match(move, /^ {2}move <ref> <column>/m)
+    assert.match(move, /line that starts "Now:"/, "the question rule is in move's help too")
+    assert.match(move, /a command\s+the user must run goes on the card/)
+    assert.doesNotMatch(move, /^ {2}edit </m)
     assert.equal(commandHelp("edit"), edit.trimEnd())
     // A command with several entries gets them all, and only its own: inbox, not inbox's neighbours.
     const inbox = t.run(T, "inbox", "--help").stdout
