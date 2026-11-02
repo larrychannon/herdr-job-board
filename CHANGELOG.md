@@ -24,7 +24,8 @@ One Now line per card; wrapped description lines hang under their text.
   `--desc` settles which is true, and `lint` names it.
 - **Hanging indent**: numbered steps (`1. `, `1) `, up to two digits, so `2026.` is no step),
   `-> ` / `→ ` lines, and the text after a leading `Label:` hang under their text when they
-  wrap (by two cells when the label is wider than a third of the line).
+  wrap (by two cells when the label is wider than a third of the line). So does a card's
+  status line, under the text after `Now:`.
 - **lint warns** (exit code unchanged) on a description that still has a `Now:` line next to
   a status line, and on a plain line over three lines of 60 columns: split it into a `Label:`
   line and `- ` items. `add` and `edit` don't print these.

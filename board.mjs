@@ -3028,12 +3028,21 @@ export function nowText(entry) {
   return entry.stale ? { label: `Now (out of date: ${staleWhy(entry)}):`, text, s: "unreviewed" } : { label: "Now:", text, s: "" }
 }
 
+// Its wrapped lines hang under the text after "Now:" (0.17.0), as a description's labels do: by
+// two cells when the label takes more than a third of the width ("Now (out of date: …):").
 function nowLines(entry, inner, indent, max) {
   const n = nowText(entry)
-  if (!n) return []
-  return wrap(`${n.label} ${n.text}`, inner, max).map((t, i) =>
-    i || !t.startsWith(n.label) ? [indent, { t, s: n.s }] : [indent, { t: n.label, s: n.s || "dim" }, { t: t.slice(n.label.length), s: n.s }],
-  )
+  if (!n || max <= 0) return []
+  const hang = textWidth(n.label) + 1 > inner / 3 ? 2 : textWidth(n.label) + 1
+  const rest = Math.max(2, inner - hang)
+  const all = wrapHang(`${n.label} ${n.text}`, inner, rest)
+  const lines = all.slice(0, max)
+  if (all.length > max) lines[max - 1] = ellipsize(`${lines[max - 1]} ${all[max]}`, max > 1 ? rest : inner)
+  return lines.map((t, i) => {
+    if (i) return [indent, { t: " ".repeat(hang) }, { t, s: n.s }]
+    if (!t.startsWith(n.label)) return [indent, { t, s: n.s }]
+    return [indent, { t: n.label, s: n.s || "dim" }, { t: t.slice(n.label.length), s: n.s }]
+  })
 }
 
 // --- a card's links (0.7.0; in words since 0.7.1; with state tags since 0.7.5): "for #253 Node

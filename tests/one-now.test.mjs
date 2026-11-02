@@ -282,3 +282,19 @@ test("descLines: numbered steps, '-> ' lines and the text after a 'Label:' hang 
   const year = plain(descLines("2026. was a long year for the account team and its pools.", 30))
   assert.match(year[1], /^\S/, year.join("\n"))
 })
+
+test("the status line hangs under its text when it wraps, on the card and in ls", () => {
+  const t = setup()
+  try {
+    // A Waiting card: ls draws it open.
+    t.ok(T, "add", "waiting", "Pool top-ups: agree the flow", "--desc", "Top-ups by hand.\nNow: the flow is drafted; your answer decides whether it becomes the account team's runbook.", "--ask", "Is this top-up flow right?", "--option", "Keep the flow", "--option", "Change the flow", "--suggest", "Keep the flow")
+    const out = t.ok(T, "ls", "--width", "72").stdout.split("\n")
+    const at = out.findIndex((l) => /^ +Now: the flow is drafted/.test(l))
+    assert.ok(at > 0, out.join("\n"))
+    const col = out[at].indexOf("Now:")
+    // The next line starts under the text after "Now: ", not under "Now:".
+    assert.equal(out[at + 1].search(/\S/), col + "Now: ".length, out.join("\n"))
+  } finally {
+    t.done()
+  }
+})

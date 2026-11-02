@@ -1117,7 +1117,7 @@ The user reads a card with no other context: not the chat, not the job's instruc
   `ls`. Pass real newlines in `--desc`, or `\n`. When a line wraps (0.17.0), its next lines
   hang under its text: a `- ` item's, a numbered step's (`1. `, `1) `), a `-> ` line's, and
   the text after a leading label (by two cells when the label is wider than a third of the
-  line). Write sections as `Label:` lines with `- ` items under them, no headings of your own
+  line); the status line hangs under the text after its `Now:` too. Write sections as `Label:` lines with `- ` items under them, no headings of your own
   inside a section, and each button's meaning in an `Each answer:` list; where things stand
   goes in the status line, not the description. `lint` warns on a plain line over about three
   lines.
