@@ -328,7 +328,7 @@ test("orphans: an unowned card re-tagged to a project with no coordinator is the
     // Another pane, not the front: only counted.
     assert.doesNotMatch(JSON.parse(handle(prompt, { ...env, HERDR_PANE_ID: "w4:p7" }).stdout).hookSpecificOutput.additionalContext, /#2/)
     // The coordinator works on it and asks the user: the edit claims it, and Stop doesn't block.
-    h.ok(sfc, ["edit", "2", "--ask", "tokens or Touch-ID?", "--project", "ai-config"], h.at("w4:p6"))
+    h.ok(sfc, ["edit", "2", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "tokens or Touch-ID?", "--project", "ai-config"], h.at("w4:p6"))
     assert.equal(h.card(2).origin, "w4:p6")
     const stop = { hook_event_name: "Stop", session_id: "s1", cwd: sfc, stop_hook_active: false, last_assistant_message: "Tokens or Touch-ID?" }
     assert.equal(handle(stop, env).stdout, "")
@@ -348,7 +348,7 @@ test("Stop counts a card this pane changed this turn, even one it doesn't own; i
     h.ok(ai, ["add", "waiting", "ai question"], h.at("wA:p1"))
     const env = { HERDR_ENV: "1", HERDR_PANE_ID: "w4:p6", HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: h.fake, HOME: h.base }
     handle({ hook_event_name: "UserPromptSubmit", session_id: "s2", cwd: sfc, prompt: "hi" }, env)
-    h.ok(sfc, ["edit", "1", "--ask", "now?", "--project", "ai-config", "--allow-wording"], h.at("w4:p6"))
+    h.ok(sfc, ["edit", "1", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "now?", "--project", "ai-config", "--allow-wording"], h.at("w4:p6"))
     assert.equal(h.card(1).by, "w4:p6")
     assert.equal(h.card(1).origin, "wA:p1", "owned by its live coordinator: not claimed")
     assert.equal(handle({ hook_event_name: "Stop", session_id: "s2", cwd: sfc, stop_hook_active: false, last_assistant_message: "Now?" }, env).stdout, "")

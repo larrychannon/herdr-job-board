@@ -45,7 +45,8 @@ function setup() {
 
 /** 1 Login fix ← 2 review, 3 docs; 4 apart. */
 function family(t) {
-  t.ok("2026-10-30T10:00:00Z", "add", "doing", "Login fix: build", "--desc", "Fix the login page.")
+  // The parent has a job of its own: its line is written (a parent without one builds it, below).
+  t.ok("2026-10-30T10:00:00Z", "add", "doing", "Login fix: build", "--job", "login-fix", "--desc", "Fix the login page.")
   t.ok("2026-10-30T10:00:00Z", "add", "doing", "Login fix review: check", "--parent", "1", "--job", "rev", "--desc", "A fresh review.")
   t.ok("2026-10-30T10:00:00Z", "add", "todo", "Login fix docs: write", "--parent", "1", "--desc", "The help page.")
   t.ok("2026-10-30T10:00:00Z", "add", "todo", "Export to CSV", "--desc", "Another thing.")

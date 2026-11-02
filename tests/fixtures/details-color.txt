@@ -7,7 +7,7 @@
   [2mNow:[0m the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer.                                                      [2mQuestion:[0m Pick one
+  answer. Now: the boards are up; your OK starts the buil…     [2mQuestion:[0m Pick one
   [2mQuestion:[0m Open the canvas, then OK all suggestions or        [1;30;47m[ Fix in #31 ✓ ][0m  [30;47m[ Fix + hide coupons now ][0m
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
@@ -26,6 +26,7 @@
 
   [1mWhat it is[0m
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.
+  [1mNow:[0m the boards are up; your OK starts the build.
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Open the canvas, then OK all suggestions or comment
@@ -36,8 +37,7 @@
 
   [1mWhat the job reported[0m
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
-  has 12 boards, before and after, e.g. Cart, Address and the payment step.
-[2m──[0m[1m ↓ 11 more lines [0m[2m─────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[2m──[0m[1m ↓ 12 more lines [0m[2m─────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 
 ===== card 2 · 120 columns =====
 [1mJob board · all projects[0m                                                                                           [2m10:30[0m
@@ -48,7 +48,7 @@
   [2mNow:[0m the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer.                                                      [2mQuestion:[0m Pick one
+  answer. Now: the boards are up; your OK starts the buil…     [2mQuestion:[0m Pick one
   [2mQuestion:[0m Open the canvas, then OK all suggestions or        [1;30;47m[ Fix in #31 ✓ ][0m  [30;47m[ Fix + hide coupons now ][0m
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
@@ -89,7 +89,7 @@
   [2mNow:[0m the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer.                                                      [2mQuestion:[0m Pick one
+  answer. Now: the boards are up; your OK starts the buil…     [2mQuestion:[0m Pick one
   [2mQuestion:[0m Open the canvas, then OK all suggestions or        [1;30;47m[ Fix in #31 ✓ ][0m  [30;47m[ Fix + hide coupons now ][0m
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
@@ -130,7 +130,7 @@
   [2mNow:[0m the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer.                                                      [2mQuestion:[0m Pick one
+  answer. Now: the boards are up; your OK starts the buil…     [2mQuestion:[0m Pick one
   [2mQuestion:[0m Open the canvas, then OK all suggestions or        [1;30;47m[ Fix in #31 ✓ ][0m  [30;47m[ Fix + hide coupons now ][0m
     comment                                                    [30;47m[ Not now ][0m  [30;47m[ Other… ][0m                       [2m7 h 47 min[0m
   [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
@@ -170,7 +170,7 @@
 [1m▸[0m[1;7m 1[0m [1;33m![0m [1mCheckout redesign mockup: approve[0m                                       [2m7 h 30 min[0m
       [2mNow:[0m the job finished and needs your answer
       12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-      each with a suggested answer.
+      each with a suggested answer. Now: the boards are up; your OK starts the build.
       [2mQuestion:[0m Open the canvas, then OK all suggestions or comment
       [1;30;47m[ OK all suggestions ✓ ][0m  [30;47m[ I'll comment ][0m  [30;47m[ Other… ][0m
 [1m [0m[2m 2[0m [1;33m![0m [1mCoupons AND gift cards discount an order twice: fix?[0m                    [2m7 h 47 min[0m
@@ -191,6 +191,7 @@
   [1mWhat it is[0m
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
   each with a suggested answer.
+  [1mNow:[0m the boards are up; your OK starts the build.
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Open the canvas, then OK all suggestions or comment
@@ -200,8 +201,7 @@
   Job checkout-mockup [36mfinished[0m[2m · its tab: checkout-mockup (press t)[0m
 
   [1mWhat the job reported[0m
-  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
-[2m──[0m[1m ↓ 14 more lines [0m[2m─────────────────────────────────────────────────────────────────────[0m
+[2m──[0m[1m ↓ 15 more lines [0m[2m─────────────────────────────────────────────────────────────────────[0m
 
 ===== card 2 · 88 columns =====
 [1mJob board · all projects[0m[2m · [0m[1;33m2 need you[0m                                              [2m10:30[0m

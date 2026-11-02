@@ -296,7 +296,7 @@ test("hooks: the reminder lists the Queue and the room; Stop hands over the top 
     let reason = reasonOf(out)
     assert.match(reason, /^Job board Queue: 2 cards; room for 1 job \(.*\)\. Take the next card now: #1 "Search: build the filters" \(/)
     assert.match(reason, /job-open\.mjs <repo> <slug> --brief … --report … --id 1: the card goes to Doing/)
-    assert.match(reason, /move 1 waiting --ask "<one plain question>" --option/)
+    assert.match(reason, /move 1 waiting --desc "<what and why>, then a line: Now: <where it stands>" --ask "<one plain question>" --option/)
     assert.match(reason, /never merge, deploy, release, write live data or change settings, IAM or permissions/)
     assert.deepEqual(Object.keys(readOffers(r.file)), ["1"])
     // The coordinator didn't start it (still queued); the next stop, right after: the next card.

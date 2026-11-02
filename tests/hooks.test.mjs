@@ -166,8 +166,8 @@ test("Stop: adding, changing or moving a Waiting card this turn satisfies it; cl
     const ask = "Start the date range picker build?"
     const cases = [
       ["added", () => r.board("2026-10-13T10:10:00Z", "add", "waiting", "Date range picker: start?", "--ask", "Say go", "--allow-wording")],
-      ["edited", () => r.board("2026-10-13T10:11:00Z", "edit", "1", "--ask", "Answer the new question")],
-      ["moved to Waiting", () => r.board("2026-10-13T10:12:00Z", "move", "2", "waiting", "--ask", "Say go", "--allow-wording")],
+      ["edited", () => r.board("2026-10-13T10:11:00Z", "edit", "1", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Answer the new question")],
+      ["moved to Waiting", () => r.board("2026-10-13T10:12:00Z", "move", "2", "waiting", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Say go", "--allow-wording")],
     ]
     for (const [what, act] of cases) {
       handle(prompt(r.base), HERDR)
@@ -301,7 +301,7 @@ test("job-report is idempotent with a real clock: one card, `updated` unchanged,
     writeFileSync(report, JSON.stringify({ status: "done", needs_user: ["Merge PR #21"] }))
     real("job-report", "review", report, "--if-final")
     pause()
-    real("edit", "2", "--title", "PR #21: merge", "--ask", "Say merge", "--option", "Merge", "--suggest", "Merge", "--allow-wording")
+    real("edit", "2", "--title", "PR #21: merge", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Say merge", "--option", "Merge", "--suggest", "Merge", "--allow-wording")
     const edited = r.items()[1]
     for (let i = 0; i < 2; i++) {
       pause()

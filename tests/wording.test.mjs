@@ -133,17 +133,17 @@ test("edit and move: the card as it is left is checked; a job-report card can't 
     r = s.run("edit", "1", "--option", "Merge and deploy it", "--option", "Wait until Monday")
     assert.match(r.stderr, /no suggested answer/)
     assert.equal(s.hash(), before)
-    s.ok("edit", "1", "--title", "Workbench fix: merge and deploy", "--ask", "Merge the Workbench fix and deploy it to production?", "--option", "Merge and deploy it", "--option", "Wait until Monday", "--suggest", "Merge and deploy it")
+    s.ok("edit", "1", "--title", "Workbench fix: merge and deploy", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Merge the Workbench fix and deploy it to production?", "--option", "Merge and deploy it", "--option", "Wait until Monday", "--suggest", "Merge and deploy it")
     assert.deepEqual(s.card(1).options, [{ label: "Merge and deploy it", suggested: true }, { label: "Wait until Monday" }])
     // Clearing the buttons of a card that asks: refused.
     assert.equal(s.run("edit", "1", "--clear-options").status, 2)
 
     // move … waiting takes its buttons in the same command.
     s.ok("add", "todo", "Cost page: approve")
-    r = s.run("move", "2", "waiting", "--ask", "Ship the new Cost page?")
+    r = s.run("move", "2", "waiting", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Ship the new Cost page?")
     assert.equal(r.status, 2)
     assert.equal(s.card(2).column, "todo")
-    s.ok("move", "2", "waiting", "--ask", "Ship the new Cost page?", "--option", "Ship the Cost page", "--option", "Keep the old page", "--suggest", "Ship the Cost page")
+    s.ok("move", "2", "waiting", "--desc", "Waiting for the answer.\nNow: the work is ready; the answer decides what happens next.", "--ask", "Ship the new Cost page?", "--option", "Ship the Cost page", "--option", "Keep the old page", "--suggest", "Ship the Cost page")
     assert.equal(s.card(2).column, "waiting")
     // Out of Waiting the question goes: nothing to check.
     s.ok("move", "2", "todo")
@@ -173,7 +173,7 @@ test("job-start and --allow-wording: refused titles, an explicit escape the card
     // Lint leaves allowed text alone.
     assert.equal(s.run("lint").status, 0)
     // Fixed: the card forgets the allowance.
-    s.ok("edit", "2", "--title", "Firmware notes: approve", "--ask", "Publish the firmware notes?")
+    s.ok("edit", "2", "--title", "Firmware notes: approve", "--desc", "The release notes for the next firmware.\nNow: the draft is ready to read.", "--ask", "Publish the firmware notes?")
     assert.equal(s.card(2).wording_ok, undefined)
   } finally {
     s.done()
@@ -467,7 +467,7 @@ test("not-run: a press its coordinator couldn't carry out shows on its card: the
     assert.match(plain(detailLines(s.card(1), 100).lines).join("\n"), /couldn't run: the "Deploy the fixes" press/)
     // An edit of something else is fine; a new question ends it.
     s.ok("edit", "1", "--desc", "The fixes are merged.")
-    s.ok("edit", "1", "--ask", "Deploy them now?", "--option", "Deploy the fixes", "--option", "Wait until Monday", "--suggest", "Deploy the fixes")
+    s.ok("edit", "1", "--desc", "The fixes are merged.\nNow: merged; the deploy waits for your word.", "--ask", "Deploy them now?", "--option", "Deploy the fixes", "--option", "Wait until Monday", "--suggest", "Deploy the fixes")
     assert.equal(s.card(1).not_run, undefined)
 
     // A command, from a card in Doing (the press moved it there): back in Waiting, with --label.
