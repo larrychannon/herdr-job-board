@@ -4,10 +4,10 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next lin
 
 ▸ WAITING ON YOU (2)
 1▸Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  Now: the boards are up; your OK starts the build.            Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer. Now: the boards are up; your OK starts the buil…     Question: Pick one
+  answer.                                                      Question: Pick one
   Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
@@ -22,11 +22,10 @@ DOING (1)                                                    TO DO (3) ▾
 ── card 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
-  Now: the job finished and needs your answer
+  Now: the boards are up; your OK starts the build.
 
   What it is
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices, each with a suggested answer.
-  Now: the boards are up; your OK starts the build.
 
   What you need to do
   Question: Open the canvas, then OK all suggestions or comment
@@ -37,7 +36,8 @@ Checkout redesign mockup: approve
 
   What the job reported
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
-── ↓ 12 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+  has 12 boards, before and after, e.g. Cart, Address and the payment step.
+── ↓ 11 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 120 columns =====
 Job board · all projects                                                                                           10:30
@@ -45,10 +45,10 @@ Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 
 ▸ WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2▸Coupons AND gift cards discount an order twice: fix?
-  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  Now: the boards are up; your OK starts the build.            Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer. Now: the boards are up; your OK starts the buil…     Question: Pick one
+  answer.                                                      Question: Pick one
   Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
@@ -66,7 +66,7 @@ Coupons AND gift cards discount an order twice: fix?
 
   What it is
   Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid 0.00 incl. shipping); refunds then
-  go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.
+            go negative. Both stay wrong until fixed. Don't sell gift cards with coupons until fixed.
 
   What you need to do
   Question: Pick one
@@ -86,10 +86,10 @@ Esc close · ↑↓ scroll · c copy · t go to tab · q quit
 
 WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  Now: the boards are up; your OK starts the build.            Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer. Now: the boards are up; your OK starts the buil…     Question: Pick one
+  answer.                                                      Question: Pick one
   Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
@@ -127,10 +127,10 @@ Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab
 
 WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
-  Now: the job finished and needs your answer                  Live bug: a coupon plus a gift card takes the discount
+  Now: the boards are up; your OK starts the build.            Live bug: a coupon plus a gift card takes the discount
   12 before/after boards on the design canvas (page            twice (e.g. order 1042 paid 0.00 incl. shipping);
   'Checkout v2'). 6 small choices, each with a suggested       refunds then go negative. Both stay wrong until fixed. …
-  answer. Now: the boards are up; your OK starts the buil…     Question: Pick one
+  answer.                                                      Question: Pick one
   Question: Open the canvas, then OK all suggestions or        [ Fix in #31 ✓ ]  [ Fix + hide coupons now ]
     comment                                                    [ Not now ]  [ Other… ]                       7 h 47 min
   [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
@@ -168,9 +168,9 @@ Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab �
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸ 1 ! Checkout redesign mockup: approve                                       7 h 30 min
-      Now: the job finished and needs your answer
+      Now: the boards are up; your OK starts the build.
       12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
-      each with a suggested answer. Now: the boards are up; your OK starts the build.
+      each with a suggested answer.
       Question: Open the canvas, then OK all suggestions or comment
       [ OK all suggestions ✓ ]  [ I'll comment ]  [ Other… ]
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
@@ -186,12 +186,11 @@ TO DO (3) ▾ ──────────────────────
 ── card 1 ──────────────────────────────────────────────────────────────────────────────
 Checkout redesign mockup: approve
   Waiting on you for 7 h 30 min
-  Now: the job finished and needs your answer
+  Now: the boards are up; your OK starts the build.
 
   What it is
   12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
   each with a suggested answer.
-  Now: the boards are up; your OK starts the build.
 
   What you need to do
   Question: Open the canvas, then OK all suggestions or comment
@@ -201,7 +200,8 @@ Checkout redesign mockup: approve
   Job checkout-mockup finished · its tab: checkout-mockup (press t)
 
   What the job reported
-── ↓ 15 more lines ─────────────────────────────────────────────────────────────────────
+  Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
+── ↓ 14 more lines ─────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
@@ -230,8 +230,8 @@ Coupons AND gift cards discount an order twice: fix?
 
   What it is
   Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
-  0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
-  sell gift cards with coupons until fixed.
+            0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed.
+            Don't sell gift cards with coupons until fixed.
 
   What you need to do
   Question: Pick one

@@ -520,7 +520,7 @@ export function blockReason(cli = BOARD_CLI, { telegram = false } = {}) {
     `You asked the user something${telegram ? " (on Telegram)" : ""}, but no Waiting card was added or updated on the job board this turn. ` +
     `Add one first: node ${quote(cli)} add waiting "<thing>: <action>" --desc "<what and why>" --ask "<one plain question>" ` +
     '--option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>" (2 to 4 buttons), or update the card that already ' +
-    "asks it with edit <id> (a new --ask needs --desc with a line that starts \"Now:\", in the same edit). If you aren't actually waiting on the user, say so in one line and stop."
+    "asks it with edit <id> (a new --ask needs --desc with a line that starts \"Now:\", in the same edit, unless the card's status line is current; that line becomes its status line). If you aren't actually waiting on the user, say so in one line and stop."
   )
 }
 

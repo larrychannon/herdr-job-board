@@ -117,13 +117,16 @@ test("edit and move that change the question need a 'Now:' line in --desc, in th
     assert.equal(t.run(T, "edit", "1", "--ask", "Fix it before the release?", "--allow-wording").status, 2)
     assert.equal(t.hash(), before)
 
-    // With the line: written. Markdown around "Now:" is fine.
+    // With the line: written. Markdown around "Now:" is fine. The line is the card's status
+    // line, out of the description (0.17.0).
     t.ok(T, "edit", "1", "--ask", "Fix it before the release?", "--desc", "It loops after sign-in.\n**Now:** the fix is ready; yes ships it with the release.")
     assert.equal(t.item(1).ask, "Fix it before the release?")
-    assert.match(t.item(1).desc, /Now:\*\* the fix is ready/)
+    assert.equal(t.item(1).desc, "It loops after sign-in.")
+    assert.equal(t.item(1).now.text, "the fix is ready; yes ships it with the release.")
     // A literal \n (a shell's one-line --desc) is a line break there too.
     t.ok(T, "edit", "1", "--ask", "Ship the fix today?", "--desc", "It loops after sign-in.\\nNow: the fix is ready.")
-    assert.equal(t.item(1).desc, "It loops after sign-in.\nNow: the fix is ready.")
+    assert.equal(t.item(1).desc, "It loops after sign-in.")
+    assert.equal(t.item(1).now.text, "the fix is ready.")
     t.ok(T, "edit", "1", "--ask", "Fix it before the release?", "--desc", "It loops after sign-in.\nNow: the fix is ready; yes ships it with the release.")
     // The same question again, or clearing it, asks nothing new.
     t.ok(T, "edit", "1", "--ask", "Fix it before the release?")

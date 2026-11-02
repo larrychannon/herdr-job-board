@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.17.0 · unreleased
+
+One Now line per card; wrapped description lines hang under their text.
+
+- **Why**: since 0.16.0 a new question needs a `Now:` line in `--desc`, while the status line
+  from `now` is also drawn as `Now:` at the top of the card. So every Waiting card carried two
+  Now lines, and on one card they disagreed (the status line said the job was closed; the
+  description had the real next steps). And only `- `, `• ` and `* ` items had a hanging
+  indent: numbered steps, `-> ` lines and long `Label: …` lines wrapped back to the left edge,
+  so a card's steps read as one wall of text.
+- **One Now**: a line that starts `Now:` in `--desc` (`add`, `edit`, `move`, `job-start`) is
+  the card's status line: stored as its `now` (this card only, not the cards above or under
+  it), out of the description. A later one replaces it; a `--desc` without one keeps the line
+  there is. Its words are checked as the description's were (a PR number is refused); one over
+  200 characters is cut, with a warning.
+- **The question rule takes either form**: a new `--ask` is explained by a `Now:` line in the
+  same call's `--desc`, or by a status line that is current (written with `now`, no event
+  since). A stale line, or none, is refused as before; the error names both ways.
+- **Cards from before**: one with its `Now:` line still in its description and no status line
+  shows that line as its status line, and its next edit (of anything) stores it so, dated at
+  the card's last update. Reading never writes it. A card with both keeps both until a
+  `--desc` settles which is true, and `lint` names it.
+- **Hanging indent**: numbered steps (`1. `, `1) `, up to two digits, so `2026.` is no step),
+  `-> ` / `→ ` lines, and the text after a leading `Label:` hang under their text when they
+  wrap (by two cells when the label is wider than a third of the line).
+- **lint warns** (exit code unchanged) on a description that still has a `Now:` line next to
+  a status line, and on a plain line over three lines of 60 columns: split it into a `Label:`
+  line and `- ` items. `add` and `edit` don't print these.
+- The help, the agent guide, the Stop hook's reason and the README say all this.
+
 ## 0.16.0 · unreleased
 
 A new question says where things stand; parent cards build their own status line; the

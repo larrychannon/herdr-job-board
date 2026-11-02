@@ -15,16 +15,20 @@
 //                           action says deploy: "waits for the deploy on #ID", and ID "deploys N")
 //   move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]
 //                           <ref> is an item id or a job slug. A new question (--ask) needs
-//                           --desc with a line that starts "Now:" in the same call, and a command
-//                           the user must run goes on the card too (see edit)
+//                           --desc with a line that starts "Now:" in the same call (or a current
+//                           status line), and a command the user must run goes on the card too
+//                           (see edit)
 //   edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options]
 //        [--parent ID | --no-parent]                           set or remove the card it is made for
 //                           add, edit, move to waiting and job-start check the card's words (see
 //                           "Wording" below) and write nothing when they fail; --allow-wording
 //                           writes it anyway. edit and move that change the question (--ask) also
 //                           set --desc in the same call, with a line that starts "Now:" (where it
-//                           stands, what the answer decides); else nothing is written. A command
-//                           the user must run ("! …", a code line) goes on the card in that same
+//                           stands, what the answer decides), unless the card's status line is
+//                           current (written with now, nothing since); else nothing is written. A
+//                           "Now:" line in --desc (add, edit, move, job-start) is the card's
+//                           status line, not its description: one Now per card. A command the
+//                           user must run ("! …", a code line) goes on the card in that same
 //                           edit, never only in the chat
 //   not-run <ref> --type "<words>" | --run "<command>" [--label L]
 //                           a press its coordinator couldn't carry out (the user's own typed words
@@ -36,7 +40,9 @@
 //                           ends it. --label must be a button of the card or a press on record;
 //                           another press in flight keeps its record. Not for workers
 //   lint [--project P]      every open card whose words fail the check, with each fix (read-only;
-//                           exit 1 when one must be fixed)
+//                           exit 1 when one must be fixed); it also warns on a description that
+//                           still has a Now line next to a status line, and on a plain line over
+//                           about three lines
 //   done <ref>                                                 same as move <ref> done; when it was
 //                           the last open card under its parent, the parent is ready to resume
 //                           and goes on top of its section
@@ -121,7 +127,9 @@
 //                           its own written before it out of date; a sub-card added or removed
 //                           does that to the lines above it. The card says "status out of
 //                           date", the coordinator's turn reminder lists it, and its Stop hook
-//                           blocks once while one of its own cards has one (0.13.0)
+//                           blocks once while one of its own cards has one (0.13.0). A "Now:"
+//                           line in --desc (add, edit, move, job-start) writes this card's line
+//                           too (this card only), and leaves the description (0.17.0)
 //   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
 //                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
 //                           of the repos under $HOME) into the one board. Ids are kept when free,
@@ -1342,8 +1350,12 @@ const allowedOf = (item) => new Set(Array.isArray(item.wording_ok) ? item.wordin
  * command set the card's title (a title that is a job's short name is refused only then).
  */
 function checkWording(item, opts, warn, { title = true } = {}) {
+  // A "Now:" line in this command's --desc went to the status line (0.17.0): its words are
+  // checked as they were in the description (a version string only warns).
+  const given = opts.desc === undefined ? "" : splitNow(opts.desc).now
+  if (clean(given).length > STATUS_MAX) warn(`board: card ${item.id}: its Now line is longer than ${STATUS_MAX} characters: the status line keeps the first ${STATUS_MAX} (put the rest in the description)`)
   // A title this command didn't set isn't refused for being a job's short name: it warns.
-  const found = cardWording(item)
+  const found = [...cardWording(item), ...numberedIn(given).map((n) => ({ field: "status line", text: n.text, why: n.what, fix: NAME_IT, level: n.what === "a version string" ? "warn" : "refuse" }))]
   const allowed = allowedOf(item)
   // What was allowed stays allowed while it is there, a short-name title too.
   const kept = found.filter((p) => p.level !== "warn").map(wordingLine).filter((l) => allowed.has(l))
@@ -1444,7 +1456,7 @@ function lateNote(slug, card, archived, status, report, path, reopened = false) 
   return `${head} No card carries the job, so the report is on no card (a report never makes one). Read it (${path}) and put what it says on the card it belongs to.`
 }
 
-/** The open cards whose words fail (lint): [{ item, problems }], warnings included; allowed text is left alone. */
+/** The open cards whose words fail (lint): [{ item, problems }], warnings included (descWarnings too); allowed text is left alone. */
 export function wordingFailures(items) {
   const out = []
   for (const item of items) {
@@ -1454,6 +1466,7 @@ export function wordingFailures(items) {
     const problems = cardWording(item)
       .filter((p) => !(p.level !== "warn" && allowed.has(wordingLine(p))))
       .map((p) => (p.level === "slug" ? { ...p, level: "warn" } : p))
+    problems.push(...descWarnings(item))
     if (problems.length) out.push({ item, problems })
   }
   return out
@@ -1479,6 +1492,9 @@ function addItem(state, column, title, opts, now, who = {}) {
     order: column === "queue" ? bottomOf(state, column) : topOf(state, column),
   }
   if (opts.report) item.report = resolve(opts.report)
+  // A "Now:" line is the card's status line, not part of its description (0.17.0).
+  const { desc, now: line } = splitNow(item.desc)
+  if (line) [item.desc, item.now] = [desc, { text: clean(line).slice(0, STATUS_MAX), at }]
   setOptions(item, opts)
   if (opts.parent !== undefined) setParent(state, item, opts.parent)
   state.items.push(item)
@@ -1525,12 +1541,34 @@ function moveItem(state, item, column, now, woke = []) {
 }
 
 // A new question brings its own explanation (0.16.0): edit and move that change a card's --ask
-// also set --desc, in the same call, with a line that starts "Now:" saying where things stand and
-// what the answer decides. The user reads the card, not the chat.
+// also say where things stand and what the answer decides, in the same call: a line in --desc
+// that starts "Now:", or (0.17.0) a status line that is current. The user reads the card, not
+// the chat.
 const NOW_LINE = /^[\s>*_-]*now\s*:\s*\S/im
+// One line of a description that is its Now line (markdown around the label allowed): the text after it.
+const NOW_AT = /^[\s>*_-]*now\s*:\s*(?:\*\*|__)?\s*(\S.*)$/i
 export const COMMAND_ON_CARD = 'A command the user must run (a line starting "! ", or a code line) goes on the card too, in --desc or --ask, in this same edit: never only in the chat.'
 
-/** Why this edit or move can't change the card's question: "" when it may (no new ask, or a "Now:" line with it). */
+/**
+ * A description and its Now line apart (0.17.0): { desc, now }, `desc` as stored (cleanDesc)
+ * without the lines that start "Now:" (a "Now:" mid-line stays), `now` the text of the last of
+ * them ("" when none). A card has one Now: its status line, at the top of the card.
+ */
+export function splitNow(desc) {
+  let now = ""
+  const kept = []
+  for (const line of cleanDesc(desc).split("\n")) {
+    const text = NOW_AT.exec(line)?.[1].replace(/\s*(?:\*\*|__)\s*$/, "").trim()
+    if (text) now = text
+    else kept.push(line)
+  }
+  return { desc: cleanDesc(kept.join("\n")), now }
+}
+
+/** Whether a card's status line still says where it stands: written, not out of date, not done. */
+const nowCurrent = (item) => item.column !== "done" && Boolean(clean(item.now?.text)) && !statusStale(item)
+
+/** Why this edit or move can't change the card's question: "" when it may (no new ask, a "Now:" line with it, or a current status line). */
 export function askWithoutNow(item, opts) {
   if (opts.ask === undefined) return ""
   const ask = cleanLines(opts.ask)
@@ -1538,12 +1576,24 @@ export function askWithoutNow(item, opts) {
   if (!ask || ask === cleanLines(item.ask ?? "")) return ""
   // As the description is stored: a literal "\n" (a shell's one-line --desc) is a line break too.
   if (opts.desc !== undefined && NOW_LINE.test(cleanDesc(opts.desc))) return ""
+  // The card's status line says it already (board.mjs now), and nothing happened since.
+  if (nowCurrent(item)) return ""
   return [
     `card ${item.id}: a new question needs its explanation in the same call, so nothing was written.`,
     `  Add --desc with the card's description and a line that starts "Now:": where things stand and what the answer decides`,
-    `  (--desc "<what it is and why>` + "\n" + `  Now: <where it stands; what each answer does>").`,
+    `  (--desc "<what it is and why>` + "\n" + `  Now: <where it stands; what each answer does>"); that line becomes the card's status line.`,
+    `  Or write the status line first: board.mjs now ${item.id} "<where it stands; what each answer does>"${clean(item.now?.text) && item.column !== "done" ? " (the card's line is out of date)" : ""}.`,
     `  ${COMMAND_ON_CARD}`,
   ].join("\n")
+}
+
+/**
+ * Put a description's Now line on the card as its status line (0.17.0): this card's only, not
+ * its lineage's (the line explains its own question). `at`: when it was written.
+ */
+function takeNow(state, item, text, at) {
+  if (!text) return
+  setStatus(state, item, text, { only: true }, at)
 }
 
 /** Change a card's fields (and its parent: --parent, --no-parent); an edit clears "ready to resume". */
@@ -1554,10 +1604,24 @@ function editItem(state, item, opts, now) {
     if (!clean(opts.title)) throw usage("an item needs a title")
     item.title = clean(opts.title)
   }
-  if (opts.desc !== undefined) item.desc = cleanDesc(opts.desc)
+  // A "Now:" line in --desc is the card's status line, not part of its description (0.17.0). A
+  // card from before with one still in its description and no status line gets it moved now, at
+  // the time of its last update; one that has both keeps both until a --desc settles it (lint).
+  if (opts.desc !== undefined) {
+    const { desc, now: line } = splitNow(opts.desc)
+    item.desc = desc
+    takeNow(state, item, line, now)
+  } else if (!clean(item.now?.text)) {
+    const { desc, now: line } = splitNow(item.desc)
+    const at = new Date(item.updated)
+    if (line) {
+      item.desc = desc
+      takeNow(state, item, line, Number.isNaN(at.getTime()) ? now : at)
+    }
+  }
   // The user's "start without asking" was for the card as it was: a change of its words ends it,
-  // for good (0.15.0; an edit back doesn't bring it back).
-  if (item.title !== said[0] || item.desc !== said[1]) delete item.start
+  // for good (0.15.0; an edit back doesn't bring it back). Its Now line is no part of its words.
+  if (item.title !== said[0] || item.desc !== splitNow(said[1]).desc) delete item.start
   if (opts.ask !== undefined) {
     item.ask = cleanLines(opts.ask)
     // A new question: the press that couldn't run is over.
@@ -2249,6 +2313,15 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     if (entry.ready) entry.age = now - new Date(entry.ready)
     // Its status line, out of date when a card above or under it changed since it was written (0.13.0).
     entry.stale = statusStale(item)
+    // A card from before 0.17.0 with its Now line still in its description and no status line:
+    // that line is its status line, at the top of the card (its next edit stores it so).
+    if (item.column !== "done" && !clean(item.now?.text)) {
+      const { desc, now: line } = splitNow(item.desc)
+      if (line) {
+        ;[entry.desc, entry.now] = [desc, { text: clean(line).slice(0, STATUS_MAX), at: item.updated }]
+        entry.stale = statusStale(entry)
+      }
+    }
     // A parent with no job or question of its own: its line is built from the cards under it
     // (0.16.0), with their agents' live status, and is never out of date.
     const built = builtStatus(all, item, (c) => (c.job && agents ? jobAgent(agents, c.job, c.workspace || workspace)?.agent_status || "" : ""))
@@ -2789,17 +2862,75 @@ function labelled(text, width, urls, style = "") {
   })
 }
 
+// A line that is a numbered step ("1. ", "12) ") or an arrow ("-> ", "→ ") (0.17.0): its wrapped
+// lines hang under its text, as a list item's do. Two digits at most: "2026." starts no step.
+const DESC_STEP = /^(\d{1,2}[.)]|->|→)\s+/
+
+/** `text` wrapped: its first line `first` cells wide, the lines after it `rest` cells. */
+function wrapHang(text, first, rest) {
+  const [line, ...more] = wrap(text, first, Infinity)
+  if (!more.length) return line ? [line] : []
+  // The first line is the start of the text's words, a space between each.
+  const words = printable(text).split(" ").filter(Boolean).join(" ")
+  return [line, ...wrap(words.slice(line.length).trimStart(), rest, Infinity)]
+}
+
+/**
+ * A plain line of a description as lines of segments: its leading label (DESC_LABEL) in `head`
+ * style, and when it wraps (0.17.0), the lines after the first hang under the text after the
+ * label, or by two cells when the label takes more than a third of the width.
+ */
+function labelLine(text, width, urls) {
+  const label = DESC_LABEL.exec(text)?.[1] || ""
+  if (!label || !text.slice(label.length).trim()) return labelled(text, width, urls)
+  const hang = textWidth(label) + 1 > width / 3 ? 2 : textWidth(label) + 1
+  return wrapHang(text, width, Math.max(2, width - hang)).map((t, i) => {
+    if (i) return [{ t: " ".repeat(hang) }, ...linkify(t, "", urls)]
+    if (!t.startsWith(label)) return linkify(t, "", urls)
+    return [{ t: label, s: "head" }, ...linkify(t.slice(label.length), "", urls)]
+  })
+}
+
 /**
  * A description in full, as lines of segments of at most `width` cells (no indent): paragraph
  * lines wrapped, list items from a dim "• " with a hanging indent, a gap as an empty line,
- * labels in `head` style.
+ * labels in `head` style. Numbered steps, "-> " lines and the text after a label hang under
+ * their text too (0.17.0).
  */
 export function descLines(desc, width, urls = new Set()) {
   const out = []
   for (const part of descParts(desc)) {
     if (part.kind === "gap") out.push([])
     else if (part.kind === "item") labelled(part.text, Math.max(2, width - 2), urls).forEach((segs, i) => out.push([{ t: i ? "  " : "• ", s: "dim" }, ...segs]))
-    else out.push(...labelled(part.text, width, urls))
+    else if (DESC_STEP.test(part.text)) {
+      const mark = `${DESC_STEP.exec(part.text)[1]} `
+      const hang = textWidth(mark)
+      labelled(part.text.replace(DESC_STEP, ""), Math.max(2, width - hang), urls).forEach((segs, i) => out.push([{ t: i ? " ".repeat(hang) : mark }, ...segs]))
+    } else out.push(...labelLine(part.text, width, urls))
+  }
+  return out
+}
+
+// lint (0.17.0): a description line that wraps over more than this many lines of LINT_WIDTH
+// cells (about a board pane's card) reads as a wall: split it into a label and "- " items.
+const LINT_WIDTH = 60
+const LINT_LINES = 3
+
+/**
+ * What lint warns about a card's description beyond its words (0.17.0): a Now line still in it
+ * next to the card's status line (a card from before: two Nows, which may disagree), and a plain
+ * line over about three wrapped lines. Warnings only, never refused: add and edit don't print them.
+ */
+export function descWarnings(item) {
+  const out = []
+  const { now: line } = splitNow(item.desc)
+  if (line && clean(item.now?.text)) {
+    out.push({ field: "description", text: `Now: ${line}`, why: "a second Now next to its status line", fix: `give the description again without it, or with the Now line that is true (it becomes the status line): board.mjs edit ${item.id} --desc "…"`, level: "warn" })
+  }
+  for (const part of descParts(item.desc)) {
+    if (part.kind !== "line" || DESC_STEP.test(part.text) || NOW_AT.test(part.text)) continue
+    if (wrap(part.text, LINT_WIDTH, Infinity).length <= LINT_LINES) continue
+    out.push({ field: "description", text: `${[...part.text].slice(0, 40).join("").trimEnd()}…`, why: `a line over ${LINT_LINES === 3 ? "three" : LINT_LINES} lines long`, fix: 'split it into a "Label:" line and "- " items, one point each', level: "warn" })
   }
   return out
 }
@@ -3821,7 +3952,9 @@ export function copyPayload(entry, n = 0) {
     const i = ((Math.trunc(n) % links.length) + links.length) % links.length
     return { text: links[i].url, what: "link", label: links[i].label, n: i + 1, of: links.length }
   }
-  const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, cleanDesc(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
+  // Its status line too (0.17.0: a card's Now is no longer in its description).
+  const now = nowText(entry)
+  const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, now ? `${now.label} ${now.text}` : "", cleanDesc(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
   // Only the buttons the card shows: a blocked job's card has none to copy.
   const options = shownOptions(entry).map((o) => o.label)
   if (options.length) parts.push(`buttons: ${options.join(" · ")}`)
@@ -6940,9 +7073,14 @@ Writing cards
   needs_user, a blocked or failed report, or a question that fails is copied as text (numbers
   kept off the ask), and you get a "[job note]" for the card: rewrite it in one edit.
 - A new question brings its explanation: edit or move that changes --ask also sets --desc in
-  the same call, with a line that starts "Now:" (where things stand, what the answer decides);
-  otherwise nothing is written. A command the user must run (a line starting "! ", or a code
-  line) goes on the card in that same edit (--desc or --ask), never only in the chat.
+  the same call, with a line that starts "Now:" (where things stand, what the answer decides),
+  or the card's status line is current (now <id> …, nothing since); otherwise nothing is
+  written. That "Now:" line becomes the card's status line (out of the description: one Now
+  per card). A command the user must run (a line starting "! ", or a code line) goes on the
+  card in that same edit (--desc or --ask), never only in the chat.
+- A description reads best as "Label:" lines with "- " items under them (numbered steps and
+  "-> " lines hang under their text too); no headings of your own inside a section, and each
+  button's meaning in an "Each answer:" list. lint warns on a line over about three lines.
 - Before you ask the user something, add or update a Waiting card (the Stop hook checks: your
   reply, and this turn's Telegram replies).
 - Order: each section is in the user's order, new cards and cards that change section on top
@@ -6984,6 +7122,8 @@ Status lines (0.13.0)
   waiting for your deploy OK"), apart from its description. It is written on the cards above
   it and every open card under it too (not its siblings) unless --only; --event
   merge|deploy|… notes that event there first. job-report writes the job's card's line itself.
+  A "Now:" line in --desc (add, edit, move, job-start) writes the card's own line (that card
+  only) and leaves the description: a card shows one Now.
 - An event on a card (a job's report, done, back out of Done, an --event) puts the lines above
   it, under it and its own written before it out of date; a sub-card added or removed, the
   lines above it. The card says "status out of date", your turn reminder lists it, and the
