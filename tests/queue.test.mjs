@@ -710,3 +710,18 @@ test("the pane: t, Tab to To do, Enter, s queues the card marked; the Queue show
     r.done()
   }
 })
+
+test("the Stop hook's hand-over reads a queued card's status line (0.17.0): a Now line that deletes records stays a question, marked or not", () => {
+  const r = repo()
+  try {
+    r.board("2026-10-30T10:00:00Z", "add", "todo", "Old log cleanup: build", "--desc", "Tidy the old job logs.\nNow: the script is ready; it deletes the old records from the users table")
+    assert.match(JSON.parse(readFileSync(r.file, "utf8")).items[0].now.text, /deletes the old records/)
+    markStart(r.file, 1, true, NOW)
+    const reason = reasonOf(handle(stop(r.dir), hookEnv(r), { now: new Date("2026-10-30T10:05:00Z") }))
+    assert.match(reason, /#1 "Old log cleanup: build"/)
+    assert.match(reason, /which the mark never covers: move it to Waiting/)
+    assert.doesNotMatch(reason, /without asking first/)
+  } finally {
+    r.done()
+  }
+})

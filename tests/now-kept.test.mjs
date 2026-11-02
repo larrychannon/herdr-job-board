@@ -165,12 +165,10 @@ test("a Now line over 200 characters is never cut: in --desc it stays in the des
     t.ok(LATER, "move", "2", "doing")
     assert.equal(t.item(2).desc, `Four phases.\n\nNow: ${PARA}`)
     assert.equal(t.item(2).now, undefined)
-    // The now command: a line over 200 is refused, nothing written (it has no description to keep the rest in).
-    const before = t.hash()
-    const n = t.run(LATER, "now", "2", long)
-    assert.equal(n.status, 2, n.stderr)
-    assert.match(n.stderr, /longer than 200 characters/)
-    assert.equal(t.hash(), before)
+    // The now command (scripts build some lines): a line over 200 is cut, and says so.
+    const n = t.ok(LATER, "now", "2", long)
+    assert.match(n.stderr, /the status line is longer than 200 characters \(\d+\): the card keeps the first 200/)
+    assert.equal(t.item(2).now.text, long.slice(0, 200))
   } finally {
     t.done()
   }

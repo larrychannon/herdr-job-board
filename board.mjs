@@ -133,7 +133,7 @@
 //                           blocks once while one of its own cards has one (0.13.0). A "Now:"
 //                           line in --desc (add, edit, move, job-start) writes this card's line
 //                           too (this card only), and leaves the description (0.17.0); a line
-//                           over 200 characters is refused, never cut
+//                           over 200 characters is cut with a warning, never silently
 //   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
 //                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
 //                           of the repos under $HOME) into the one board. Ids are kept when free,
@@ -7177,8 +7177,8 @@ Status lines (0.13.0)
   it and every open card under it too (not its siblings) unless --only; --event
   merge|deploy|… notes that event there first. job-report writes the job's card's line itself.
   A "Now:" line in --desc (add, edit, move, job-start) writes the card's own line (that card
-  only) and leaves the description: a card shows one Now. A line over 200 characters is
-  refused, never cut; one a person gave in --desc that another line replaces stays at the end
+  only) and leaves the description: a card shows one Now. A line over 200 characters is cut
+  to 200 with a warning, never silently; one a person gave in --desc that another line replaces stays at the end
   of the description as "Earlier: …".
 - An event on a card (a job's report, done, back out of Done, an --event) puts the lines above
   it, under it and its own written before it out of date; a sub-card added or removed, the
@@ -8842,8 +8842,6 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (opts.clear ? rest.length !== 1 : rest.length !== 2) throw usage('usage: board.mjs now <id|job> "<where it stands>" [--only] [--event merge|deploy|…] [--project P]  or  board.mjs now <id|job> --clear [--only]')
         const text = opts.clear ? "" : clean(rest[1])
         if (!opts.clear && !text) throw usage("a status line needs words: where the work stands, e.g. \"merged, waiting for your deploy OK\"")
-        // Never cut (0.17.0): a line over STATUS_MAX is refused, nothing written.
-        if (text.length > STATUS_MAX) throw usage(`the status line is longer than ${STATUS_MAX} characters (${text.length}), so nothing was written: say where it stands in fewer words, and put the detail in the description (board.mjs edit <id> --desc "…")`)
         const kind = opts.event === undefined ? "" : clean(opts.event).toLowerCase()
         if (opts.event !== undefined && !EVENT_KIND.test(kind)) throw usage(`--event takes a short word or two in lower case ("merge", "deploy", "job report"), not "${clean(opts.event).slice(0, 40)}"`)
         const problems = statusProblems(text)
@@ -8860,7 +8858,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return r
         })
         const others = cards.filter((c) => c.id !== item.id).map((c) => c.id)
-        out(`${item.id} ${text ? `now: ${text}` : "status line cleared"}${others.length ? ` (also ${idList(others)})` : ""}${kind ? ` · event: ${kind}` : ""}`)
+        // Never cut silently (0.17.0): scripts build some lines (a deploy's targets), so a long
+        // one is written cut, and said so.
+        if (text.length > STATUS_MAX) err(`board: the status line is longer than ${STATUS_MAX} characters (${text.length}): the card keeps the first ${STATUS_MAX}. Say where it stands in fewer words, and put the detail in the description (board.mjs edit ${item.id} --desc "…").`)
+        out(`${item.id} ${text ? `now: ${text.slice(0, STATUS_MAX)}` : "status line cleared"}${others.length ? ` (also ${idList(others)})` : ""}${kind ? ` · event: ${kind}` : ""}`)
         // A parent with no job or question of its own shows the line built from its cards instead.
         if (built) err(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); yours is kept for when that changes`)
         return 0

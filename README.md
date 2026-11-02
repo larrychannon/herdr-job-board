@@ -730,8 +730,8 @@ DOING (1)
   `not-run`, `now`) stays at the end of the description as `Earlier: …`; a `Now:` line over
   200 characters, a second one, or one ending in `:` stays in the description, whole, with a
   warning; a Done card keeps its `Now:` line in its description (where it shows); a parent
-  with a built line shows its `--desc` line in its description. `now` refuses a line over 200
-  characters. A card from before 0.17.0 with its `Now:` line still in its description and no
+  with a built line shows its `--desc` line in its description. `now` cuts a line over 200
+  characters with a warning, never silently. A card from before 0.17.0 with its `Now:` line still in its description and no
   status line shows that line as its status line, and keeps it stored in its description
   until a `--desc` rewrites the card; a card with both keeps both until a `--desc` settles it,
   and `lint` points it out. The Queue's check reads the status line too.

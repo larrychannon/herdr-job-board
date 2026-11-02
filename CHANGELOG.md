@@ -24,8 +24,8 @@ One Now line per card; wrapped description lines hang under their text.
   leads into what follows (it ends with `:`). On a Done card, which shows no status line, a
   `Now:` line stays in the description; a line from `--desc` goes back there when the card is
   done. A parent whose line is built from the cards under it shows a line from `--desc` in
-  its description. `now` refuses a line over 200 characters (nothing written) instead of
-  cutting it.
+  its description. `now` still cuts a line over 200 characters (scripts build some, such as
+  a deploy's targets), but now says so on stderr instead of cutting silently.
 - **The Queue's check reads the status line**: a merge, deploy or delete named in a queued
   card's status line makes it a question, as it did in the description; a delete, even when
   the user marked it "start without asking". A new `Now:` line in `--desc` ends the mark.
