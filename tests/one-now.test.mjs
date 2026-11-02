@@ -3,7 +3,8 @@
 // the card's status line, stored as its `now` and taken out of the description, so a card shows
 // exactly one Now. A new question is explained by that line or by a status line that is current.
 // A card from before (a Now line still in its stored description) shows it as its status line
-// and moves it there on its next edit; one with both is left for lint to point out. Wrapped lines
+// and keeps it in its description until a --desc rewrites it; one with both is left for lint
+// to point out. (What keeps a person's Now line from being lost: now-kept.test.mjs.) Wrapped lines
 // of numbered steps, "-> " lines and "Label: …" lines hang under their text.
 import "./guard.mjs"
 import assert from "node:assert/strict"
@@ -110,7 +111,7 @@ test("the Now line from --desc is checked as the description was: a PR number is
     const before = t.hash()
     const r = t.run(T, "edit", "1", "--desc", "It loops after sign-in.\nNow: PR #12 is merged.")
     assert.equal(r.status, 2, r.stderr)
-    assert.match(r.stderr, /the status line says "PR #12", a PR number/)
+    assert.match(r.stderr, /the description says "PR #12", a PR number/)
     assert.equal(t.hash(), before)
     // add too.
     assert.equal(t.run(T, "add", "todo", "Docs: tidy", "--desc", "Old pages.\nNow: build 41 is out.").status, 2)
@@ -120,14 +121,15 @@ test("the Now line from --desc is checked as the description was: a PR number is
   }
 })
 
-test("a Now line longer than a status line holds is cut, with a warning", () => {
+test("a Now line longer than a status line holds is never cut: it stays in the description, whole, with a warning", () => {
   const t = setup()
   try {
     const long = `the fix is ready ${"and checked again ".repeat(15)}`.trim()
     assert.ok(long.length > 200)
     const r = t.ok(T, "add", "todo", "Login page: fix the redirect", "--desc", `It loops.\nNow: ${long}`)
-    assert.match(r.stderr, /card 1: its Now line is longer than 200 characters: the status line keeps the first 200/)
-    assert.equal(t.item(1).now.text, long.slice(0, 200))
+    assert.match(r.stderr, /card 1: its Now line is longer than 200 characters, so it is kept in the description, whole/)
+    assert.equal(t.item(1).now, undefined)
+    assert.equal(t.item(1).desc, `It loops.\nNow: ${long}`)
   } finally {
     t.done()
   }
@@ -202,7 +204,7 @@ const OLD = (extra = {}) => ({
   ...extra,
 })
 
-test("a card from before with a Now line in its description and no status line: shown as its status line, moved there on its next edit", () => {
+test("a card from before with a Now line in its description and no status line: shown as its status line, moved there only by a --desc", () => {
   const t = setup()
   try {
     t.write([OLD()])
@@ -215,11 +217,16 @@ test("a card from before with a Now line in its description and no status line: 
     assert.match(t.raw().items[0].desc, /Now: the fix is ready/)
     assert.equal(t.raw().items[0].now, undefined)
 
-    // The next edit of the card, whatever it changes, moves it; its time is the card's last update.
+    // An edit that gives no --desc leaves it in the description (a job-open's line, written
+    // next, would otherwise take its place).
     t.ok(LATER, "edit", "1", "--title", "Login page: fix the redirect first", "--project", "p")
+    assert.equal(t.item(1).desc, "It loops after sign-in.\nNow: the fix is ready; yes ships it with the release.")
+    assert.equal(t.item(1).now, undefined)
+    // A --desc moves it.
+    t.ok(LATER, "edit", "1", "--desc", t.item(1).desc, "--project", "p")
     assert.equal(t.item(1).desc, "It loops after sign-in.")
     assert.equal(t.item(1).now.text, "the fix is ready; yes ships it with the release.")
-    assert.equal(t.item(1).now.at, new Date(T).toISOString())
+    assert.equal(t.item(1).now.at, new Date(LATER).toISOString())
   } finally {
     t.done()
   }

@@ -13,15 +13,30 @@ One Now line per card; wrapped description lines hang under their text.
 - **One Now**: a line that starts `Now:` in `--desc` (`add`, `edit`, `move`, `job-start`) is
   the card's status line: stored as its `now` (this card only, not the cards above or under
   it), out of the description. A later one replaces it; a `--desc` without one keeps the line
-  there is. Its words are checked as the description's were (a PR number is refused); one over
-  200 characters is cut, with a warning.
+  there is. Its words are checked as the description's were (a PR number is refused, and a
+  line allowed with `--allow-wording` before stays allowed).
+- **Where it stands is never lost, cut or hidden**: when anything but the next `--desc` writes
+  over a line given in `--desc` (job-open's `a job is working on it`, `job-report`, `not-run`,
+  `now` on the card or on a card above it, `now --clear`), that line stays on the card, at the
+  end of its description as `Earlier: …` (once; not `Now:`, so the card still shows one Now).
+  A `Now:` line that can't be the status line as it is stays in the description, whole, with
+  a warning: one over 200 characters (a status line's size), two or more of them, or one that
+  leads into what follows (it ends with `:`). On a Done card, which shows no status line, a
+  `Now:` line stays in the description; a line from `--desc` goes back there when the card is
+  done. A parent whose line is built from the cards under it shows a line from `--desc` in
+  its description. `now` refuses a line over 200 characters (nothing written) instead of
+  cutting it.
+- **The Queue's check reads the status line**: a merge, deploy or delete named in a queued
+  card's status line makes it a question, as it did in the description; a delete, even when
+  the user marked it "start without asking". A new `Now:` line in `--desc` ends the mark.
 - **The question rule takes either form**: a new `--ask` is explained by a `Now:` line in the
   same call's `--desc`, or by a status line that is current (written with `now`, no event
   since). A stale line, or none, is refused as before; the error names both ways.
 - **Cards from before**: one with its `Now:` line still in its description and no status line
-  shows that line as its status line, and its next edit (of anything) stores it so, dated at
-  the card's last update. Reading never writes it. A card with both keeps both until a
-  `--desc` settles which is true, and `lint` names it.
+  shows that line at the top as its status line. It stays stored in the description until a
+  `--desc` rewrites the card: an edit, move or job-start without `--desc` changes nothing of it
+  (so job-open's line, written next, never takes its place). Reading never writes it. A card
+  with both keeps both until a `--desc` settles which is true, and `lint` names it.
 - **Hanging indent**: numbered steps (`1. `, `1) `, up to two digits, so `2026.` is no step),
   `-> ` / `→ ` lines, and the text after a leading `Label:` hang under their text when they
   wrap (by two cells when the label is wider than a third of the line). So does a card's

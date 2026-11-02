@@ -725,11 +725,17 @@ DOING (1)
 - **One Now per card** (0.17.0): a line that starts `Now:` in `--desc` (`add`, `edit`,
   `move`, `job-start`) is the card's status line: it is stored as its `now` (this card only,
   not its lineage), taken out of the description, and the latest one replaces the line before.
-  Its words are checked as the description's were. A line over 200 characters is cut, with a
-  warning. A card from before 0.17.0 with its `Now:` line still in its description and no
-  status line shows that line as its status line, and its next edit stores it so; a card with
-  both keeps both until a `--desc` settles it, and `lint` points it out.
-- `json` shows `now` ({ text, at, by }) and `event` ({ kind, at, card }) on a card.
+  Its words are checked as the description's were. Where it stands is never lost, cut or
+  hidden: a line from `--desc` that anything else writes over (job-open, `job-report`,
+  `not-run`, `now`) stays at the end of the description as `Earlier: …`; a `Now:` line over
+  200 characters, a second one, or one ending in `:` stays in the description, whole, with a
+  warning; a Done card keeps its `Now:` line in its description (where it shows); a parent
+  with a built line shows its `--desc` line in its description. `now` refuses a line over 200
+  characters. A card from before 0.17.0 with its `Now:` line still in its description and no
+  status line shows that line as its status line, and keeps it stored in its description
+  until a `--desc` rewrites the card; a card with both keeps both until a `--desc` settles it,
+  and `lint` points it out. The Queue's check reads the status line too.
+- `json` shows `now` ({ text, at, by }; `from: "desc"` on a line given in `--desc`, 0.17.0) and `event` ({ kind, at, card }) on a card.
 
 ## For agents: running jobs with the board
 
