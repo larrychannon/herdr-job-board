@@ -30,7 +30,8 @@
 //                           status line, not its description: one Now per card (one over 200
 //                           characters, a second one, one ending in ":" and a Done card's stay
 //                           in the description, whole); written over by anything but the next
-//                           --desc, it stays on the card as "Earlier: …". A command the user
+//                           --desc, it stays on the card as "Earlier: …" (so does it when the
+//                           next --desc has no Now line). A command the user
 //                           must run ("! …", a code line) goes on the card in that same edit,
 //                           never only in the chat
 //   not-run <ref> --type "<words>" | --run "<command>" [--label L]
@@ -1639,13 +1640,13 @@ function editItem(state, item, opts, now, warn = () => {}) {
   // it (an edit, move or job-start without --desc changes nothing of it; the board shows it at
   // the top while the card has no status line).
   const saidNow = clean(item.now?.text)
+  let gave = false
   if (opts.desc !== undefined) {
     const { desc, now: line, why } = item.column === "done" ? { desc: cleanDesc(opts.desc), now: "", why: "" } : splitNow(opts.desc)
     item.desc = desc
     takeNow(state, item, line, now)
+    gave = Boolean(line)
     if (why) warn(`board: card ${item.id}: ${why}`)
-    const built = line ? builtStatus(state, item) : ""
-    if (built) warn(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); its Now line is kept, shown in its description as "Own line: …"`)
     // A --desc that gives no status line (none, or one that stays in the description: it ends
     // with ":", runs over STATUS_MAX characters, or comes with a second Now) ends the status line
     // the previous --desc gave: the person rewrote where it stands, so the old line never stays
@@ -1685,6 +1686,10 @@ function editItem(state, item, opts, now, warn = () => {}) {
     if (before != null) noteAbove(state, before, "sub-card removed", item, now)
     if (item.parent != null) noteAbove(state, item.parent, "sub-card added", item, now)
   }
+  // A parent with no job or question of its own (after this edit's --job and --ask) shows the
+  // line built from the cards under it: say so, and where its own line is.
+  const built = gave ? builtStatus(state, item) : ""
+  if (built) warn(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); its Now line is kept, shown in its description as "Own line: …"`)
   clearReady(item)
   item.updated = now.toISOString()
   return item
@@ -2379,7 +2384,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     }
     // A parent with no job or question of its own: its line is built from the cards under it
     // (0.16.0), with their agents' live status, and is never out of date. A line a person gave
-    // in --desc is shown in its description meanwhile, never hidden.
+    // in --desc is shown in its description meanwhile ("Own line: …"), never hidden.
     const built = builtStatus(all, item, (c) => (c.job && agents ? jobAgent(agents, c.job, c.workspace || workspace)?.agent_status || "" : ""))
     if (built) {
       // Its own line is still true: "Own line:", not "Earlier:", which reads as past.

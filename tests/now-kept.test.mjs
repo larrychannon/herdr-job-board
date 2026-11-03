@@ -388,6 +388,10 @@ test("a parent's own --desc Now line shows as 'Own line:', not 'Earlier:', under
     const r = t.ok(LATER, "edit", "1", "--desc", "The plan.\nNow: the vendor answered")
     assert.match(r.stderr, /built from the cards under it/)
     assert.match(t.shown(1), /Own line: the vendor answered/)
+    // A job started on it in the same call gives it a job: it shows its own line, no warning.
+    const started = t.ok(LATER, "job-start", "plan-vendor", "--id", "1", "--desc", "The plan.\nNow: a job checks the vendor's answer")
+    assert.doesNotMatch(started.stderr, /built from the cards under it/)
+    assert.match(t.shown(1), /^Now: a job checks the vendor's answer/m)
   } finally {
     t.done()
   }
