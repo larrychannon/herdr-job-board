@@ -299,3 +299,96 @@ test("an edit of something else (--parent) of an older queued card with a Now li
     t.done()
   }
 })
+
+// --- round three: a --desc rewrite with no usable Now line ends the line the earlier --desc gave ---
+
+const OPTS = ["--option", "Ship it today", "--option", "Hold it a week", "--suggest", "Ship it today"]
+/** The status lines and Now lines card `id` shows (its view entry), in order. */
+const nows = (t, id) => t.shown(id).split("\n").filter((l) => /^\s*(?:Now|Earlier|Own line):/.test(l)).map((l) => l.trim())
+
+for (const [name, desc, restated] of [
+  ["one ending in ':'", "Fix it.\nNow: three options, below:\n- A: one\n- B: two", true],
+  ["one over 200 characters", `Fix it.\nNow: ${PARA}`, true],
+  ["two Now lines", "Fix it.\nNow: the build runs\nNow: the check waits", true],
+  ["no Now line", "The plan, rewritten.", false],
+]) {
+  test(`a --desc with ${name} ends the status line the earlier --desc gave: no old Now on top`, () => {
+    const t = setup()
+    try {
+      t.ok(T, "add", "todo", "Page: build", "--desc", "Fix it.\nNow: first state")
+      assert.equal(t.item(1).now.text, "first state")
+      const r = t.ok(LATER, "edit", "1", "--desc", desc)
+      assert.equal(t.item(1).now, undefined, "the old status line is gone")
+      assert.match(r.stderr, /came from the earlier --desc, so this --desc ends it/)
+      const card = t.shown(1)
+      assert.ok(!/^Now: first state/m.test(card), card)
+      if (restated) {
+        // The new Now, in the description, is the card's only Now.
+        assert.ok(!card.includes("first state"), card)
+        assert.ok(!t.item(1).desc.includes("Earlier:"), t.item(1).desc)
+      } else {
+        // Never lost: kept at the end, marked as past.
+        assert.equal(t.item(1).desc, "The plan, rewritten.\nEarlier: first state")
+        assert.deepEqual(nows(t, 1), ["Earlier: first state"])
+      }
+      // A new question no longer passes on the ended line.
+      const asked = t.run(LAST, "move", "1", "waiting", "--ask", "Ship the page today?", ...OPTS)
+      assert.equal(asked.status, 2, asked.stderr)
+      assert.match(asked.stderr, /needs its explanation/)
+    } finally {
+      t.done()
+    }
+  })
+}
+
+test("a --desc with no Now line and a new --ask in the same call is refused while the old line came from --desc", () => {
+  const t = setup()
+  try {
+    t.ok(T, "add", "todo", "Page: build", "--desc", "Fix it.\nNow: first state")
+    const before = t.hash()
+    const r = t.run(LATER, "move", "1", "waiting", "--desc", "The plan, again.", "--ask", "Ship the page today?", ...OPTS)
+    assert.equal(r.status, 2, r.stderr)
+    assert.match(r.stderr, /needs its explanation/)
+    assert.equal(t.hash(), before, "nothing written")
+    // With a Now line in that --desc, it passes, and that line is the Now.
+    t.ok(LATER, "move", "1", "waiting", "--desc", "The plan, again.\nNow: built; yes ships it", "--ask", "Ship the page today?", ...OPTS)
+    assert.equal(t.item(1).now.text, "built; yes ships it")
+  } finally {
+    t.done()
+  }
+})
+
+test("a --desc with no Now line keeps a status line that now or a script wrote", () => {
+  const t = setup()
+  try {
+    t.ok(T, "add", "todo", "Page: build", "--desc", "Fix it.")
+    t.ok(T, "now", "1", "merged; the deploy is next")
+    const r = t.ok(LATER, "edit", "1", "--desc", "Fix it, rewritten.")
+    assert.equal(t.item(1).now.text, "merged; the deploy is next")
+    assert.doesNotMatch(r.stderr, /ends it/)
+    // move with --desc ends a --desc line the same way.
+    t.ok(T, "add", "todo", "Docs: tidy", "--desc", "Old pages.\nNow: two left")
+    t.ok(LATER, "move", "2", "doing", "--desc", "Old pages, all of them.")
+    assert.equal(t.item(2).now, undefined)
+    assert.equal(t.item(2).desc, "Old pages, all of them.\nEarlier: two left")
+  } finally {
+    t.done()
+  }
+})
+
+test("a parent's own --desc Now line shows as 'Own line:', not 'Earlier:', under the line built from its cards", () => {
+  const t = setup()
+  try {
+    t.ok(T, "add", "todo", "Parent: plan", "--desc", "The plan.\nNow: waiting for the vendor")
+    t.ok(T, "add", "todo", "Child: build", "--parent", "1")
+    const card = t.shown(1)
+    assert.match(card, /Own line: waiting for the vendor/)
+    assert.doesNotMatch(card, /Earlier:/)
+    // A --desc Now line on a parent that shows a built line says so.
+    const r = t.ok(LATER, "edit", "1", "--desc", "The plan.\nNow: the vendor answered")
+    assert.match(r.stderr, /built from the cards under it/)
+    assert.match(t.shown(1), /Own line: the vendor answered/)
+  } finally {
+    t.done()
+  }
+})

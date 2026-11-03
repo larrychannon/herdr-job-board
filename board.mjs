@@ -1603,8 +1603,10 @@ export function askWithoutNow(item, opts) {
   if (!ask || ask === cleanLines(item.ask ?? "")) return ""
   // As the description is stored: a literal "\n" (a shell's one-line --desc) is a line break too.
   if (opts.desc !== undefined && NOW_LINE.test(cleanDesc(opts.desc))) return ""
-  // The card's status line says it already (board.mjs now), and nothing happened since.
-  if (nowCurrent(item)) return ""
+  // The card's status line says it already (board.mjs now), and nothing happened since. One the
+  // previous --desc gave ends with this --desc, which has no Now line (editItem): it explains nothing.
+  const ending = opts.desc !== undefined && item.now?.from === "desc"
+  if (nowCurrent(item) && !ending) return ""
   return [
     `card ${item.id}: a new question needs its explanation in the same call, so nothing was written.`,
     `  Add --desc with the card's description and a line that starts "Now:": where things stand and what the answer decides`,
@@ -1642,6 +1644,21 @@ function editItem(state, item, opts, now, warn = () => {}) {
     item.desc = desc
     takeNow(state, item, line, now)
     if (why) warn(`board: card ${item.id}: ${why}`)
+    const built = line ? builtStatus(state, item) : ""
+    if (built) warn(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); its Now line is kept, shown in its description as "Own line: …"`)
+    // A --desc that gives no status line (none, or one that stays in the description: it ends
+    // with ":", runs over STATUS_MAX characters, or comes with a second Now) ends the status line
+    // the previous --desc gave: the person rewrote where it stands, so the old line never stays
+    // on top as if current. When the new text has a Now line of its own, that one is the Now;
+    // when it has none, the old line stays at the end of the description as "Earlier: …", never
+    // lost. A line that `now` or a script wrote is not the description's, so it stays.
+    if (!line && item.column !== "done" && item.now?.from === "desc") {
+      const old = clean(item.now.text)
+      const restated = nowLinesIn(desc).length > 0
+      if (old && !restated) keepEarlier(item, old)
+      delete item.now
+      if (old) warn(`board: card ${item.id}: its status line ("${old}") came from the earlier --desc, so this --desc ends it; ${restated ? "the Now line in this description says where it stands" : 'it stays at the end of the description as "Earlier: …"'}`)
+    }
   }
   // The user's "start without asking" was for the card as it was: a change of its words ends it,
   // for good (0.15.0; an edit back doesn't bring it back). Its Now line is part of its words.
@@ -2365,7 +2382,8 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
     // in --desc is shown in its description meanwhile, never hidden.
     const built = builtStatus(all, item, (c) => (c.job && agents ? jobAgent(agents, c.job, c.workspace || workspace)?.agent_status || "" : ""))
     if (built) {
-      if (item.now?.from === "desc") entry.desc = cleanDesc(`${cleanDesc(entry.desc)}\nEarlier: ${clean(item.now.text)}`)
+      // Its own line is still true: "Own line:", not "Earlier:", which reads as past.
+      if (item.now?.from === "desc") entry.desc = cleanDesc(`${cleanDesc(entry.desc)}\nOwn line: ${clean(item.now.text)}`)
       ;[entry.now, entry.stale] = [{ text: built, at: now.toISOString(), built: true }, false]
     }
     // The user's "start without asking", while it holds (0.15.0).
@@ -7129,7 +7147,8 @@ Writing cards
   or the card's status line is current (now <id> …, nothing since); otherwise nothing is
   written. That "Now:" line becomes the card's status line (out of the description: one Now
   per card); when a job, a report or another line takes its place, it stays at the end of the
-  description as "Earlier: …". Keep it to where things stand, under 200 characters: a longer
+  description as "Earlier: …". A later --desc without a Now line ends it (it stays as
+  "Earlier: …"), so a new question then needs a "Now:" line again. Keep it to where things stand, under 200 characters: a longer
   one, a second one or a Done card's stays in the description, whole. A command the user must run (a line starting "! ", or a code line) goes on the
   card in that same edit (--desc or --ask), never only in the chat.
 - A description reads best as "Label:" lines with "- " items under them (numbered steps and

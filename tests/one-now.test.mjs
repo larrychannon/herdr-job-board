@@ -71,9 +71,11 @@ test("add, edit and move: a 'Now:' line in --desc becomes the card's status line
     t.ok(LATER, "edit", "1", "--desc", "It loops. Now: it is still there.\\nNow: the fix is merged.")
     assert.equal(t.item(1).desc, "It loops. Now: it is still there.")
     assert.equal(t.item(1).now.text, "the fix is merged.")
-    // A --desc without a Now line keeps the status line as it is.
+    // A --desc without a Now line ends the line the earlier --desc gave (round three): it stays
+    // at the end of the description as "Earlier: …", never on top as if current.
     t.ok(LATER, "edit", "1", "--desc", "It loops after sign-in.")
-    assert.equal(t.item(1).now.text, "the fix is merged.")
+    assert.equal(t.item(1).now, undefined)
+    assert.equal(t.item(1).desc, "It loops after sign-in.\nEarlier: the fix is merged.")
 
     // move … waiting with --desc: the same.
     t.ok(T, "add", "todo", "Docs: tidy the old pages", "--desc", "Old pages.")

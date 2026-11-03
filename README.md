@@ -727,10 +727,13 @@ DOING (1)
   not its lineage), taken out of the description, and the latest one replaces the line before.
   Its words are checked as the description's were. Where it stands is never lost, cut or
   hidden: a line from `--desc` that anything else writes over (job-open, `job-report`,
-  `not-run`, `now`) stays at the end of the description as `Earlier: …`; a `Now:` line over
+  `not-run`, `now`) stays at the end of the description as `Earlier: …`; a later `--desc`
+  that gives no status line ends a line the earlier `--desc` gave (when it has no `Now:` line
+  at all, the old one stays at the end of the description as `Earlier: …`; a line that `now`
+  or a script wrote stays, as it isn't the description's); a `Now:` line over
   200 characters, a second one, or one ending in `:` stays in the description, whole, with a
   warning; a Done card keeps its `Now:` line in its description (where it shows); a parent
-  with a built line shows its `--desc` line in its description. `now` cuts a line over 200
+  with a built line shows its `--desc` line in its description as `Own line: …`. `now` cuts a line over 200
   characters with a warning, never silently. A card from before 0.17.0 with its `Now:` line still in its description and no
   status line shows that line as its status line, and keeps it stored in its description
   until a `--desc` rewrites the card; a card with both keeps both until a `--desc` settles it,

@@ -12,8 +12,7 @@ One Now line per card; wrapped description lines hang under their text.
   so a card's steps read as one wall of text.
 - **One Now**: a line that starts `Now:` in `--desc` (`add`, `edit`, `move`, `job-start`) is
   the card's status line: stored as its `now` (this card only, not the cards above or under
-  it), out of the description. A later one replaces it; a `--desc` without one keeps the line
-  there is. Its words are checked as the description's were (a PR number is refused, and a
+  it), out of the description. A later one replaces it; a `--desc` without one ends it (below). Its words are checked as the description's were (a PR number is refused, and a
   line allowed with `--allow-wording` before stays allowed).
 - **Where it stands is never lost, cut or hidden**: when anything but the next `--desc` writes
   over a line given in `--desc` (job-open's `a job is working on it`, `job-report`, `not-run`,
@@ -23,8 +22,13 @@ One Now line per card; wrapped description lines hang under their text.
   a warning: one over 200 characters (a status line's size), two or more of them, or one that
   leads into what follows (it ends with `:`). On a Done card, which shows no status line, a
   `Now:` line stays in the description; a line from `--desc` goes back there when the card is
-  done. A parent whose line is built from the cards under it shows a line from `--desc` in
-  its description. `now` still cuts a line over 200 characters (scripts build some, such as
+  done. A later `--desc` that gives no status line ends one the earlier `--desc` gave, so an
+  old Now never stays on top as if current: when the new text has a `Now:` line that stays in
+  the description, that one is the Now; when it has none, the old line stays at the end of the
+  description as `Earlier: …`. Both say so on stderr, and a new question in that call needs
+  its own `Now:` line. A line written by `now` or a script is not touched. A parent whose line
+  is built from the cards under it shows a line from `--desc` in its description as
+  `Own line: …` (still true, so not `Earlier:`). `now` still cuts a line over 200 characters (scripts build some, such as
   a deploy's targets), but now says so on stderr instead of cutting silently.
 - **The Queue's check reads the status line**: a merge, deploy or delete named in a queued
   card's status line makes it a question, as it did in the description; a delete, even when
