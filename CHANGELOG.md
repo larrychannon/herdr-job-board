@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.17.0 · unreleased
+
+One Now line per card; wrapped description lines hang under their text.
+
+- **Why**: since 0.16.0 a new question needs a `Now:` line in `--desc`, while the status line
+  from `now` is also drawn as `Now:` at the top of the card. So every Waiting card carried two
+  Now lines, and on one card they disagreed (the status line said the job was closed; the
+  description had the real next steps). And only `- `, `• ` and `* ` items had a hanging
+  indent: numbered steps, `-> ` lines and long `Label: …` lines wrapped back to the left edge,
+  so a card's steps read as one wall of text.
+- **One Now**: a line that starts `Now:` in `--desc` (`add`, `edit`, `move`, `job-start`) is
+  the card's status line: stored as its `now` (this card only, not the cards above or under
+  it), out of the description. A later one replaces it; a `--desc` without one ends it (below). Its words are checked as the description's were (a PR number is refused, and a
+  line allowed with `--allow-wording` before stays allowed).
+- **Where it stands is never lost, cut or hidden**: when anything but the next `--desc` writes
+  over a line given in `--desc` (job-open's `a job is working on it`, `job-report`, `not-run`,
+  `now` on the card or on a card above it, `now --clear`), that line stays on the card, at the
+  end of its description as `Earlier: …` (once; not `Now:`, so the card still shows one Now).
+  A `Now:` line that can't be the status line as it is stays in the description, whole, with
+  a warning: one over 200 characters (a status line's size), two or more of them, or one that
+  leads into what follows (it ends with `:`). On a Done card, which shows no status line, a
+  `Now:` line stays in the description; a line from `--desc` goes back there when the card is
+  done. A later `--desc` that gives no status line ends one the earlier `--desc` gave, so an
+  old Now never stays on top as if current: when the new text has a `Now:` line that stays in
+  the description, that one is the Now; when it has none, the old line stays at the end of the
+  description as `Earlier: …`. Both say so on stderr, and a new question in that call needs
+  its own `Now:` line. A line written by `now` or a script is not touched. A parent whose line
+  is built from the cards under it shows a line from `--desc` in its description as
+  `Own line: …` (still true, so not `Earlier:`). `now` still cuts a line over 200 characters (scripts build some, such as
+  a deploy's targets), but now says so on stderr instead of cutting silently.
+- **The Queue's check reads the status line**: a merge, deploy or delete named in a queued
+  card's status line makes it a question, as it did in the description; a delete, even when
+  the user marked it "start without asking". A new `Now:` line in `--desc` ends the mark.
+- **The question rule takes either form**: a new `--ask` is explained by a `Now:` line in the
+  same call's `--desc`, or by a status line that is current (written with `now`, no event
+  since). A stale line, or none, is refused as before; the error names both ways.
+- **Cards from before**: one with its `Now:` line still in its description and no status line
+  shows that line at the top as its status line. It stays stored in the description until a
+  `--desc` rewrites the card: an edit, move or job-start without `--desc` changes nothing of it
+  (so job-open's line, written next, never takes its place). Reading never writes it. A card
+  with both keeps both until a `--desc` settles which is true, and `lint` names it.
+- **Hanging indent**: numbered steps (`1. `, `1) `, up to two digits, so `2026.` is no step),
+  `-> ` / `→ ` lines, and the text after a leading `Label:` hang under their text when they
+  wrap (by two cells when the label is wider than a third of the line). So does a card's
+  status line, under the text after `Now:`.
+- **lint warns** (exit code unchanged) on a description that still has a `Now:` line next to
+  a status line, and on a plain line over three lines of 60 columns: split it into a `Label:`
+  line and `- ` items. `add` and `edit` don't print these.
+- The help, the agent guide, the Stop hook's reason and the README say all this.
+
 ## 0.16.0 · unreleased
 
 A new question says where things stand; parent cards build their own status line; the

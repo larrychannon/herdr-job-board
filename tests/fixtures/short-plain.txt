@@ -36,7 +36,7 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 
 DOING (2)                                                    TO DO (3) ▾
 ── card 1 · ↑ 5 lines above ────────────────────────────────────────────────────────────────────────────────────────────
-  mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
+                       mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
@@ -83,8 +83,8 @@ Enter to send · Esc close · ↑↓ scroll · ←→ choose · c copy · t go t
 ↓ card cut off: open it for the rest
 
 DOING (2)                                    TO DO (3) ▾
-── card 1 · ↑ 6 lines above ────────────────────────────────────────────────────────────
-  main), tag v1.4, deploy, then run the backfill.
+── card 1 · ↑ 7 lines above ────────────────────────────────────────────────────────────
+                       backfill.
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then

@@ -520,7 +520,7 @@ export function blockReason(cli = BOARD_CLI, { telegram = false } = {}) {
     `You asked the user something${telegram ? " (on Telegram)" : ""}, but no Waiting card was added or updated on the job board this turn. ` +
     `Add one first: node ${quote(cli)} add waiting "<thing>: <action>" --desc "<what and why>" --ask "<one plain question>" ` +
     '--option "<verb + thing>" --option "<verb + thing>" --suggest "<the one you suggest>" (2 to 4 buttons), or update the card that already ' +
-    "asks it with edit <id> (a new --ask needs --desc with a line that starts \"Now:\", in the same edit). If you aren't actually waiting on the user, say so in one line and stop."
+    "asks it with edit <id> (a new --ask needs --desc with a line that starts \"Now:\", in the same edit, unless the card's status line is current; that line becomes its status line). If you aren't actually waiting on the user, say so in one line and stop."
   )
 }
 
@@ -748,7 +748,10 @@ export function queueReason(state, card, room, total, count, cli = BOARD_CLI) {
     "If it can't start now, say why in one line and stop: it isn't offered again until the card is edited or moved back into the Queue."
   const open = `Start its job on this card with the job skill (job-open.mjs <repo> <slug> --brief … --report … --id ${id}: the card goes to Doing)`
   const marked = startMarked(card)
-  if (marked && needsYes(card.title, card.desc, true)) {
+  // Its words: the title, the description and the status line, which holds a Now line given in
+  // --desc (0.17.0): a merge, deploy or delete named there is still asked first.
+  const words = [card.desc, card.now?.text].filter((t) => typeof t === "string" && t.trim()).join("\n")
+  if (marked && needsYes(card.title, words, true)) {
     return `${head}The user marked it "start without asking", but its title starts with a deploy, merge, release, push, roll-out, tag, go-live or delete, or it asks for access, IAM, secrets, keys, settings, force-pushing or deleting data, which the mark never covers: move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
   }
   if (marked) {
@@ -758,8 +761,8 @@ export function queueReason(state, card, room, total, count, cli = BOARD_CLI) {
       `Only when it can't be started as it is (no repo for it, say), move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
     )
   }
-  if (needsYes(card.title, card.desc)) {
-    return `${head}Its title or description asks for a merge, deploy, release, production, settings or access change, which is never started from the Queue: move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
+  if (needsYes(card.title, words)) {
+    return `${head}Its title, description or status line asks for a merge, deploy, release, production, settings or access change, which is never started from the Queue: move it to Waiting with one plain question and 2 to 4 buttons: ${ask}. ${rules}`
   }
   return (
     `${head}${open}, ` +

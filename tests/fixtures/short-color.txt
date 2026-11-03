@@ -36,7 +36,7 @@
 
 [1;34mDOING (2)[0m                                                    [1mTO DO (3) ▾[0m
 [2m──[0m[1m card 1 · ↑ 5 lines above [0m[2m────────────────────────────────────────────────────────────────────────────────────────────[0m
-  mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
+                       mode). Plan: merge in order (each catches up with main), tag v1.4, deploy, then run the backfill.
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
@@ -83,8 +83,8 @@
 [2m↓ card cut off: open it for the rest[0m
 
 [1;34mDOING (2)[0m                                    [1mTO DO (3) ▾[0m
-[2m──[0m[1m card 1 · ↑ 6 lines above [0m[2m────────────────────────────────────────────────────────────[0m
-  main), tag v1.4, deploy, then run the backfill.
+[2m──[0m[1m card 1 · ↑ 7 lines above [0m[2m────────────────────────────────────────────────────────────[0m
+                       backfill.
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then

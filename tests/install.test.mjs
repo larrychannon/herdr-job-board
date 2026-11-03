@@ -592,8 +592,14 @@ test("Herdr 0.9.5's layout: a pane on the old 0.9.3 folder hands over to the ins
     }
     assert.ok(run, "the installed copy's pane-restart started its board in the same pane")
     assert.equal(run[3], `node '${first}/board-pane.mjs' --board '${t.store}' --origin 'w9:p1' --version '9.9.9' --as-plugin`)
-    const log = readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-    assert.deepEqual([log.at(-1).pane, log.at(-1).ok, log.at(-1).version], ["w9:p5", true, "9.9.9"], "logged")
+    // The restart writes its log after it starts the board: wait for it as for the run.
+    const logFile = join(t.home, ".local", "state", "herdr-job-board", "restart.log")
+    let log = []
+    for (let i = 0; i < 50 && log.at(-1)?.pane !== "w9:p5"; i++) {
+      if (i) await pause(100)
+      log = existsSync(logFile) ? readFileSync(logFile, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []
+    }
+    assert.deepEqual([log.at(-1)?.pane, log.at(-1)?.ok, log.at(-1)?.version], ["w9:p5", true, "9.9.9"], "logged")
     assert.ok(existsSync(L.old), "nothing deleted")
 
     // The next update lands in another <n>: a pane on the first one follows again.

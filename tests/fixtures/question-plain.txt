@@ -148,7 +148,7 @@ Release v1.4: all reviewed, approve?
 
   What it is
   All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark
-  mode).
+                       mode).
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
@@ -312,7 +312,7 @@ Release v1.4: all reviewed, approve?
 
   What it is
   All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
+                       export to CSV (+ optional #16 dark mode).
 
   What you need to do
   Question: Approve the whole release (merges, tag v1.4, deploy to production, then

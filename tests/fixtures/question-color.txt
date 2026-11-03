@@ -148,7 +148,7 @@
 
   [1mWhat it is[0m
   [1mAll PRs reviewed OK:[0m #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark
-  mode).
+                       mode).
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or
@@ -312,7 +312,7 @@
 
   [1mWhat it is[0m
   [1mAll PRs reviewed OK:[0m #12 invoice rounding, #14 docs move, #15 search filters, #17
-  export to CSV (+ optional #16 dark mode).
+                       export to CSV (+ optional #16 dark mode).
 
   [1mWhat you need to do[0m
   [2mQuestion:[0m Approve the whole release (merges, tag v1.4, deploy to production, then

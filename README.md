@@ -640,9 +640,9 @@ and the flags it takes.
 |---|---|
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
-| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call (see Writing cards). `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
-| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, and on a plain description line over about three lines (60 columns each). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
@@ -722,7 +722,23 @@ DOING (1)
   parent gets a job or a question; a parent that never had a line keeps its `Waiting on: …`
   list alone. Once every card under it is done it shows its stored line again (and is ready
   to resume).
-- `json` shows `now` ({ text, at, by }) and `event` ({ kind, at, card }) on a card.
+- **One Now per card** (0.17.0): a line that starts `Now:` in `--desc` (`add`, `edit`,
+  `move`, `job-start`) is the card's status line: it is stored as its `now` (this card only,
+  not its lineage), taken out of the description, and the latest one replaces the line before.
+  Its words are checked as the description's were. Where it stands is never lost, cut or
+  hidden: a line from `--desc` that anything else writes over (job-open, `job-report`,
+  `not-run`, `now`) stays at the end of the description as `Earlier: …`; a later `--desc`
+  that gives no status line ends a line the earlier `--desc` gave (when it has no `Now:` line
+  at all, the old one stays at the end of the description as `Earlier: …`; a line that `now`
+  or a script wrote stays, as it isn't the description's); a `Now:` line over
+  200 characters, a second one, or one ending in `:` stays in the description, whole, with a
+  warning; a Done card keeps its `Now:` line in its description (where it shows); a parent
+  with a built line shows its `--desc` line in its description as `Own line: …`. `now` cuts a line over 200
+  characters with a warning, never silently. A card from before 0.17.0 with its `Now:` line still in its description and no
+  status line shows that line as its status line, and keeps it stored in its description
+  until a `--desc` rewrites the card; a card with both keeps both until a `--desc` settles it,
+  and `lint` points it out. The Queue's check reads the status line too.
+- `json` shows `now` ({ text, at, by }; `from: "desc"` on a line given in `--desc`, 0.17.0) and `event` ({ kind, at, card }) on a card.
 
 ## For agents: running jobs with the board
 
@@ -1107,13 +1123,31 @@ The user reads a card with no other context: not the chat, not the job's instruc
   paragraph is what a card shows. More can follow (0.9.0): paragraphs (a blank line), `- ` or
   `• ` items, and lines that start with a label (`Why:`, `What changes:`, `Risk:`, `Your
   answers:`; up to four words, then a colon) are kept and shown so in the card details and in
-  `ls`. Pass real newlines in `--desc`, or `\n`.
+  `ls`. Pass real newlines in `--desc`, or `\n`. When a line wraps (0.17.0), its next lines
+  hang under its text: a `- ` item's, a numbered step's (`1. `, `1) `), a `-> ` line's, and
+  the text after a leading label (by two cells when the label is wider than a third of the
+  line); the status line hangs under the text after its `Now:` too. Write sections as `Label:` lines with `- ` items under them, no headings of your own
+  inside a section, and each button's meaning in an `Each answer:` list; where things stand
+  goes in the status line, not the description. `lint` warns on a plain line over about three
+  lines.
+
+  ```
+  What: a second provider as an active node; no automatic top-up.
+  Flow:
+  - Before go-live: credit and the traffic pool are bought; live only after both are confirmed.
+  - Warn (credit or pool low): ask for a top-up within five working days.
+  Each answer:
+  - Flow is right: I write it up as the runbook.
+  - Change the flow: tell me what to change.
+  ```
 - **ask** (Waiting): exactly what the user should do.
 - **A new question brings its explanation** (0.16.0): `edit` or `move` that changes `--ask`
   also sets `--desc` in the same call, with a line that starts `Now:` (where things stand and
   what the answer decides), e.g. `--desc "The fix is merged.\nNow: the deploy waits for your
-  word."`; otherwise exit 2 and nothing is written (`--allow-wording` doesn't skip it). The
-  same question again, or clearing it, needs nothing. A command the user must run (a line
+  word."`, or (0.17.0) the card already has a current status line (`now <id> "…"`, with no
+  event since); otherwise exit 2 and nothing is written (`--allow-wording` doesn't skip it).
+  The `Now:` line becomes the card's status line, shown once at the top of the card (see
+  Status lines). The same question again, or clearing it, needs nothing. A command the user must run (a line
   starting `! `, or a code line) goes on the card in that same edit, in `--desc` or `--ask`,
   never only in the chat: the board can't see the chat, so that part is a rule, not a check.
 
