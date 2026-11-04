@@ -45,8 +45,9 @@
 //                           another press in flight keeps its record. Not for workers
 //   lint [--project P]      every open card whose words fail the check, with each fix (read-only;
 //                           exit 1 when one must be fixed); it also warns on a description that
-//                           still has a Now line next to a status line, and on a plain line over
-//                           about three lines
+//                           still has a Now line next to a status line, on a plain line over
+//                           about three lines, and on a file in a temporary folder (/tmp,
+//                           /private/tmp, /var/folders: a restart deletes it)
 //   done <ref>                                                 same as move <ref> done; when it was
 //                           the last open card under its parent, the parent is ready to resume
 //                           and goes on top of its section
@@ -1626,8 +1627,28 @@ export function wordingFailures(items) {
     const problems = cardWording(item)
       .filter((p) => !(p.level !== "warn" && allowed.has(wordingLine(p))))
       .map((p) => (p.level === "slug" ? { ...p, level: "warn" } : p))
-    problems.push(...descWarnings(item))
+    problems.push(...descWarnings(item), ...tmpPathWarnings(item))
     if (problems.length) out.push({ item, problems })
+  }
+  return out
+}
+
+// A file in a temporary folder (/tmp, macOS's /private/tmp and /var/folders): gone after a restart.
+const TMP_PATH = /(?<![\w.~/-])(?:\/private)?\/tmp\/[^\s"'`),;\]}>]+|(?<![\w.~/-])\/var\/folders\/[^\s"'`),;\]}>]+/g
+const TMP_FIELDS = [["title", (i) => i.title], ["description", (i) => i.desc], ["question", (i) => i.ask], ["status line", (i) => i.now?.text]]
+
+/**
+ * lint's warning for a card that points to a file in a temporary folder (0.19.0): a restart
+ * deletes it, and the card then points nowhere. One a field, naming the first path.
+ */
+export function tmpPathWarnings(item) {
+  const out = []
+  for (const [field, get] of TMP_FIELDS) {
+    const text = get(item)
+    const path = typeof text === "string" ? text.match(TMP_PATH)?.[0].replace(/[.:]+$/, "") : ""
+    if (!path) continue
+    const gone = !existsSync(path)
+    out.push({ field, text: path.length > 60 ? `${path.slice(0, 59)}…` : path, why: `a file in a temporary folder${gone ? ", gone already" : ", which a restart deletes"}`, fix: "keep what the card needs where it lasts (the repo, the job's record) and point there, or say what it held", level: "warn" })
   }
   return out
 }
@@ -8899,9 +8920,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         let asking = null
         // A new card's title is set here (the slug without --title: refused); an old card's only with --title.
         const checked = (it, title = true) => (checkWording(it, opts, (w) => warnings.push(w), { title }), it)
-        const item = change((s) => {
-          warnings = []
-          asking = null
+        const start = (s) => {
           // The job's open card: To do or Doing, else a Waiting one that asks nothing (0.12.0: a
           // new round of a job goes on that card, not on a new one titled with the slug). A
           // Waiting card with a question or buttons is the user's open question from the last
@@ -8926,6 +8945,20 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           if (me.workspace) it.workspace = me.workspace
           if (me.coordinator && !it.origin) it.origin = me.pane
           return checked(editItem(s, it, { ...opts, job: slug, id: undefined, project: undefined, worktree: undefined }, now, (w) => warnings.push(w)), opts.title !== undefined)
+        }
+        const item = change((s) => {
+          warnings = []
+          asking = null
+          // The events this start notes (a sub-card added above it, a Done card reopened) are
+          // marked as the job start's (0.19.0): the Stop hook doesn't ask for a line they made
+          // old. A line that was out of date already keeps its event unmarked: it still blocks.
+          const before = new Map(s.items.map((i) => [i.id, { event: i.event, stale: statusStale(i) }]))
+          const started = start(s)
+          for (const i of s.items) {
+            const was = before.get(i.id)
+            if (i.event && i.event !== was?.event && !was?.stale) i.event = { ...i.event, via: "job-start" }
+          }
+          return started
         })
         for (const w of warnings) err(w)
         if (asking) err(`board: card ${asking.id} of job ${slug} still waits on the user, so this round has a new card (${item.id}). For a round on card ${asking.id} instead: board.mjs job-start ${slug} --id ${asking.id}`)

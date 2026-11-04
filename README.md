@@ -642,7 +642,7 @@ and the flags it takes.
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
-| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, and on a plain description line over about three lines (60 columns each). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question or status line: a restart deletes it, so the card would point nowhere (it says when the file is gone already). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
@@ -711,7 +711,11 @@ DOING (1)
   check that a board press it is given is a real answer on the card it ships.
 - **The coordinator hears of it**: its turn reminder lists its cards with a line out of date,
   and its Stop hook blocks once per card and event while a card its pane owns has one (after
-  the Waiting-card check). Cards with no line, and Done cards, are never out of date.
+  the Waiting-card check). Cards with no line, and Done cards, are never out of date. A line
+  that `job-start` made old (0.19.0: a check or a next round started under the card with
+  `--parent`, or a Done card started again, as `job-open` and `job-round` do) is still listed
+  in the reminder but doesn't block the Stop: the script that started the job writes the
+  parent's line itself. A line that was out of date before the start still blocks.
 - **A parent with no job or question of its own builds its line** (0.16.0) from the open cards
   under it, instead of showing the line written on it (or copied up from a card under it):
   `Now: #437 working · #438 waiting on you · #439 to do · 2 done`. Each card's word is its
