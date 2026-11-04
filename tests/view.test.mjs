@@ -56,6 +56,8 @@ function seed(t) {
       summary: `Filter panel built. Diff: https://github.com/example/app/pull/21 ${ESC}[2J‮`,
       needs_user: ["Review and merge https://github.com/example/app/pull/21"],
       ids: { pr: "https://github.com/example/app/pull/21", branch: "feat/filters", commit: "abc1234" },
+      // 0.18.0: its test proof; the checkout mockup's report below has none (unverified).
+      tested: { command: "npm test", exit: 0, after_last_edit: true },
     }),
   )
   t.board("2026-10-11T09:00:00Z", "add", "waiting", "Old question: pick a name", "--ask", "Reply with a name", "--allow-wording")
@@ -372,7 +374,8 @@ test("details: More… shows the rest of the report (f, Enter on it, or a click)
     assert.doesNotMatch(closed, /What was checked|suggested: No\. Fix the preview first\./, "collapsed by default")
     // The report in words: first sentences, needs as bullets, labelled links, counts.
     assert.match(closed, /What the job reported\n {2}Mockup of the new checkout is on the design canvas/)
-    assert.match(closed, /e\.g\. Cart, Address and the payment step\.\n {2}Needs you:/, "two sentences, then the needs")
+    // 0.18.0: its report has a commit and no test proof, so the line after the summary says so.
+    assert.match(closed, /e\.g\. Cart, Address and the payment step\.\n {2}Unverified: no test run after the last edit\.\n {2}Needs you:/, "two sentences, the test proof, then the needs")
     assert.doesNotMatch(closed, /Every 'before'/)
     assert.match(closed, /Needs you:\n {2}• The saved-card preview drops the billing address and keeps none\. Make saved cards editable anyway\?\n {2}• Wording for/)
     assert.match(closed, /Links:\n {2}Design canvas {2}https:\/\/canvas\.example\/boards\/checkout-v2\n {2}PR #57 {9}https:\/\/github\.com\/example\/app\/pull\/57\n/)

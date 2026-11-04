@@ -788,6 +788,21 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
      the note, so one press can't approve a failed job's work.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
+   - **Test proof** (0.18.0): a job that changed files says which test or build it ran after its
+     last edit, and how it ended: `"tested": { "command": "npm test", "exit": 0,
+     "after_last_edit": true }`; a job that changed nothing says `"tested": "read-only"`. A
+     `done` report with a commit or PR in `ids` (`commit`, `commits`, `pr` or `prs`) and no
+     `tested`, a non-zero `exit`, or `after_last_edit` not `true` is **unverified**. That is
+     shown, never blocking: the card moves as before, and its status line says "the job
+     finished, unverified: no test run after the last edit" (or the failed run, or the run
+     before the last edit); a tested one says "the job finished, tested (npm test, exit 0)". The
+     card's row says `unverified` (a Done or Waiting card; a Doing card whose report isn't applied
+     yet reads `report done, unverified`), and its details say why. A report with no commit or
+     PR and no test run in `tested` (none, `"n/a"`, `"none"`: an older report, a research job)
+     shows nothing; `"read only"` and `"readonly"` count as `"read-only"`. `tested` may list
+     several runs, verified when all passed; a `command` may be a list of words. A card applied
+     before 0.18.0 shows nothing either, on its row and in its details, and its report doesn't
+     apply again. A new round (`job-start`) clears it until its report.
    - A card with open cards under it (`--parent`: its checks, its sub-tasks) is never closed or
      made a question by a report: it stays in Doing with the report stored on it, and you get a
      `[job note]` naming the report's status and the open cards. Move or edit it once they are done.
@@ -1201,6 +1216,27 @@ with buttons (`needs_user: [{ "ask", "options", "suggest" }]`) that passes the c
 card as it is, with no note (0.14.0).
 
 `lint` lists the open cards that fail, for cards written before the check.
+
+**No secrets on a card** (0.18.0). A card reaches the pane, the coordinator's session and
+Telegram, so `add`, `edit`, `move`, `now`, `job-start`, `not-run` and `tell` refuse text that
+looks like a secret, in any text they are given (title, description, question, button labels,
+status line, the note): a private key, an AWS access key, a GitHub, Anthropic, Slack or
+Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`, `token=` or
+`api_key=` (or `:`) with a real value, markdown around it or not (`` password: `…` ``,
+`**password**: …`, `**DB password:** …`). The refusal exits 2 and names the field and the kind, never the text;
+`--allow-wording` doesn't change it. It reads the text as the card would store it, without
+format characters (a soft hyphen or zero-width space can't split a token). Not a secret: a git
+hash (7 to 10 or 40 hex), a UUID, a date, a version, `${VAR}`, `$VAR`, `<placeholder>`,
+`****`, an `op://` reference, `os.environ/…`, `secrets.…`, an AWS ARN, a variable's name
+(`ANTHROPIC_API_KEY`), a property (`config.db_password`), a function call, a secret's name
+after `secret:` (`secret: prod/db-credentials`; after `passphrase:` the same shape is the
+passphrase), a file path, AWS's documented example key, or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
+1Password: Service-Accounts-Vault", "Deploy token: 1Password (Dev vault)").
+`job-report` never refuses: a `summary`, `needs_user` entry or note that holds one is shown as
+"(hidden: looked like a secret)" on the card, in its details and in the notes (the report file
+is left as it is), and the coordinator gets a `[job note]` naming the fields. The Stop hook's
+`[job finished]` / `[job waiting]` line hides one the same way, also after it tidies the
+markdown away.
 
 ## The store
 
