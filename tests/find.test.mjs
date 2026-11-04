@@ -81,6 +81,25 @@ test("find: every project's cards, Done and archived too, most words first; the 
   }
 })
 
+test("find: a line with a secret is hidden whole, even when the part shown would cut the secret short", () => {
+  const t = setup()
+  try {
+    const token = ["gh", "p_", "Ab3dE6gH9jKm2nP5qR8sT1vW4yZ7aC0eF3hJ6kL"].join("")
+    const report = join(t.root, "report.json")
+    writeFileSync(report, JSON.stringify({ status: "done", summary: `snmpwalk ${"x".repeat(70)} ${token} rotated` }))
+    t.ok(t.sfc, "2026-11-03T16:00:00Z", "job-start", "snmp-docs", "--title", "SNMP docs: write", "--report", report, "--desc", "Docs.")
+    // An archived card from before the screen, with one in its title.
+    mkdirSync(join(t.store, "archive"), { recursive: true })
+    writeFileSync(join(t.store, "archive", "2026-09.jsonl"), `${JSON.stringify({ id: 50, project: "x", title: `snmpwalk key ${token}`, column: "done", since: "2026-09-01T10:00:00Z" })}\n`)
+    const out = t.ok(t.ai, "2026-11-04T16:05:00Z", "find", "snmpwalk")
+    assert.match(out, /^ {4}report: \(hidden: looked like a secret\)$/m)
+    assert.match(out, /^#50 · [^\n]*· \(hidden: looked like a secret\)$/m)
+    assert.equal(out.includes(token.slice(0, 20)), false, out)
+  } finally {
+    t.done()
+  }
+})
+
 test("find: at most 20 cards, then how many more; a long line is cut around its match", () => {
   const items = Array.from({ length: 25 }, (_, i) => ({ id: i + 1, title: `Card ${i + 1}: snmp`, updated: `2026-11-0${1 + (i % 3)}T10:00:00Z` }))
   const hits = findCards(items, ["snmp"])

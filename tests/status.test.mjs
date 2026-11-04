@@ -347,9 +347,9 @@ test("hooks: a line job-start made old (a check started under it, a Done card st
 
 test("lint: a card that points to a file in a temporary folder warns (exit 0), in each field; gone files say so", () => {
   const t = setup()
+  // The test's folder is a temporary one too: this file is there, for now.
+  const kept = join(realpathSync("/tmp"), `board-lint-${process.pid}.md`)
   try {
-    // The test's folder is a temporary one too: this file is there, for now.
-    const kept = join(realpathSync("/tmp"), `board-lint-${process.pid}.md`)
     writeFileSync(kept, "x")
     t.ok("2026-10-30T10:00:00Z", "add", "todo", "Login fix: build", "--desc", "Brief: /tmp/claude-0/x/scratchpad/login-brief.md (the plan).\nNotes: ~/notes/tmp/a.md and ./tmp/b.md are fine.")
     t.ok("2026-10-30T10:00:00Z", "add", "todo", "Export to CSV", "--desc", `The plan is in ${kept}.`)
@@ -361,8 +361,8 @@ test("lint: a card that points to a file in a temporary folder warns (exit 0), i
     assert.match(r.stdout, /card 2 .*\n  warn the description says "(?:\/private)?\/tmp\/board-lint-\d+\.md", a file in a temporary folder, which a restart deletes: /)
     assert.match(r.stdout, /\n  warn the status line says "\/private\/tmp\/job\/report\.json", a file in a temporary folder, gone already/)
     assert.match(r.stdout, /0 of 2 open cards fail the wording check \(2 more with a warning only\)/)
-    rmSync(kept)
   } finally {
+    rmSync(kept, { force: true })
     t.done()
   }
 })

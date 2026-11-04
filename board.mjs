@@ -9486,8 +9486,10 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           const name = names.get(item.id)?.ref
           const where = item.archived ? `done ${shortTime(item.since, now)}, archived` : item.column === "done" ? `done ${shortTime(item.since, now)}` : label(item.column)
           const parent = item.parent != null ? ` · for #${item.parent}${byId.get(item.parent) ? ` ${shortTitle(byId.get(item.parent).title)}` : ""}` : ""
-          out(`#${item.id}${name ? ` (${name})` : ""} · ${where} · ${tagOf(state, item.project) || "?"}${parent} · ${clean(item.title)}${of > 1 ? `  [${count} of ${of} words]` : ""}`)
-          if (line && field !== "title") out(`    ${field}: ${hideSecret(findSnippet(line, at))}`)
+          // Each line is screened whole, before it is cut: a cut token no longer looks like one.
+          // (An archived card from before 0.18.0, or a report, was never refused one.)
+          out(`#${item.id}${name ? ` (${name})` : ""} · ${where} · ${tagOf(state, item.project) || "?"}${parent} · ${hideSecret(clean(item.title))}${of > 1 ? `  [${count} of ${of} words]` : ""}`)
+          if (line && field !== "title") out(`    ${field}: ${secretsIn(line).length ? HIDDEN_SECRET : findSnippet(line, at)}`)
         }
         if (hits.length > FIND_MAX) out(`+${plural(hits.length - FIND_MAX, "more card")}: add a word to narrow it`)
         return 0
