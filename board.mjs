@@ -14,7 +14,10 @@
 //                           the cards under it until they are done; under a card whose title's
 //                           action says deploy: "waits for the deploy on #ID", and ID "deploys N")
 //   move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]
-//                           <ref> is an item id or a job slug. A new question (--ask) needs
+//                           <ref> is an item id, a job slug or a sub-card's name: a check or
+//                           review made for a card (--parent) is shown and taken as its
+//                           parent's number and kind ("500 · review (511)", ref 500-review, the
+//                           second 500-review2; 0.19.0). A new question (--ask) needs
 //                           --desc with a line that starts "Now:" in the same call (or a current
 //                           status line), and a command the user must run goes on the card too
 //                           (see edit)
@@ -976,6 +979,8 @@ export function scopeOf(state, project, me, agents = null) {
 
 export function findItem(state, ref, me = null) {
   const text = String(ref ?? "")
+  // A sub-card by its parent and kind (0.19.0): "500-review", "500-check2".
+  if (isSubRef(text)) return findSubCard(state.items, text)
   if (/^\d+$/.test(text)) {
     const item = state.items.find((i) => i.id === Number(text))
     if (!item) throw new Error(`no item ${text} on the board`)
@@ -1949,6 +1954,65 @@ export function deploysTitle(title) {
   return /\bdeploy(?:s|ing)?\b/i.test(action)
 }
 
+// --- sub-card names (0.19.0): "500 · review (511)" ------------------------------------------------
+//
+// A check or a review made for a card (--parent) is shown as its parent's number and its kind,
+// its own number kept beside it: "500 · review (511)", the second one "500 · review2 (515)".
+// Commands take "500-review" (and "500-check", "500-review2") as well as 511. The kind comes from
+// the title's last ": <action>" when it starts so ("…: check", "…: second review"), else the job's slug
+// ("board-find-review"). Counted among the cards on the board (Done ones of the last 7 days
+// included; an archived one no longer counts).
+
+// The action is the kind, with one word before it at most: "check", "second review", "re-check";
+// not "built — in independent review", which says where it stands.
+const SUB_KIND = /^(?:\w+[- ])?(review|check)\b/i
+const SUB_REF = /^(\d+)-(review|check)(\d*)$/i
+
+/** A card's kind as a sub-card: "review", "check", or "" (no parent, or neither in its title's action or its job). */
+export function subKind(item) {
+  if (item?.parent == null) return ""
+  const title = clean(item.title)
+  const action = title.includes(": ") ? title.slice(title.lastIndexOf(": ") + 2) : ""
+  const kind = SUB_KIND.exec(action)?.[1] || /(?:^|[-_])(review|check)(?:\d*)(?=[-_]|$)/.exec(clean(item.job))?.[1] || ""
+  return kind.toLowerCase()
+}
+
+/**
+ * The sub-card names on the board: id → { parent, kind, n, ref ("500-review2"), label
+ * ("500 · review2 (515)") }, numbered by id among the cards of the same parent and kind.
+ */
+export function subNames(items) {
+  const groups = new Map()
+  for (const item of [...(items || [])].sort((a, b) => a.id - b.id)) {
+    const kind = subKind(item)
+    if (!kind || !Number.isSafeInteger(item.parent)) continue
+    const key = `${item.parent}-${kind}`
+    groups.set(key, [...(groups.get(key) || []), item])
+  }
+  const names = new Map()
+  for (const list of groups.values()) {
+    list.forEach((item, i) => {
+      const name = `${item.parent}-${subKind(item)}${i ? i + 1 : ""}`
+      const kind = name.slice(String(item.parent).length + 1)
+      names.set(item.id, { parent: item.parent, kind, n: i + 1, ref: name, label: `${item.parent} · ${kind} (${item.id})` })
+    })
+  }
+  return names
+}
+
+/** Whether `ref` names a sub-card ("500-review", "500-check2"). */
+export const isSubRef = (ref) => SUB_REF.test(String(ref ?? "").trim())
+
+/** The card a sub-card name stands for ("500-review2"), else throws (naming what is under that card). */
+export function findSubCard(items, ref) {
+  const [, parent, kind, nth] = SUB_REF.exec(String(ref).trim())
+  const want = `${parent}-${kind.toLowerCase()}${Number(nth) > 1 ? Number(nth) : ""}`
+  const names = subNames(items)
+  for (const [id, name] of names) if (name.ref === want) return items.find((i) => i.id === id)
+  const under = [...names.values()].filter((n) => String(n.parent) === parent).map((n) => `${n.ref} (${n.label.split("(")[1]}`)
+  throw new Error(`no ${kind.toLowerCase()}${Number(nth) > 1 ? ` number ${Number(nth)}` : ""} under card ${parent} on the board${under.length ? ` (it has ${under.join(", ")})` : ""}`)
+}
+
 /** The open cards anywhere under `item` (children, their children, …), by id. */
 export function waitingOn(state, item) {
   const out = []
@@ -2017,8 +2081,8 @@ function clearReady(item) {
  * itself or a card under it (no loops). A parent that was ready to resume waits again.
  */
 function setParent(state, item, ref) {
-  if (!/^\d+$/.test(String(ref ?? "").trim())) throw usage(`--parent takes a card's id, not "${clean(ref)}"`)
-  const id = Number(String(ref).trim())
+  if (!/^\d+$/.test(String(ref ?? "").trim()) && !isSubRef(ref)) throw usage(`--parent takes a card's id (or a sub-card's name, 500-review), not "${clean(ref)}"`)
+  const id = isSubRef(ref) ? findSubCard(state.items, ref).id : Number(String(ref).trim())
   const parent = state.items.find((i) => i.id === id)
   if (!parent) throw new Error(`no item ${id} on the board`)
   if (parent.column === "done") throw usage(`${id} is done: a card can only be made for an open card`)
@@ -2635,9 +2699,13 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
   // Parents and children are looked up among every card (`links`: ls draws a scope of them).
   const all = { items: links || state.items }
   const sorted = [...state.items].sort(byOrder)
+  // A check or review under a card: its parent's number and its kind (0.19.0), from every card.
+  const names = subNames(all.items)
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
+    const name = names.get(item.id)
+    if (name) [entry.subName, entry.subRef] = [name.label, name.ref]
     // A card ready to resume shows how long since it got ready.
     if (entry.ready) entry.age = now - new Date(entry.ready)
     // Its status line, out of date when a card above or under it changed since it was written (0.13.0).
@@ -3465,13 +3533,15 @@ const barOf = (entry, ui) => (entry.live === "working" && Number.isInteger(ui.fr
 function card(entry, column, width, idWidth, descMax, ui = {}) {
   // The project's tag after the id; the title and the body start after it.
   const tag = tagSegs(ui)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag) - segWidth(subSegs(entry, ui)), idWidth, 20)
+  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
   const base = idWidth + 1 + segWidth(tag)
   const blocked = entry.live === "blocked"
-  const mark = entry.id == null ? "•" : String(entry.id)
   // A sub-task straight under its parent's card (nestView): "  ↳ 279  title", its id moved in
   // two cells right of where its parent's title starts, so it reads as inside the parent; its
   // whole card is indented as far.
-  const sub = subSegs(entry, ui)
+  const sub = subSegs(entry, ui, mark)
   const indent = { t: " ".repeat(base + segWidth(sub)) }
   const inner = Math.max(4, width - textWidth(indent.t))
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
@@ -3512,13 +3582,15 @@ const STALE_ROW_TEXT = "status out of date"
 const START_ROW_TEXT = "starts without asking"
 function cardRow(entry, column, width, idWidth, ui = {}) {
   const blocked = entry.live === "blocked"
-  const mark = entry.id == null ? "•" : String(entry.id)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - 1 - idWidth - 3 - segWidth(tagSegs(ui)) - segWidth(subSegs(entry, ui)), idWidth, 30)
+  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
   // "»": a queued card the user marked "start without asking" (0.15.0).
   const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : entry.startMarked ? { t: "»", s: "state-queue" } : { t: " " }
   const tag = tagSegs(ui)
   // A sub-task under its parent (nestView): its id moves in, after a ↳ two cells right of where
   // its parent's title starts (deeper ones two more), so it reads as inside the parent.
-  const sub = subSegs(entry, ui)
+  const sub = subSegs(entry, ui, mark)
   // Selected, only its id is highlighted where it is drawn: a sub-task's empty id column stays plain.
   const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, sub.length ? { t: " ".repeat(idWidth) } : { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
   const base = 1 + idWidth + 3 + segWidth(tag)
@@ -3570,8 +3642,20 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
 }
 
 // A sub-task's lead-in under its parent (nestView): "  ↳ 279  ", deeper ones two cells further.
-const subSegs = (entry, ui = {}) =>
-  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: entry.id == null ? "•" : String(entry.id), s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+const subSegs = (entry, ui = {}, mark = entry.id == null ? "•" : String(entry.id)) =>
+  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: mark, s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+
+/**
+ * What a card shows for its id: its number, or a sub-card's name ("500 · review (511)", 0.19.0)
+ * when, put there instead, it leaves `keep` cells or more for the rest (`room`: the cells left
+ * with the number, which takes `idWidth` cells, or its own width under a parent).
+ */
+function idMark(entry, room, idWidth, keep) {
+  const plain = entry.id == null ? "•" : String(entry.id)
+  if (!entry.subName) return plain
+  const more = textWidth(entry.subName) - (entry.depth ? textWidth(plain) : Math.max(idWidth, textWidth(plain)))
+  return room - Math.max(0, more) >= keep ? entry.subName : plain
+}
 
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
@@ -3593,11 +3677,14 @@ const entriesOf = (view, section) => (section === "done" ? view.doneToday : view
 /** A finished card: the title, with the time it was finished on the right. */
 function doneCard(entry, width, idWidth, ui = {}) {
   const tag = tagSegs(ui)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag), idWidth, 20)
+  idWidth = Math.max(idWidth, textWidth(mark))
   const indent = { t: " ".repeat(idWidth + 1 + segWidth(tag)) }
   const inner = Math.max(4, width - textWidth(indent.t))
   const titles = wrap(entry.title, inner, 2)
   const urls = urlsIn(entry.title)
-  const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
+  const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
   const at = entry.when || clockOf(new Date(entry.since))
   const room = inner - textWidth(titles.at(-1) || "") - textWidth(at)
   // 0.18.0: "unverified" before the time when its job's done report has no test proof, where it
@@ -4139,7 +4226,8 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   const buttonRows = {}
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
-  lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
+  // A sub-card says both its names (0.19.0): commands take either.
+  lines.push([ind, { t: `${statusLine(entry, now)}${entry.subRef ? ` · card ${entry.id}, also ${entry.subRef}` : ""}`, s: "dim" }])
   lines.push(...nowLines(entry, inner, ind, Infinity))
   if (entry.ready) lines.push([ind, { t: `Ready to resume${afterText(entry) ? `: ${afterText(entry)}` : ""}`, s: "ready" }])
   if (entry.unreviewed) lines.push([ind, { t: "Job finished — not reviewed yet: update the card", s: "unreviewed" }])
@@ -5693,7 +5781,7 @@ function herdrError(r) {
  * sent and to whom. Returns the lines to print.
  */
 export async function answerCard(file, ref, text, opts, { env, now, me }) {
-  if (!/^\d+$/.test(String(ref))) throw usage("answer takes a card's id")
+  if (!/^\d+$/.test(String(ref)) && !isSubRef(ref)) throw usage("answer takes a card's id (or a sub-card's name, 500-review)")
   const state = readBoard(file)
   const item = findItem(state, ref)
   if (item.column !== "waiting") throw new Error(`card ${item.id} isn't waiting on you (it is in ${label(item.column)}); nothing sent`)

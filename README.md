@@ -139,6 +139,17 @@ itself out again at once.
   DOING (1) ──────────────────────────────────────────────────
    1   Node health: goes live after… ready to resume  just now
   ```
+- **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
+  and its kind, its own number beside it: `500 · check (511)`, the second review under 500
+  `500 · review2 (515)`, where the number goes (after the `↳` when drawn under its parent; the
+  plain number when the pane is too narrow for the name). Its details say `card 511, also
+  500-check`. Every command that takes a card (`move`, `edit`, `done`, `now`, `answer`,
+  `--parent`, `--id`, …) takes `500-check`, `500-review`, `500-review2` as well as `511`. The kind
+  is the title's last `: <action>` when it starts with check or review (one word before it at
+  most: `: check`, `: second review`, `: re-check`; not `: built — in independent review`), else
+  the job's slug (`board-find-review`). Numbered by card number among the cards of the same
+  parent and kind on the board (Done cards of the last 7 days included; an archived one no
+  longer counts).
 - **QUEUE** (0.14.0): To do cards you want started next, without asking for each. Put a To do
   card in it from its details (`u`, or a click on `Add to the Queue`; `Back to To do` takes a
   queued one out) or with `move <ref> queue`; a card goes in last, and `Shift+↑` `Shift+↓` (or
@@ -646,7 +657,7 @@ and the flags it takes.
 | Command | What it does |
 |---|---|
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
-| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
+| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question or status line: a restart deletes it, so the card would point nowhere (it says when the file is gone already). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |

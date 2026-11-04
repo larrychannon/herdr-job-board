@@ -69,7 +69,8 @@ const section = (text, head, next) => {
   return lines.slice(from, to)
 }
 // The ids a section's rows start with (a top card's id, or a sub-task's after its ↳).
-const rowIds = (lines) => lines.slice(1).map((l) => l.match(/^[ ▸]\s*(\d+) |^[ ▸]\s+[!✓]?\s+↳ (\d+)  /)).filter(Boolean).map((m) => Number(m[1] || m[2]))
+// A sub-card's name stands for its number: "231 · review (279)" is 279 (0.19.0).
+const rowIds = (lines) => lines.slice(1).map((l) => l.match(/^[ ▸]\s*(?:\d+ · [a-z]+\d* \()?(\d+)\)? |^[ ▸]\s+[!✓]?\s+↳ (?:\d+ · [a-z]+\d* \()?(\d+)\)?  /)).filter(Boolean).map((m) => Number(m[1] || m[2]))
 
 test("a sub-task in another section keeps its own row there, 'for #231 …' under it, counted there; one in its parent's section is drawn under it", () => {
   for (const layout of ["compact", "inbox", "wide"]) {
@@ -86,6 +87,7 @@ test("a sub-task in another section keeps its own row there, 'for #231 …' unde
   const text = draw(board({ question: false })).text
   const doing = section(text, "DOING", "QUEUE")
   assert.match(doing[1], /^.231   Node health/)
+  // 60 cells: no room for its name ("231 · review (279)"), so its number.
   assert.match(doing[2], /^ {9}↳ 279  Node health fixes[^\n]* working +\d/)
   assert.equal(doing.length, 3)
   const todo = section(text, "TO DO", "DONE")
@@ -199,7 +201,7 @@ test("its parent done, or another project's in a view of one project: its own ro
   const state = board({ question: false })
   state.items.find((i) => i.id === 231).column = "done"
   const text = plain(draw(state).text)
-  assert.match(section(text, "DOING", "TO DO").join("\n"), /^.279   Node health fixes: in independen… working[^\n]*\n {7}for #231 Node health \(done\)$/m)
+  assert.match(section(text, "DOING", "TO DO").join("\n"), /^.231 · review \(279\)   Node health fixes… working[^\n]*\n {22}for #231 Node health \(done\)$/m)
   assert.match(section(text, "TO DO", "DONE").join("\n"), /^ 274   Phone alerts move: merged, not live yet[^\n]*\n {7}for #231 Node health \(done\)$/m)
   assert.match(text, /TO DO \(1\)/)
 

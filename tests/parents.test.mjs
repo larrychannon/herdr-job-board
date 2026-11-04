@@ -542,3 +542,41 @@ test("under a deploy card (0.14.0): the merged cards wait for the deploy, and th
     t.done()
   }
 })
+
+test("sub-card names (0.19.0): a check or review under a card shows as its parent's number and kind, its number kept; commands take either", () => {
+  const t = setup()
+  try {
+    t.ok(["add", "doing", "Test proof and secret screen, rules side: install", "--desc", "Install it."])
+    t.ok(["add", "doing", "Test proof and secret screen, rules side: check", "--parent", "1", "--desc", "A fresh check."])
+    t.ok(["add", "todo", "Test proof, rules side: second review", "--parent", "1", "--desc", "Again."])
+    t.ok(["add", "todo", "Test proof docs: write", "--parent", "1", "--job", "proof-review", "--desc", "By its job's slug."])
+    t.ok(["add", "todo", "Node health fixes: built — in independent review", "--parent", "1", "--desc", "Not a review: where it stands."])
+    t.ok(["add", "todo", "Export to CSV: check", "--desc", "No parent: no name."])
+    assert.deepEqual([2, 3, 4, 5, 6].map((id) => t.entry(id).subRef ?? ""), ["1-check", "1-review", "1-review2", "", ""])
+    assert.equal(t.entry(4).subName, "1 · review2 (4)")
+    // Rows: the name where the number goes; the title still lines up after it.
+    const rows = t.ls(100)
+    // Under its parent in the same section: after the ↳; in another section: its own row.
+    assert.match(rows, /^ {7}↳ 1 · check \(2\)  Test proof and secret screen, rules side: check/m)
+    assert.match(rows, /^ 1 · review2 \(4\)   Test proof docs: write/m)
+    assert.match(rows, /^ 5   Node health fixes/m)
+    // Commands take the name: now, edit, done; --parent too; the nth one as review2.
+    assert.match(t.ok(["now", "1-check", "checked: one fix first", "--only"]).stdout, /^2 now: checked: one fix first/m)
+    t.ok(["edit", "1-review2", "--desc", "By its job's slug, edited."])
+    assert.equal(t.item(4).desc, "By its job's slug, edited.")
+    t.ok(["done", "1-review"])
+    assert.equal(t.item(3).column, "done")
+    t.ok(["add", "todo", "Check notes: write", "--parent", "1-check", "--desc", "Under the check."])
+    assert.equal(t.item(7).parent, 2)
+    // The number is unchanged, and still works; a name that isn't there says what is.
+    t.ok(["done", "4"])
+    const r = t.run(["done", "1-review3"])
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /no review number 3 under card 1 on the board \(it has 1-check \(2\), 1-review \(3\), 1-review2 \(4\)\)/)
+    // The details say both names.
+    const lines = detailLines({ ...t.entry(2), column: "doing" }, 80, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
+    assert.match(lines, /· card 2, also 1-check/)
+  } finally {
+    t.done()
+  }
+})
