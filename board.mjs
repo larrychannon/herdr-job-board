@@ -51,6 +51,13 @@
 //                           still has a Now line next to a status line, on a plain line over
 //                           about three lines, and on a file in a temporary folder (/tmp,
 //                           /private/tmp, /var/folders: a restart deletes it)
+//   find <words…> [--project P]
+//                           every card with these words (any case, at a word's start), of every
+//                           project (or P's), Done and archived ones too: in its title,
+//                           description, question, status line, job, project or its report's
+//                           summary, needs and notes. Most words first, then the newest; each
+//                           with its column, project, parent and the line that matches. 20 at
+//                           most; exit 1 when none matches. Read-only. "Which card …?": this first
 //   done <ref>                                                 same as move <ref> done; when it was
 //                           the last open card under its parent, the parent is ready to resume
 //                           and goes on top of its section
@@ -7545,6 +7552,10 @@ One board for every project
 - Your cards: \`ls\` and \`json\` show this project's cards and the ones your pane owns (the front
   coordinator also gets cards no live coordinator can take); --project P or --project all for
   more. The prompt hook reminds you of the same Waiting cards and counts the others.
+- "Which card …?": \`find <words…>\` first: every project's cards, Done and archived ones too,
+  most words first, with the line that matches (no scripts over board.json).
+- A check or review made for a card shows as its parent's number and kind ("500 · check (511)");
+  every command takes 500-check, 500-review, 500-review2 as well as 511.
 - Another project's card that your pane doesn't own needs --project <its project> to change
   (exit 2 otherwise).
 
@@ -8577,6 +8588,7 @@ export const COMMAND_FLAGS = {
   "not-run": ["type", "run", "label", "project"],
   ls: ["width", "project", "done"],
   lint: ["project"],
+  find: ["project"],
   json: ["archive", "project"],
   import: ["dry-run", "keep-stale", "retag"],
   export: ["legacy", "project"],
@@ -8592,6 +8604,78 @@ export const COMMAND_FLAGS = {
   contract: [],
   guide: [],
   version: [],
+}
+
+// --- find (0.19.0): which card was that? ---------------------------------------------------------
+
+export const FIND_MAX = 20
+// A report file read for find: at most this big (a report is a few KB).
+const FIND_REPORT_MAX = 512 * 1024
+
+/** A report's text for find: its summary, needs_user and notes, as lines; [] when unreadable. */
+function reportLinesFor(path, cache) {
+  if (!path) return []
+  if (cache.has(path)) return cache.get(path)
+  let lines = []
+  try {
+    if (statSync(path).size <= FIND_REPORT_MAX) {
+      const report = readJson(path)
+      if (isRecord(report)) {
+        const texts = [report.summary, ...[].concat(report.needs_user ?? []).map((n) => (isRecord(n) ? n.ask : n)), ...[].concat(report.notes ?? [])]
+        lines = texts.filter((t) => typeof t === "string").flatMap((t) => t.split("\n")).map(clean).filter(Boolean)
+      }
+    }
+  } catch {}
+  cache.set(path, lines)
+  return lines
+}
+
+/**
+ * The cards that hold `words` (any case, each at the start of a word), best first: the most
+ * words matched, then the newest. Every card in `items` (the board's and the archive's, marked
+ * `archived`), in its title, description, question, status line, job, project (its tag and
+ * name, matched but not shown) and its report's summary, needs and notes. Each hit:
+ * { item, count, field, line } with the line that matches most of the words.
+ */
+export function findCards(items, words, { projects = {}, reports = true } = {}) {
+  const wanted = [...new Set(words.flatMap((w) => clean(w).toLowerCase().split(/\s+/)).map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean))]
+  if (!wanted.length) return []
+  const res = wanted.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu"))
+  const cache = new Map()
+  const hits = []
+  for (const item of items) {
+    const fields = [
+      ["title", [clean(item.title)]],
+      ["status line", [clean(item.now?.text)]],
+      ["question", cleanLines(item.ask).split("\n")],
+      ["description", cleanDesc(item.desc).split("\n")],
+      ["job", [clean(item.job)]],
+      ["report", reports ? reportLinesFor(item.report, cache) : []],
+    ]
+    const project = [clean(item.project), clean(projects[item.project]?.tag)].join(" ")
+    const found = new Set()
+    let best = null
+    for (const [field, lines] of fields) {
+      for (const line of lines) {
+        if (!line) continue
+        const n = res.filter((re, i) => re.test(line) && found.add(i)).length
+        if (n && (!best || n > best.n)) best = { field, line, n }
+      }
+    }
+    res.forEach((re, i) => re.test(project) && found.add(i))
+    if (!found.size) continue
+    hits.push({ item, count: found.size, field: best?.field || "project", line: best?.line || "", re: res.find((re) => re.test(best?.line || "")) })
+  }
+  const at = (i) => Date.parse(i.updated || i.since || i.created || "") || 0
+  return hits.sort((a, b) => b.count - a.count || at(b.item) - at(a.item) || b.item.id - a.item.id).map(({ re, ...h }) => ({ ...h, at: h.line ? h.line.search(re) : -1, of: wanted.length }))
+}
+
+/** A hit's line cut to about `max` characters around its first match, "…" where cut. */
+export function findSnippet(line, at, max = 100) {
+  const chars = [...line]
+  if (chars.length <= max) return line
+  const from = Math.max(0, Math.min(Math.max(0, at - 30), chars.length - max))
+  return `${from ? "…" : ""}${chars.slice(from + (from ? 1 : 0), from + max - 1).join("").trim()}${from + max - 1 < chars.length ? "…" : ""}`
 }
 
 /** The usage at the top of this file, without the comment marks. */
@@ -9379,6 +9463,33 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           return it
         })
         out(`${item.id} → waiting on you: ${item.title}\n  ask: ${item.ask}\n  ${pressed ? `the "${pressed}" button is gone from the card` : "no press on record: the card says a press can't run this"}${optionsOf(item).length ? ` (buttons left: ${optionsOf(item).map((o) => o.label).join(" · ")})` : ""}`)
+        return 0
+      }
+      case "find": {
+        // Read-only (0.19.0): which card holds these words, of every project, Done and archived too.
+        only(opts, command)
+        if (!rest.length) throw usage("usage: board.mjs find <words…> [--project P]")
+        const state = readBoard(file)
+        const project = opts.project === undefined || opts.project === "all" ? "" : projectRef(state, opts.project)
+        if (opts.project !== undefined && opts.project !== "all" && !project) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them)`)
+        const onBoard = new Set(state.items.map((i) => i.id))
+        const archived = readArchive(file).filter((a) => !onBoard.has(a.id)).map((a) => ({ ...a, archived: true }))
+        const all = [...state.items, ...archived]
+        const hits = findCards(all.filter((i) => !project || i.project === project), rest, { projects: state.projects })
+        if (!hits.length) {
+          out(`no card has ${rest.length > 1 ? "any of these words" : "this word"}: ${rest.map(clean).join(" ")}${project ? ` (in ${project}; --project all for every project)` : ""}`)
+          return 1
+        }
+        const names = subNames(state.items)
+        const byId = new Map(all.map((i) => [i.id, i]))
+        for (const { item, count, of, field, line, at } of hits.slice(0, FIND_MAX)) {
+          const name = names.get(item.id)?.ref
+          const where = item.archived ? `done ${shortTime(item.since, now)}, archived` : item.column === "done" ? `done ${shortTime(item.since, now)}` : label(item.column)
+          const parent = item.parent != null ? ` · for #${item.parent}${byId.get(item.parent) ? ` ${shortTitle(byId.get(item.parent).title)}` : ""}` : ""
+          out(`#${item.id}${name ? ` (${name})` : ""} · ${where} · ${tagOf(state, item.project) || "?"}${parent} · ${clean(item.title)}${of > 1 ? `  [${count} of ${of} words]` : ""}`)
+          if (line && field !== "title") out(`    ${field}: ${hideSecret(findSnippet(line, at))}`)
+        }
+        if (hits.length > FIND_MAX) out(`+${plural(hits.length - FIND_MAX, "more card")}: add a word to narrow it`)
         return 0
       }
       case "lint": {
