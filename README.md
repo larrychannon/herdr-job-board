@@ -1226,9 +1226,12 @@ Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`
 `**password**: …`, `**DB password:** …`). The refusal exits 2 and names the field and the kind, never the text;
 `--allow-wording` doesn't change it. It reads the text as the card would store it, without
 format characters (a soft hyphen or zero-width space can't split a token). Not a secret: a git
-hash (7 to 10 or 40 hex), a UUID, a date, a version, `${VAR}`, `$VAR`, `<placeholder>`,
+hash (7 or 40 hex; 8 to 12 hex after a secret's key is read as its value), a UUID, a date, a
+version (dotted numbers after `v` or a short lower-case name, with a mark such as `-rc.1` at
+most: `fw8.5.1s024`, not `Hunt3.14-love`), `${VAR}`, `$VAR`, `<placeholder>`,
 `****`, an `op://` reference, `os.environ/…`, `secrets.…`, an AWS ARN, a variable's name
-(`ANTHROPIC_API_KEY`), a property (`config.db_password`), a function call, a secret's name
+(`ANTHROPIC_API_KEY`; one word in capitals only when it ends like one, `DEPLOYTOKEN`, not a
+passphrase in capitals), a property (`config.db_password`), a function call, a secret's name
 after `secret:` (`secret: prod/db-credentials`; after `passphrase:` the same shape is the
 passphrase), a file path, AWS's documented example key, or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
 1Password: Service-Accounts-Vault", "Deploy token: 1Password (Dev vault)").

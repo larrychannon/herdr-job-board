@@ -421,6 +421,26 @@ test("secretsIn: a key right after a colon or after \"1Password:\" is read (.npm
   for (const v of [token, token.replace(/_/g, "")]) assert.equal(said.includes(v), false, said)
 })
 
+// Values the id and name exemptions used to let through (0.19.0): a passphrase in capitals, a
+// password with a version inside it, 8 to 12 hex after a secret's key.
+const LOOK_LIKE_IDS = [
+  ["pass", "word: ", "XKCDHORSE", "BATTERYSTAPLE"],
+  ["pass", "word: ", "Hunt3", ".14-love"],
+  ["pass", "word: ", "Pw1.2", "Secret-9"],
+  ["pass", "word: ", "deadbeef", "42"],
+  ["tok", "en=", "ab12cd", "34ef"],
+  ["tok", "en=", "7d3658ba", "4126"],
+].map((parts) => parts.join(""))
+
+test("secretsIn: a capitals-only passphrase, a password shaped like a version and 8 to 12 hex are secrets; a real version, git's short hash and a variable's name are not", () => {
+  for (const t of LOOK_LIKE_IDS) assert.equal(secretsIn(t).length, 1, t)
+  for (const t of ["firmware token=fw8.5.1s024", "token: v2.0.0-rc.1", "token: 1.2.3-beta.2", "token: 1.0.0+build.5", "api key: node18.2", "the reset token=4f2a91c link", "secret: DEPLOYTOKEN", "password: GITHUB_TOKEN"]) assert.deepEqual(secretsIn(t), [], t)
+  // Read in time linear in the value, however its dots and marks repeat.
+  const started = Date.now()
+  for (const v of [`1.${"2.".repeat(40000)}!`, `1.2${"-1".repeat(40000)}!`, `1.2-rc${".1".repeat(40000)}!`]) secretsIn(`password: ${v}`)
+  assert.ok(Date.now() - started < 1500, `${Date.now() - started} ms`)
+})
+
 test("secretsIn: where a secret is kept, an ARN, a variable name, a reference, the AWS example key, a short hash, a date, a version and the refusal's own advice are fine", () => {
   for (const t of FINE) assert.deepEqual(secretsIn(t), [], t)
 })

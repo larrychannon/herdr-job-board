@@ -1266,8 +1266,13 @@ const KEY_KIND = (word) => {
   return w.startsWith("pass") ? "a password" : w === "secret" ? "a secret" : w === "token" ? "a token" : w.startsWith("private") ? "a private key" : w.startsWith("access") ? "an access key" : "an API key"
 }
 
-// A variable that holds a secret, named in its place: ANTHROPIC_API_KEY, DEPLOYTOKEN.
-const variableName = (v) => /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]+$/.test(v)
+// A variable that holds a secret, named in its place: ANTHROPIC_API_KEY, DEPLOYTOKEN. One word
+// in capitals only when it ends like such a name: XKCDHORSEBATTERYSTAPLE is a passphrase.
+const variableName = (v) => /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]*(?:TOKEN|KEY|PASSWORD|PASSWD|PASS|SECRET|PAT)$/.test(v)
+// A version: dotted numbers after "v" or a short lower-case name (fw8.5.1s024, node18.2,
+// v2.0.0-rc.1), with a pre-release or build mark at most. Hunt3.14-love is a password.
+// Each mark starts at a "-", "+" or a letter, so a value is read one way only (linear time).
+const versionShape = (v) => /^(?:v|[a-z]{1,4})?\d+(?:\.\d+)+(?:[-+](?:(?:alpha|beta|rc|dev|pre|preview|snapshot|final|lts|build)(?:\.?\d+)?|[a-z]?\d+)|\.?(?:(?:alpha|beta|rc|dev|pre|preview|snapshot|final|lts|build)(?:\.?\d+)?|[a-z]\d+))*$/.test(v)
 // A path in lower case: prod/db, auth/v2/endpoints.
 const lowerPath = (v) => /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+\/?$/.test(v)
 
@@ -1294,9 +1299,10 @@ function realSecretValue(value, key = "") {
   // A variable's name, a secret's name, or code: a function call (token = "readTokenFromKeychain(name)")
   // or a property (config.db_password, input.last_message).
   if (variableName(v) || (/^_*secret_*$/i.test(key) && secretName(v)) || /^[A-Za-z_$][\w$.]*\(/.test(v) || (/^[a-z_$][a-z_$]*(?:\.[A-Za-z_$][A-Za-z_$]*)+$/.test(v) && !/\d/.test(v))) return false
-  // A git hash (short, 7 to 10 hex, or 40 hex), a UUID, a date or a version is an id, not a secret.
-  if (/^[0-9a-f]{7,10}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
-  if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || /^[a-z]{0,4}v?\d+(?:\.\d+)+[a-z0-9-]*$/i.test(v)) return false
+  // A git hash (git's short one, 7 hex, or 40 hex), a UUID, a date or a version is an id, not a
+  // secret. 8 to 12 hex is read as a value (deadbeef42): a hash after a secret's key is rare.
+  if (/^[0-9a-f]{7}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
+  if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || versionShape(v)) return false
   // A plain word ("rotated", "expired") is prose; a value has a digit, or is long.
   return /\d/.test(v) || v.length >= 16
 }
