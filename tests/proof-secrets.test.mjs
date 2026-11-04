@@ -364,6 +364,11 @@ const FINE = [
   "**Token:** expired, **Secret:** see 1Password, **API key:** ANTHROPIC_API_KEY",
   "`password:` see the vault",
   "it reads HIDDEN_SECRET : input.last_assistant_message, and password = config.db_password",
+  "Deploy token: 1Password (Dev vault)",
+  "**API token:** 1Password, vault Dev",
+  "1Password: Service-Accounts-Vault, 1Password: op://Dev/deploy/token",
+  ["access_key: AK", "IAIOSFODNN7EXAMPLE"].join(""),
+  "Read it from arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db/Pw-Xy12Ab",
   'A card reaches the pane, the coordinator and Telegram: leave the secret out and say where it is kept ("the deploy token in 1Password"). --allow-wording doesn\'t change this.',
 ]
 
@@ -381,6 +386,39 @@ test("secretsIn: a key and value inside markdown (backticks, bold, an env name) 
   assert.deepEqual(secretsIn(`Rotate ${head}​${tail}`), ["a GitHub token"])
   // An AWS key that isn't the documented example is still one.
   assert.deepEqual(secretsIn(FAKE.aws), ["an AWS access key"])
+})
+
+// A key=value right after ":" or after "1Password:" is still read (only an ARN's ":secret:" is skipped).
+const AFTER_COLON = {
+  npmrc: ["Add //registry.npmjs.org/:_auth", "Token=npm_", "Ab3dE6gH9jKm2nP5qR8sT1vW4yZ7aC0eF3hJ"].join(""),
+  github: ["//npm.pkg.github.com/:_auth", "Token=", "Ab3dE6gH9jKm2nP5qR8sT1vW4yZ7aC0eF3hJ6kL9"].join(""),
+  stored: ["Stored in 1Password: pass", "word=Xk29fLq8w"].join(""),
+  env: ["env:DB_PASS", "WORD=Xk29fLq8w"].join(""),
+  label: ["label:pass", "word=Xk29fLq8w"].join(""),
+}
+
+test("secretsIn: a key right after a colon or after \"1Password:\" is read (.npmrc auth lines, env:, label:)", () => {
+  assert.deepEqual(secretsIn(AFTER_COLON.npmrc), ["a token"])
+  assert.deepEqual(secretsIn(AFTER_COLON.github), ["a token"])
+  assert.deepEqual(secretsIn(AFTER_COLON.stored), ["a password"])
+  assert.deepEqual(secretsIn(AFTER_COLON.env), ["a password"])
+  assert.deepEqual(secretsIn(AFTER_COLON.label), ["a password"])
+  // The CLI refuses it, and the Stop hook hides it.
+  const s = setup()
+  try {
+    s.ok("add", "doing", "Package publish: set up", "--desc", "Publish the package to the registry.")
+    const before = s.hash()
+    for (const args of [["edit", "1", "--desc", `${AFTER_COLON.npmrc} to .npmrc`], ["now", "1", AFTER_COLON.stored]]) {
+      const r = s.run(...args)
+      assert.equal(r.status, 2, `${args[0]}: ${r.stderr}`)
+      assert.equal(s.hash(), before)
+    }
+  } finally {
+    s.done()
+  }
+  const token = AFTER_COLON.npmrc.split("=").at(-1)
+  const said = stopMessage("fix", { hook_event_name: "Stop", last_assistant_message: `${AFTER_COLON.npmrc} to .npmrc` }, null).text
+  for (const v of [token, token.replace(/_/g, "")]) assert.equal(said.includes(v), false, said)
 })
 
 test("secretsIn: where a secret is kept, an ARN, a variable name, a reference, the AWS example key, a short hash, a date, a version and the refusal's own advice are fine", () => {

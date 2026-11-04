@@ -34,7 +34,9 @@ Test proof in job reports; no secrets on a card.
   `$VAR` / `<placeholder>` / `****`, `op://`, `os.environ/`, `secrets.` and ARN references,
   variable names, properties (`config.db_password`), function calls, a secret's name after a
   bare `secret:` (only there: after `passphrase:` the same shape is the passphrase), file
-  paths, AWS's documented example key and "1Password: <vault>" are fine. `job-report` never
+  paths, AWS's documented example key, "1Password: <vault>" and "token: 1Password (Dev
+  vault)" are fine; a key right after a colon (`.npmrc`'s `:_authToken=…`) or after
+  "1Password:" is still read. `job-report` never
   refuses: a summary, `needs_user` entry or note with a secret shows as "(hidden: looked like a
   secret)" on the card, in the details and in the notes, and the coordinator gets a `[job
   note]` naming the fields (also for a plain `done` report, which otherwise sends none). The

@@ -1231,7 +1231,7 @@ hash (7 to 10 or 40 hex), a UUID, a date, a version, `${VAR}`, `$VAR`, `<placeho
 (`ANTHROPIC_API_KEY`), a property (`config.db_password`), a function call, a secret's name
 after `secret:` (`secret: prod/db-credentials`; after `passphrase:` the same shape is the
 passphrase), a file path, AWS's documented example key, or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
-1Password: Service-Accounts-Vault").
+1Password: Service-Accounts-Vault", "Deploy token: 1Password (Dev vault)").
 `job-report` never refuses: a `summary`, `needs_user` entry or note that holds one is shown as
 "(hidden: looked like a secret)" on the card, in its details and in the notes (the report file
 is left as it is), and the coordinator gets a `[job note]` naming the fields. The Stop hook's
