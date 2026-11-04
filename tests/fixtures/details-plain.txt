@@ -37,7 +37,7 @@ Checkout redesign mockup: approve
   What the job reported
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row 'Checkout, before and after'). It
   has 12 boards, before and after, e.g. Cart, Address and the payment step.
-── ↓ 11 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+── ↓ 12 more lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 120 columns =====
 Job board · all projects                                                                                           10:30
@@ -151,6 +151,7 @@ CSV export on the Orders page (PR #48): try it, then merge
 
   What the job reported
   CSV export is on the Orders page. Merged as https://github.com/example/app/pull/48 after review.
+  Unverified: no test run after the last edit.
   Links:
   PR #48      https://github.com/example/app/pull/48
   Dev server  http://localhost:3101/orders
@@ -159,7 +160,6 @@ CSV export on the Orders page (PR #48): try it, then merge
   ▸ More… (f or Enter)  checks, skips
 
   Added 08:00 · last changed 09:10
-
 ── end of card 4 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ===== card 1 · 88 columns =====
@@ -167,7 +167,7 @@ Job board · all projects · 2 need you                                         
 Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
-▸ 1 ! Checkout redesign mockup: approve                                       7 h 30 min
+▸ 1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min
       Now: the boards are up; your OK starts the build.
       12 before/after boards on the design canvas (page 'Checkout v2'). 6 small choices,
       each with a suggested answer.
@@ -201,14 +201,14 @@ Checkout redesign mockup: approve
 
   What the job reported
   Mockup of the new checkout is on the design canvas (page 'Checkout v2', title row
-── ↓ 14 more lines ─────────────────────────────────────────────────────────────────────
+── ↓ 15 more lines ─────────────────────────────────────────────────────────────────────
 
 ===== card 2 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
 Esc close · ↑↓ scroll · ←→ choose · c copy · t go to tab · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
-  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+  1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min
 ▸ 2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
       Live bug: a coupon plus a gift card takes the discount twice (e.g. order 1042 paid
       0.00 incl. shipping); refunds then go negative. Both stay wrong until fixed. Don't
@@ -249,7 +249,7 @@ Job board · all projects · 2 need you                                         
 Esc close · ↑↓ scroll · c copy · t go to tab · q quit
 
 WAITING ON YOU (2) ─────────────────────────────────────────────────────────────────────
-  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+  1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
 ▸ DOING (1) ────────────────────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ Job board · all projects · 2 need you                                         
 Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
 
 WAITING ON YOU (2) ─────────────────────────────────────────────────────────────────────
-  1 ! Checkout redesign mockup: approve                                       7 h 30 min
+  1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min
   2 ! Coupons AND gift cards discount an order twice: fix?                    7 h 47 min
 
 DOING (1) ──────────────────────────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ TO DO (3) ▾ ──────────────────────
   7   TODO-MARK Rotate the API keys                                           3 h 28 min
 
 ▸ DONE (7) ▾ ───────────────────────────────────────────────────────────────────────────
-▸ 4 ✓ CSV export on the Orders page (PR #48): try it, then merge                   09:10
+▸ 4 ✓ CSV export on the Orders page (PR #48): try it, then merge       unverified  09:10
  13 ✓ DONE-MARK shipped thing 6                                                    06:40
 ── card 4 ──────────────────────────────────────────────────────────────────────────────
 CSV export on the Orders page (PR #48): try it, then merge
@@ -316,6 +316,7 @@ CSV export on the Orders page (PR #48): try it, then merge
   What the job reported
   CSV export is on the Orders page. Merged as https://github.com/example/app/pull/48
   after review.
+  Unverified: no test run after the last edit.
   Links:
   PR #48      https://github.com/example/app/pull/48
   Dev server  http://localhost:3101/orders
@@ -323,6 +324,5 @@ CSV export on the Orders page (PR #48): try it, then merge
 
   ▸ More… (f or Enter)  checks, skips
 
-  Added 08:00 · last changed 09:10
-── end of card 4 ───────────────────────────────────────────────────────────────────────
+── ↓ 1 more line ───────────────────────────────────────────────────────────────────────
 

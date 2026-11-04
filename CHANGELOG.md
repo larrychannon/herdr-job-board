@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.18.0 · unreleased
+
+Test proof in job reports; no secrets on a card.
+
+- **Why**: a job that said "done" could have skipped its tests, and nothing on the card said so.
+  And cards reach the pane, the coordinator's session and Telegram, so a token pasted into a
+  card or a report went everywhere.
+- **Test proof**: a report from a job that changed files says which test or build it ran after
+  its last edit: `"tested": { "command": "npm test", "exit": 0, "after_last_edit": true }`, or
+  `"tested": "read-only"`. A `done` report with a commit or PR in `ids` and no `tested`, a
+  non-zero exit, or `after_last_edit` not `true`, is unverified: the card still moves as
+  before, and its status line says "the job finished, unverified: no test run after the last
+  edit" (or the failed run, or the run before the last edit); a tested one says "the job
+  finished, tested (npm test, exit 0)". The row says `unverified` (Done and Waiting cards;
+  `report done, unverified` for a Doing card whose report isn't applied yet), the details say
+  why, and `job-report` prints it. A report with no commit or PR and no `tested` (older reports,
+  research jobs) shows nothing, and keeps its repeat key, so a report applied before doesn't
+  apply again; a report rewritten to add `tested` does. A new round (`job-start`) clears it.
+- **No secrets**: `add`, `edit`, `move`, `now`, `job-start`, `not-run` and `tell` refuse text
+  that looks like a private key, an AWS access key, a GitHub, Anthropic, Slack or Telegram-bot
+  token, a Slack webhook, a bearer token, or a `password=` / `secret=` / `token=` / `api_key=`
+  with a real value: exit 2, naming the field and the kind, never the text, before any other
+  check can echo it; `--allow-wording` doesn't change it. Git hashes, UUIDs, `${VAR}` / `$VAR`
+  / `<placeholder>` / `****`, `op://` references and file paths are fine. `job-report` never
+  refuses: a summary, `needs_user` entry or note with a secret shows as "(hidden: looked like a
+  secret)" on the card, in the details and in the notes, and the coordinator gets a `[job
+  note]` naming the fields (also for a plain `done` report, which otherwise sends none). The
+  Stop hook's `[job finished]` / `[job waiting]` line hides one the same way.
+- README (report fields, writing cards), help, agent guide. Version 0.18.0.
+
 ## 0.17.0 · unreleased
 
 One Now line per card; wrapped description lines hang under their text.
