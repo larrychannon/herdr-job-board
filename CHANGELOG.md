@@ -27,13 +27,14 @@ Test proof in job reports; no secrets on a card.
   that looks like a private key, an AWS access key, a GitHub, Anthropic, Slack or Telegram-bot
   token, a Slack webhook, a bearer token, or a `password=` / `secret=` / `token=` / `api_key=`
   with a real value, markdown around the key or the value too (`` password: `…` ``,
-  `**password**: …`, `` `API_TOKEN`=… ``): exit 2, naming the field and the kind, never the
+  `**password**: …`, `**DB password:** …`, `` `API_TOKEN`=… ``): exit 2, naming the field and the kind, never the
   text, before any other check can echo it; `--allow-wording` doesn't change it. The text is
   read without format characters (soft hyphen, zero-width space), as the card stores it, and in
   time linear in its length. Git hashes (7 to 10 or 40 hex), UUIDs, dates, versions, `${VAR}` /
   `$VAR` / `<placeholder>` / `****`, `op://`, `os.environ/`, `secrets.` and ARN references,
-  variable and secret names, file paths, AWS's documented example key and "1Password: <vault>"
-  are fine. `job-report` never
+  variable names, properties (`config.db_password`), function calls, a secret's name after a
+  bare `secret:` (only there: after `passphrase:` the same shape is the passphrase), file
+  paths, AWS's documented example key and "1Password: <vault>" are fine. `job-report` never
   refuses: a summary, `needs_user` entry or note with a secret shows as "(hidden: looked like a
   secret)" on the card, in the details and in the notes, and the coordinator gets a `[job
   note]` naming the fields (also for a plain `done` report, which otherwise sends none). The

@@ -1223,13 +1223,14 @@ looks like a secret, in any text they are given (title, description, question, b
 status line, the note): a private key, an AWS access key, a GitHub, Anthropic, Slack or
 Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`, `token=` or
 `api_key=` (or `:`) with a real value, markdown around it or not (`` password: `…` ``,
-`**password**: …`). The refusal exits 2 and names the field and the kind, never the text;
+`**password**: …`, `**DB password:** …`). The refusal exits 2 and names the field and the kind, never the text;
 `--allow-wording` doesn't change it. It reads the text as the card would store it, without
 format characters (a soft hyphen or zero-width space can't split a token). Not a secret: a git
 hash (7 to 10 or 40 hex), a UUID, a date, a version, `${VAR}`, `$VAR`, `<placeholder>`,
-`****`, an `op://` reference, `os.environ/…`, `secrets.…`, an AWS ARN, a variable or secret
-name (`ANTHROPIC_API_KEY`, `prod/db-credentials`), a file path, AWS's documented example key,
-or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
+`****`, an `op://` reference, `os.environ/…`, `secrets.…`, an AWS ARN, a variable's name
+(`ANTHROPIC_API_KEY`), a property (`config.db_password`), a function call, a secret's name
+after `secret:` (`secret: prod/db-credentials`; after `passphrase:` the same shape is the
+passphrase), a file path, AWS's documented example key, or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
 1Password: Service-Accounts-Vault").
 `job-report` never refuses: a `summary`, `needs_user` entry or note that holds one is shown as
 "(hidden: looked like a secret)" on the card, in its details and in the notes (the report file

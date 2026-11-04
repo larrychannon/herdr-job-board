@@ -1254,37 +1254,44 @@ const SECRET_SHAPES = [
   [/\bhooks\.slack\.com\/(?:services|workflows|triggers)\/[A-Za-z0-9_/-]{20,}/g, "a Slack webhook"],
   [/(?:(?<=\/bot)|(?<![\w:]))\d{8,10}:AA[A-Za-z0-9_-]{30,40}\b/g, "a Telegram bot token"],
   // "Bearer auth/v2/endpoints" is a path in prose, not a token.
-  [/\bBearer[ \t]+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{16,}=*/gi, "a bearer token", (m) => namedValue(m.replace(/^Bearer[ \t]+/i, ""))],
+  [/\bBearer[ \t]+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{16,}=*/gi, "a bearer token", (m) => lowerPath(m.replace(/^Bearer[ \t]+/i, ""))],
 ]
 // A key that names a secret, then = or :, then its value (quoted or not). Markdown may wrap the
-// key and the value: **password**: X, `API_TOKEN`=X, password: `X`. Not after ":" (an AWS ARN's
+// key and the value, the colon inside the marks or not: **password**: X, **DB password:** X,
+// `API_TOKEN`=X, password: `X`. Not after ":" (an AWS ARN's
 // ":secret:name" segment) and not "1Password" (the product, as in "it is in 1Password: <vault>").
-const SECRET_KEY = /(?<![\w:-])([\w-]*?(password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)_*)(?![\w-])["'`*]*[ \t]*[:=][ \t]*(["'`*]*)([^\s"'`*,;)\]}]+)/gi
+const SECRET_KEY = /(?<![\w:-])([\w-]*?(password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)_*)(?![\w-])["'`*]*[ \t]*[:=][*_`]*[ \t]*(["'`*]*)([^\s"'`*,;)\]}]+)/gi
 const KEY_KIND = (word) => {
   const w = word.toLowerCase()
   return w.startsWith("pass") ? "a password" : w === "secret" ? "a secret" : w === "token" ? "a token" : w.startsWith("private") ? "a private key" : w.startsWith("access") ? "an access key" : "an API key"
 }
 
-/**
- * Whether a value names something rather than being a secret: a variable (ANTHROPIC_API_KEY), a
- * lower-case name (release-notes-manager), or a path that starts with one (prod/db, auth/v2/x,
- * release-notes-manager/app-AbCdEf). A random secret has upper case and digits mixed in.
- */
-function namedValue(v) {
-  if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]+$/.test(v)) return true
-  if (/^[a-z]+(?:[-_.][a-z]+)*$/.test(v)) return true
-  if (v.includes("/")) return /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+\/?$/.test(v) || /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\//.test(v)
-  return false
-}
+// A variable that holds a secret, named in its place: ANTHROPIC_API_KEY, DEPLOYTOKEN.
+const variableName = (v) => /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]+$/.test(v)
+// A path in lower case: prod/db, auth/v2/endpoints.
+const lowerPath = (v) => /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+\/?$/.test(v)
 
-/** Whether the value given to a secret's key is a real value: not a placeholder, a reference, a name, a path, a hash, a date, a version or a word. */
-function realSecretValue(value) {
+/**
+ * Whether the value after a bare "secret:" is the secret's name, not the secret: a lower-case
+ * name (release-notes-manager), a lower-case path, or a path that starts with a name
+ * (release-notes-manager/app-AbCdEf). Only after "secret": after "passphrase" the same shape
+ * is a passphrase (correct-horse-battery-staple).
+ */
+const secretName = (v) => /^[a-z]+(?:[-_.][a-z]+)*$/.test(v) || lowerPath(v) || /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\//.test(v)
+
+/**
+ * Whether the value given to a secret's key is a real value: not a placeholder, a reference, a
+ * variable's name, a hash, a date, a version or a word. `key`: the key as written ("secret",
+ * "DB_PASSWORD").
+ */
+function realSecretValue(value, key = "") {
   const v = value.replace(/[.:]+$/, "")
   if (v.length < 6) return false
   if (/^(?:\$|<|\{|%|\[|\*|xx|\.\.\.|…|op:\/\/|~|\/|\.\.?\/|https?:\/\/|arn:|os\.environ|process\.env|env\.|secrets\.|vars\.)/i.test(v)) return false
   if (/^(.)\1+$/.test(v) || /^(?:null|none|undefined|true|false|redacted|hidden|example|changeme|your[\w-]*|my[\w-]*)$/i.test(v)) return false
-  // A name, or code: a function call (token = "readTokenFromKeychain(name)").
-  if (namedValue(v) || /^[A-Za-z_$][\w$.]*\(/.test(v)) return false
+  // A variable's name, a secret's name, or code: a function call (token = "readTokenFromKeychain(name)")
+  // or a property (config.db_password, input.last_message).
+  if (variableName(v) || (/^_*secret_*$/i.test(key) && secretName(v)) || /^[A-Za-z_$][\w$.]*\(/.test(v) || (/^[a-z_$][a-z_$]*(?:\.[A-Za-z_$][A-Za-z_$]*)+$/.test(v) && !/\d/.test(v))) return false
   // A git hash (short, 7 to 10 hex, or 40 hex), a UUID, a date or a version is an id, not a secret.
   if (/^[0-9a-f]{7,10}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
   if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || /^[a-z]{0,4}v?\d+(?:\.\d+)+[a-z0-9-]*$/i.test(v)) return false
@@ -1310,7 +1317,7 @@ export function secretsIn(text) {
     if (!kinds.includes(kind)) kinds.push(kind)
   }
   for (const [re, kind, notSecret] of SECRET_SHAPES) for (const m of s.matchAll(re)) if (!notSecret?.(m[0])) note(m.index, m.index + m[0].length, kind)
-  for (const m of s.matchAll(SECRET_KEY)) if (!/^1password$/i.test(m[1]) && realSecretValue(m[4])) note(m.index, m.index + m[0].length, KEY_KIND(m[2]))
+  for (const m of s.matchAll(SECRET_KEY)) if (!/^1password$/i.test(m[1]) && realSecretValue(m[4], m[1])) note(m.index, m.index + m[0].length, KEY_KIND(m[2]))
   return kinds
 }
 

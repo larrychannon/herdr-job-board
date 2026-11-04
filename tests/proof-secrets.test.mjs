@@ -338,6 +338,9 @@ const MARKDOWN = {
   bold: ["**pass", "word**: ", "Xk29fLq8w"].join(""),
   envName: ["- `API_TO", "KEN`=", "q8w7e6r5t4y3"].join(""),
   underscores: ["__pass", "word__: ", "Xk29fLq8w"].join(""),
+  colonInBold: ["**DB pass", "word:** ", "Xk29fLq8w"].join(""),
+  colonInBackticks: ["`pass", "word:` ", "Xk29fLq8w"].join(""),
+  colonInItalics: ["_pass", "word:_ ", "Xk29fLq8w"].join(""),
 }
 const BARE = ["Xk29fLq8w", "q8w7e6r5t4y3"]
 
@@ -358,6 +361,9 @@ const FINE = [
   "the Slack token: see vars.SLACK_TOKEN in the repo settings, and secret: secrets.DEPLOY_KEY",
   'const token = "readTokenFromKeychain(name)" in the setup script',
   "password: DB_PASSWORD_PROD, rotated 2026-11-04",
+  "**Token:** expired, **Secret:** see 1Password, **API key:** ANTHROPIC_API_KEY",
+  "`password:` see the vault",
+  "it reads HIDDEN_SECRET : input.last_assistant_message, and password = config.db_password",
   'A card reaches the pane, the coordinator and Telegram: leave the secret out and say where it is kept ("the deploy token in 1Password"). --allow-wording doesn\'t change this.',
 ]
 
@@ -366,6 +372,10 @@ test("secretsIn: a key and value inside markdown (backticks, bold, an env name) 
   assert.deepEqual(secretsIn(MARKDOWN.bold), ["a password"])
   assert.deepEqual(secretsIn(MARKDOWN.envName), ["a token"])
   assert.deepEqual(secretsIn(MARKDOWN.underscores), ["a password"])
+  for (const t of [MARKDOWN.colonInBold, MARKDOWN.colonInBackticks, MARKDOWN.colonInItalics]) assert.deepEqual(secretsIn(t), ["a password"], t)
+  // A lower-case name is only a name after a bare "secret:"; after "passphrase" it is the secret.
+  assert.deepEqual(secretsIn(["pass", "phrase: ", "correct-horse-battery-staple"].join("")), ["a password"])
+  assert.deepEqual(secretsIn(["client_", "secret: ", "correct-horse-battery-staple"].join("")), ["a secret"])
   const [head, tail] = [FAKE.github.slice(0, 20), FAKE.github.slice(20)]
   assert.deepEqual(secretsIn(`Rotate ${head}­${tail}: do it`), ["a GitHub token"])
   assert.deepEqual(secretsIn(`Rotate ${head}​${tail}`), ["a GitHub token"])
