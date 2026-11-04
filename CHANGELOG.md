@@ -16,18 +16,29 @@ Test proof in job reports; no secrets on a card.
   finished, tested (npm test, exit 0)". The row says `unverified` (Done and Waiting cards;
   `report done, unverified` for a Doing card whose report isn't applied yet), the details say
   why, and `job-report` prints it. A report with no commit or PR and no `tested` (older reports,
-  research jobs) shows nothing, and keeps its repeat key, so a report applied before doesn't
-  apply again; a report rewritten to add `tested` does. A new round (`job-start`) clears it.
+  research jobs) shows nothing, nor does one whose `tested` is no run (`"n/a"`, `"none"`);
+  `"read only"` / `"readonly"` count as `"read-only"`. `tested` may list several runs (verified
+  when all passed), and a `command` may be a list of words. Repeat keys are now `r3-` and
+  include the proof, so a report rewritten to add `tested` applies again; an `r2-` key (0.12.0
+  to 0.17.0) still counts for the same report, so a report applied before the upgrade never
+  applies again (a card closed since stays closed). A card applied before 0.18.0 has no proof:
+  its row and its details both say nothing. A new round (`job-start`) clears it.
 - **No secrets**: `add`, `edit`, `move`, `now`, `job-start`, `not-run` and `tell` refuse text
   that looks like a private key, an AWS access key, a GitHub, Anthropic, Slack or Telegram-bot
   token, a Slack webhook, a bearer token, or a `password=` / `secret=` / `token=` / `api_key=`
-  with a real value: exit 2, naming the field and the kind, never the text, before any other
-  check can echo it; `--allow-wording` doesn't change it. Git hashes, UUIDs, `${VAR}` / `$VAR`
-  / `<placeholder>` / `****`, `op://` references and file paths are fine. `job-report` never
+  with a real value, markdown around the key or the value too (`` password: `…` ``,
+  `**password**: …`, `` `API_TOKEN`=… ``): exit 2, naming the field and the kind, never the
+  text, before any other check can echo it; `--allow-wording` doesn't change it. The text is
+  read without format characters (soft hyphen, zero-width space), as the card stores it, and in
+  time linear in its length. Git hashes (7 to 10 or 40 hex), UUIDs, dates, versions, `${VAR}` /
+  `$VAR` / `<placeholder>` / `****`, `op://`, `os.environ/`, `secrets.` and ARN references,
+  variable and secret names, file paths, AWS's documented example key and "1Password: <vault>"
+  are fine. `job-report` never
   refuses: a summary, `needs_user` entry or note with a secret shows as "(hidden: looked like a
   secret)" on the card, in the details and in the notes, and the coordinator gets a `[job
   note]` naming the fields (also for a plain `done` report, which otherwise sends none). The
-  Stop hook's `[job finished]` / `[job waiting]` line hides one the same way.
+  Stop hook's `[job finished]` / `[job waiting]` line hides one the same way, and checks again
+  after it tidies the markdown away.
 - README (report fields, writing cards), help, agent guide. Version 0.18.0.
 
 ## 0.17.0 · unreleased

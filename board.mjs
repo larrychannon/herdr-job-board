@@ -1242,50 +1242,75 @@ export function numberedIn(text) {
 // secret: a git hash, a UUID, ${VAR} / $VAR / <placeholder> / ****, an op:// reference, a path.
 
 // Each kind, in order; a match inside an earlier one is the same secret. Tokens with a fixed shape
-// first, then a value given to a key that names a secret ("password=…").
+// first, then a value given to a key that names a secret ("password=…"). A shape's third entry,
+// when there is one, says a match is no secret after all (AWS's documented example key).
 const SECRET_SHAPES = [
   [/-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g, "a private key"],
-  [/\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b/g, "an AWS access key"],
+  [/\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b/g, "an AWS access key", (m) => /(?:EXAMPLE|^.{4}X+)$/.test(m)],
   [/\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, "a GitHub token"],
   [/\bgithub_pat_[A-Za-z0-9_]{50,}\b/g, "a GitHub token"],
   [/\bsk-ant-[A-Za-z0-9_-]{20,}/g, "an Anthropic API key"],
   [/\bxox[abposre]-[A-Za-z0-9-]{10,}/g, "a Slack token"],
   [/\bhooks\.slack\.com\/(?:services|workflows|triggers)\/[A-Za-z0-9_/-]{20,}/g, "a Slack webhook"],
   [/(?:(?<=\/bot)|(?<![\w:]))\d{8,10}:AA[A-Za-z0-9_-]{30,40}\b/g, "a Telegram bot token"],
-  [/\bBearer[ \t]+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{16,}=*/gi, "a bearer token"],
+  // "Bearer auth/v2/endpoints" is a path in prose, not a token.
+  [/\bBearer[ \t]+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{16,}=*/gi, "a bearer token", (m) => namedValue(m.replace(/^Bearer[ \t]+/i, ""))],
 ]
-// A key that names a secret, then = or :, then its value (quoted or not).
-const SECRET_KEY = /(?<![\w-])([\w-]*?(password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key))(?![\w-])["']?[ \t]*[:=][ \t]*(["']?)([^\s"'`,;)\]}]+)/gi
+// A key that names a secret, then = or :, then its value (quoted or not). Markdown may wrap the
+// key and the value: **password**: X, `API_TOKEN`=X, password: `X`. Not after ":" (an AWS ARN's
+// ":secret:name" segment) and not "1Password" (the product, as in "it is in 1Password: <vault>").
+const SECRET_KEY = /(?<![\w:-])([\w-]*?(password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)_*)(?![\w-])["'`*]*[ \t]*[:=][ \t]*(["'`*]*)([^\s"'`*,;)\]}]+)/gi
 const KEY_KIND = (word) => {
   const w = word.toLowerCase()
   return w.startsWith("pass") ? "a password" : w === "secret" ? "a secret" : w === "token" ? "a token" : w.startsWith("private") ? "a private key" : w.startsWith("access") ? "an access key" : "an API key"
 }
 
-/** Whether the value given to a secret's key is a real value: not a placeholder, a reference, a path, a hash or a word. */
+/**
+ * Whether a value names something rather than being a secret: a variable (ANTHROPIC_API_KEY), a
+ * lower-case name (release-notes-manager), or a path that starts with one (prod/db, auth/v2/x,
+ * release-notes-manager/app-AbCdEf). A random secret has upper case and digits mixed in.
+ */
+function namedValue(v) {
+  if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]+$/.test(v)) return true
+  if (/^[a-z]+(?:[-_.][a-z]+)*$/.test(v)) return true
+  if (v.includes("/")) return /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+\/?$/.test(v) || /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\//.test(v)
+  return false
+}
+
+/** Whether the value given to a secret's key is a real value: not a placeholder, a reference, a name, a path, a hash, a date, a version or a word. */
 function realSecretValue(value) {
   const v = value.replace(/[.:]+$/, "")
   if (v.length < 6) return false
-  if (/^(?:\$|<|\{|%|\[|\*|xx|\.\.\.|…|op:\/\/|~|\/|\.\.?\/|https?:\/\/)/i.test(v)) return false
+  if (/^(?:\$|<|\{|%|\[|\*|xx|\.\.\.|…|op:\/\/|~|\/|\.\.?\/|https?:\/\/|arn:|os\.environ|process\.env|env\.|secrets\.|vars\.)/i.test(v)) return false
   if (/^(.)\1+$/.test(v) || /^(?:null|none|undefined|true|false|redacted|hidden|example|changeme|your[\w-]*|my[\w-]*)$/i.test(v)) return false
-  // A git hash (40 hex) or a UUID is an id, not a secret.
-  if (/^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
+  // A name, or code: a function call (token = "readTokenFromKeychain(name)").
+  if (namedValue(v) || /^[A-Za-z_$][\w$.]*\(/.test(v)) return false
+  // A git hash (short, 7 to 10 hex, or 40 hex), a UUID, a date or a version is an id, not a secret.
+  if (/^[0-9a-f]{7,10}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
+  if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || /^[a-z]{0,4}v?\d+(?:\.\d+)+[a-z0-9-]*$/i.test(v)) return false
   // A plain word ("rotated", "expired") is prose; a value has a digit, or is long.
   return /\d/.test(v) || v.length >= 16
 }
 
-/** The kinds of secret in `text`, each once, in order: ["a GitHub token", …]; never the text itself. */
+/**
+ * The kinds of secret in `text`, each once, in order: ["a GitHub token", …]; never the text itself.
+ * Read as the card stores it: without format characters (a soft hyphen or zero-width space that
+ * came with a paste would split a token). Linear in the text's length, however many matches.
+ */
 export function secretsIn(text) {
-  const s = asText(text ?? "")
+  const s = asText(text ?? "").replace(/\p{Cf}/gu, "")
   if (!s) return []
   const kinds = []
-  const taken = []
+  // Which characters an earlier match took (each regex's own matches never overlap, so every
+  // character is marked at most once per kind of match).
+  const taken = new Uint8Array(s.length)
   const note = (from, to, kind) => {
-    if (taken.some(([a, b]) => from < b && to > a)) return
-    taken.push([from, to])
+    for (let i = from; i < to; i++) if (taken[i]) return
+    taken.fill(1, from, to)
     if (!kinds.includes(kind)) kinds.push(kind)
   }
-  for (const [re, kind] of SECRET_SHAPES) for (const m of s.matchAll(re)) note(m.index, m.index + m[0].length, kind)
-  for (const m of s.matchAll(SECRET_KEY)) if (realSecretValue(m[4])) note(m.index, m.index + m[0].length, KEY_KIND(m[2]))
+  for (const [re, kind, notSecret] of SECRET_SHAPES) for (const m of s.matchAll(re)) if (!notSecret?.(m[0])) note(m.index, m.index + m[0].length, kind)
+  for (const m of s.matchAll(SECRET_KEY)) if (!/^1password$/i.test(m[1]) && realSecretValue(m[4])) note(m.index, m.index + m[0].length, KEY_KIND(m[2]))
   return kinds
 }
 
@@ -2116,8 +2141,8 @@ export const statusBuilt = (state, item) => Boolean(builtStatus(state, item))
 // how it ended: "tested": { "command": "npm test", "exit": 0, "after_last_edit": true }, or
 // "tested": "read-only" for a job that changed nothing. A done report with a commit or PR in its
 // ids and no proof, a non-zero exit or a run before the last edit is unverified: shown on the
-// card, never blocking. A report with no commit or PR and no "tested" is read-only (older reports,
-// research jobs): nothing is shown.
+// card, never blocking. A report with no commit or PR and no test run in "tested" is read-only
+// (older reports, research jobs, "n/a"): nothing is shown.
 
 // The ids that say a job changed files: a commit or a PR (text, a number or a list of them).
 const CHANGE_IDS = ["commit", "commits", "pr", "prs"]
@@ -2127,30 +2152,51 @@ const hasId = (v) => (Array.isArray(v) ? v.slice(0, 100).some(oneId) : oneId(v))
 // What the card shows of a test command: at most this many characters.
 const PROOF_COMMAND_MAX = 60
 
+// How a job that changed nothing may say so: "read-only", "read only", "readonly".
+const READ_ONLY = /^read[- ]?only$/
+
 /**
  * What a done report says about its tests: { ok: true, text: "tested (npm test, exit 0)" },
  * { ok: false, text: "unverified: no test run after the last edit" }, or null (not a done
- * report, read-only, or an older report without "tested" and without a commit or PR). A command
- * that looks like a secret is never shown.
+ * report, read-only, or a report without a commit or PR that has no test run in it: "n/a",
+ * "none" or no "tested" at all). "tested" may also list several runs: verified when all passed.
+ * A command that looks like a secret is never shown.
  */
 export function reportProof(report) {
   if (!isRecord(report) || clean(report.status).toLowerCase() !== "done") return null
   const tested = report.tested
-  if (typeof tested === "string" && clean(tested).toLowerCase() === "read-only") return null
+  if (typeof tested === "string" && READ_ONLY.test(clean(tested).toLowerCase())) return null
   const ids = isRecord(report.ids) ? report.ids : {}
   const changed = CHANGE_IDS.some((k) => hasId(ids[k]))
   const no = (why) => ({ ok: false, text: `unverified: ${why}` })
-  if (tested === undefined || tested === null) return changed ? no("no test run after the last edit") : null
-  if (!isRecord(tested)) return no('its "tested" is neither a test run nor "read-only"')
-  const raw = clean(asText(tested.command ?? ""))
-  if (!raw) return no("no test command in its report")
+  const runs = Array.isArray(tested) ? tested.slice(0, 20).filter(isRecord) : isRecord(tested) ? [tested] : []
+  // No test run in it: fine for a job that changed nothing (older reports, research jobs).
+  if (!runs.length) {
+    if (!changed) return null
+    return tested === undefined || tested === null || (Array.isArray(tested) && !tested.length) ? no("no test run after the last edit") : no('its "tested" is neither a test run nor "read-only"')
+  }
+  let shown = null
+  for (const run of runs) {
+    const proof = runProof(run)
+    if (!proof.ok) return no(proof.why)
+    shown ??= proof.command
+  }
+  return { ok: true, text: `tested (${shown}${runs.length > 1 ? ` and ${runs.length - 1} more` : ""}, exit 0)` }
+}
+
+/** One test run of a report's "tested": { ok, command (as shown), why (when not ok) }. */
+function runProof(run) {
+  // A command given as a list of words ["npm", "test"] reads as one; anything else isn't one.
+  const given = Array.isArray(run.command) && run.command.every((w) => typeof w === "string") ? run.command.join(" ") : run.command
+  const raw = typeof given === "string" ? clean(given) : ""
+  if (!raw) return { ok: false, why: "no test command in its report" }
   const command = secretsIn(raw).length ? "the command hidden: it looked like a secret" : raw.length > PROOF_COMMAND_MAX ? `${raw.slice(0, PROOF_COMMAND_MAX - 1)}…` : raw
-  const exit = tested.exit
-  if (!Number.isInteger(exit)) return no(`no exit code for ${command}`)
-  if (exit !== 0) return no(`the test run failed (${command}, exit ${exit})`)
-  if (tested.after_last_edit === false) return no(`the test ran before the last edit (${command})`)
-  if (tested.after_last_edit !== true) return no(`its report doesn't say the test ran after the last edit (${command})`)
-  return { ok: true, text: `tested (${command}, exit 0)` }
+  const exit = run.exit
+  if (!Number.isInteger(exit)) return { ok: false, why: `no exit code for ${command}` }
+  if (exit !== 0) return { ok: false, why: `the test run failed (${command}, exit ${exit})` }
+  if (run.after_last_edit === false) return { ok: false, why: `the test ran before the last edit (${command})` }
+  if (run.after_last_edit !== true) return { ok: false, why: `its report doesn't say the test ran after the last edit (${command})` }
+  return { ok: true, command }
 }
 
 /**
@@ -4131,8 +4177,11 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
       else if (facts.status !== "done") lines.push([ind, { t: "Not final yet: the job may still change it.", s: "dim" }])
       if (hiddenSummary) lines.push([ind, { t: "Its summary names PR, build or commit numbers, so it is under More… only.", s: "dim" }])
       else if (facts.brief.text) para(facts.brief.text)
-      // 0.18.0: whether it ran its tests after its last edit.
-      if (facts.proof) lines.push([ind, { t: facts.proof.ok ? `Tested after its last edit: ${facts.proof.text.replace(/^tested \((.*)\)$/, "$1")}.` : `Unverified: ${facts.proof.text.replace(/^unverified: /, "")}.`, s: facts.proof.ok ? "dim" : "unreviewed" }])
+      // 0.18.0: whether it ran its tests after its last edit. What the row says: the proof the
+      // card got when its report was applied (none for a card applied before 0.18.0), or, on a
+      // Doing card, the report's own (the row's "report done, unverified").
+      const proof = entry.column === "doing" ? facts.proof : entry.proof
+      if (proof) lines.push([ind, { t: proof.ok ? `Tested after its last edit: ${proof.text.replace(/^tested \((.*)\)$/, "$1")}.` : `Unverified: ${proof.text.replace(/^unverified: /, "")}.`, s: proof.ok ? "dim" : "unreviewed" }])
       if (needs.length) {
         lines.push([ind, { t: "Needs you:", s: "head" }])
         bullets(needs.slice(0, 5).map((n) => n.text), 2)
@@ -8909,22 +8958,30 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         // a report rewritten with a different outcome or summary applies again, to the same card
         // (0.12.0: the summary too, so a final report rewritten after a partial one isn't lost).
         // When the card is gone (archived), the board's `reports` remembers it was applied.
-        // Keys from 0.12.0 start "r2-" and say whether the card was held (open cards under it,
-        // below); one without the mark is from before: path, column and ask only, and still counts.
+        // Keys from 0.12.0 say whether the card was held (open cards under it, below); one without
+        // a mark ("r2-", "r3-") is from before: path, column and ask only, and still counts.
         const hash = (parts) => createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16)
         const summary = clean(report.summary)
         // A job's question with buttons (reportQuestion) counts too, only when there is one: a
         // report without it keeps the key it had. Only a done report's: a failed or blocked job's
         // buttons would hide its reason, and one press could approve its broken work.
         const question = column === "waiting" && clean(report.status).toLowerCase() === "done" ? reportQuestion(report) : null
-        // Its test proof (0.18.0) counts only when the report has "tested", so an older report keeps
-        // its key, and a report rewritten to add its proof applies again.
+        // Its test proof counts too (0.18.0), so a report rewritten to add its proof applies again.
+        // Keys from 0.18.0 start "r3-". A key from before still counts for the same report, so one
+        // applied before the upgrade never applies again (a card closed since never reopens): "r2-"
+        // (0.12.0 to 0.17.0: no proof) and the legacy one, both from the report as it is written
+        // (before 0.18.0 nothing in it was hidden).
         const proof = reportProof(report)
         const proofKey = isRecord(report) && Object.hasOwn(report, "tested") ? ["tested", proof?.text ?? "read-only"] : []
-        const keyOf = (held) => `r2-${hash([path, column, ask, summary, held ? "held" : "", ...(question ? [question.ask, question.labels, question.suggest ?? ""] : []), ...proofKey])}`
-        const legacy = hash([path, column, ask])
-        const known = (k) => typeof k === "string" && (k === keyOf(false) || k === keyOf(true) || (!k.startsWith("r2-") && k === legacy))
-        const applied = (reports) => reports[keyOf(false)] || reports[keyOf(true)] || reports[legacy]
+        const questionKey = (q) => (q ? [q.ask, q.labels, q.suggest ?? ""] : [])
+        const keyOf = (held) => `r3-${hash([path, column, ask, summary, held ? "held" : "", ...questionKey(question), ...proofKey])}`
+        const [, askAsWritten] = reportOutcome(read)
+        const questionAsWritten = question ? reportQuestion(read) : null
+        const r2Key = (held) => `r2-${hash([path, column, askAsWritten, clean(read.summary), held ? "held" : "", ...questionKey(questionAsWritten)])}`
+        const legacy = hash([path, column, askAsWritten])
+        const keys = [keyOf(false), keyOf(true), r2Key(false), r2Key(true), legacy]
+        const known = (k) => typeof k === "string" && keys.includes(k)
+        const applied = (reports) => keys.map((k) => reports[k]).find(Boolean)
         // A card with open cards under it (its checks, its sub-tasks) is never closed or made a
         // question by a job's report (0.12.0): it stays in Doing with the report stored, and the
         // coordinator gets a note. `held` is that.

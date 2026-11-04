@@ -855,14 +855,15 @@ export function stopMessage(slug, input, report = null) {
   }
   if (input?.hook_event_name !== "Stop") return null
   // Text that looks like a secret never goes to the inbox (0.18.0): "(hidden: looked like a secret)".
-  // The last message is checked whole, before lastLine and questionOf tidy its markdown away.
+  // The last message is checked whole, before lastLine and questionOf tidy its markdown away, and
+  // what they make of it is checked again: text tidied into a secret's shape is hidden too.
   const said = typeof input.last_assistant_message === "string" && secretsIn(input.last_assistant_message).length ? HIDDEN_SECRET : input.last_assistant_message
   if (FINAL.includes(report?.status)) {
-    return make("finished", `[job finished] ${slug} — ${report.status} — ${hideSecret(oneLine(report.summary, max)) || lastLine(said, max) || "no summary"}`)
+    return make("finished", `[job finished] ${slug} — ${report.status} — ${hideSecret(oneLine(report.summary, max)) || hideSecret(lastLine(said, max)) || "no summary"}`)
   }
   // Whether it asks is read from the message itself; only the words shown are hidden.
-  if (asksUser(input.last_assistant_message)) return make("waiting", `[job waiting] ${slug} — needs: ${questionOf(said, max) || "an answer in its tab"}`)
-  return make("finished", `[job finished] ${slug} — no report yet — ${lastLine(said, max) || "it wrote nothing"}`)
+  if (asksUser(input.last_assistant_message)) return make("waiting", `[job waiting] ${slug} — needs: ${hideSecret(questionOf(said, max)) || "an answer in its tab"}`)
+  return make("finished", `[job finished] ${slug} — no report yet — ${hideSecret(lastLine(said, max)) || "it wrote nothing"}`)
 }
 
 /** Whether this session is a job's (a worker): its role variable, or any *_AGENT_ROLE, says so. */

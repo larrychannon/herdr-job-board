@@ -156,7 +156,7 @@ test("reportProof: tested, unverified (missing with a commit or PR, a failed run
   assert.equal(reportProof(done({ tested: { command: "npm test", exit: 0 } })).ok, false, "after_last_edit missing")
   assert.equal(reportProof(done({ tested: { command: "npm test", exit: "0", after_last_edit: true } })).text, "unverified: no exit code for npm test")
   assert.equal(reportProof(done({ tested: { exit: 0, after_last_edit: true } })).text, "unverified: no test command in its report")
-  assert.equal(reportProof(done({ tested: "yes" })).ok, false)
+  assert.equal(reportProof(done({ ids: { commit: "a" }, tested: "yes" })).text, 'unverified: its "tested" is neither a test run nor "read-only"')
   // A run without a commit or PR still says what it ran.
   assert.equal(reportProof(done({ tested: ok })).ok, true)
   // Read-only, and an older report (no "tested", no commit or PR): nothing to show.
@@ -328,4 +328,196 @@ test("the Stop hook's inbox line hides a summary or last message that looks like
   const asking = stopMessage("fix", { ...stop, last_assistant_message: `I pushed with ${FAKE.token}. Should I merge the login fix now?` }, null)
   assert.equal(asking.state, "waiting")
   assert.equal(asking.text.includes(FAKE.token), false)
+})
+
+// --- review fixes ------------------------------------------------------------------------------
+
+// Markdown an agent writes around a key and its value, built at runtime like FAKE.
+const MARKDOWN = {
+  backticks: ["The DB pass", "word: `", "Xk29fLq8w", "`"].join(""),
+  bold: ["**pass", "word**: ", "Xk29fLq8w"].join(""),
+  envName: ["- `API_TO", "KEN`=", "q8w7e6r5t4y3"].join(""),
+  underscores: ["__pass", "word__: ", "Xk29fLq8w"].join(""),
+}
+const BARE = ["Xk29fLq8w", "q8w7e6r5t4y3"]
+
+// Ordinary text that names where a secret is kept, or something else entirely: never refused.
+const FINE = [
+  "keys moved; the deploy token is in 1Password: Service-Accounts-Vault",
+  "Read it from arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:release-notes-manager/app-AbCdEf",
+  "CI needs the repo secret: ANTHROPIC_API_KEY set before the deploy.",
+  "The proxy config reads api_key: os.environ/ANTHROPIC_API_KEY.",
+  ["The AWS docs example key AK", "IAIOSFODNN7EXAMPLE is in the test fixture."].join(""),
+  "the reset token=4f2a91c link works now",
+  "password: DB_PASSWORD_PROD in 1Password",
+  "token: 2026-11-04 expiry",
+  "Bearer auth/v2/endpoints for the API",
+  "firmware token=fw8.5.1s024",
+  "secret: release-notes-manager",
+  "secret: prod/db-credentials",
+  "the Slack token: see vars.SLACK_TOKEN in the repo settings, and secret: secrets.DEPLOY_KEY",
+  'const token = "readTokenFromKeychain(name)" in the setup script',
+  "password: DB_PASSWORD_PROD, rotated 2026-11-04",
+  'A card reaches the pane, the coordinator and Telegram: leave the secret out and say where it is kept ("the deploy token in 1Password"). --allow-wording doesn\'t change this.',
+]
+
+test("secretsIn: a key and value inside markdown (backticks, bold, an env name) is a secret; a soft hyphen or zero-width space can't hide one", () => {
+  assert.deepEqual(secretsIn(MARKDOWN.backticks), ["a password"])
+  assert.deepEqual(secretsIn(MARKDOWN.bold), ["a password"])
+  assert.deepEqual(secretsIn(MARKDOWN.envName), ["a token"])
+  assert.deepEqual(secretsIn(MARKDOWN.underscores), ["a password"])
+  const [head, tail] = [FAKE.github.slice(0, 20), FAKE.github.slice(20)]
+  assert.deepEqual(secretsIn(`Rotate ${head}­${tail}: do it`), ["a GitHub token"])
+  assert.deepEqual(secretsIn(`Rotate ${head}​${tail}`), ["a GitHub token"])
+  // An AWS key that isn't the documented example is still one.
+  assert.deepEqual(secretsIn(FAKE.aws), ["an AWS access key"])
+})
+
+test("secretsIn: where a secret is kept, an ARN, a variable name, a reference, the AWS example key, a short hash, a date, a version and the refusal's own advice are fine", () => {
+  for (const t of FINE) assert.deepEqual(secretsIn(t), [], t)
+})
+
+test("secretsIn: many matches take time in proportion to the text (no overlap check per match)", () => {
+  const many = `${FAKE.password} `.repeat(55000)
+  const started = Date.now()
+  assert.deepEqual(secretsIn(many), ["a password"])
+  assert.ok(Date.now() - started < 1500, `${Date.now() - started} ms for 1 MB of matches`)
+})
+
+test("the CLI refuses a secret in markdown or split by a format character, and takes ordinary text about where one is kept", () => {
+  const s = setup()
+  try {
+    s.ok("add", "doing", "Staging DB: set up", "--desc", "The staging database for the login tests.")
+    const before = s.hash()
+    for (const args of [
+      ["edit", "1", "--desc", `${MARKDOWN.backticks} (rotate it).`],
+      ["now", "1", MARKDOWN.bold],
+      ["edit", "1", "--title", `Rotate ${FAKE.github.slice(0, 20)}­${FAKE.github.slice(20)}: do it`, "--allow-wording"],
+    ]) {
+      const r = s.run(...args)
+      assert.equal(r.status, 2, `${args.join(" ")}: ${r.stderr}`)
+      assert.equal(s.hash(), before)
+      for (const v of [...BARE, FAKE.github.slice(20)]) assert.equal(r.stderr.includes(v), false)
+    }
+    for (const t of FINE) {
+      const r = s.run("now", "1", t, "--allow-wording")
+      assert.notEqual(r.status, 2, `${t}: ${r.stderr}`)
+      assert.doesNotMatch(r.stderr, /looks like it holds a secret/, t)
+    }
+  } finally {
+    s.done()
+  }
+})
+
+test("the Stop hook never puts a bare secret in the inbox after it tidies the markdown away", () => {
+  for (const said of Object.values(MARKDOWN)) {
+    for (const message of [stopMessage("fix", { hook_event_name: "Stop", last_assistant_message: `Set up staging. ${said}` }, null), stopMessage("fix", { hook_event_name: "Stop", last_assistant_message: `Set up staging. ${said} Should I rotate it now?` }, null), stopMessage("fix", { hook_event_name: "Stop", last_assistant_message: said }, { status: "done", summary: "" })]) {
+      for (const v of BARE) assert.equal(message.text.includes(v), false, message.text)
+      assert.ok(message.text.includes(HIDDEN_SECRET), message.text)
+    }
+  }
+  // Ordinary words about where a secret is kept are shown as written.
+  assert.equal(stopMessage("fix", { hook_event_name: "Stop", last_assistant_message: FINE[0] }, null).text, `[job finished] fix — no report yet — ${FINE[0]}`)
+})
+
+test("reportProof: 'n/a', 'none', 'read only' or any other words without a commit or PR say nothing; a list of runs; a command as a list of words", () => {
+  const done = (extra) => ({ status: "done", summary: "Compared.", ...extra })
+  const ok = { command: "npm test", exit: 0, after_last_edit: true }
+  for (const tested of ["n/a", "none", "read only", "readonly", "Read Only", false, 0, [], ["npm test"]]) assert.equal(reportProof(done({ tested })), null, JSON.stringify(tested))
+  // "read only" in any spelling is read-only even with a PR named (a review job names the PR it read).
+  for (const tested of ["read only", "readonly"]) assert.equal(reportProof(done({ tested, ids: { pr: 3 } })), null, tested)
+  // With a commit or PR, words that aren't a run are no proof.
+  for (const tested of ["n/a", "none", false]) assert.equal(reportProof(done({ tested, ids: { pr: 3 } })).text, 'unverified: its "tested" is neither a test run nor "read-only"', JSON.stringify(tested))
+  assert.equal(reportProof(done({ tested: [], ids: { pr: 3 } })).text, "unverified: no test run after the last edit")
+  // Several runs: verified when all passed after the last edit, else the first that didn't.
+  assert.deepEqual(reportProof(done({ ids: { pr: 3 }, tested: [{ ...ok, command: "npm run lint" }, ok] })), { ok: true, text: "tested (npm run lint and 1 more, exit 0)" })
+  assert.equal(reportProof(done({ ids: { pr: 3 }, tested: [{ ...ok, command: "npm run lint" }, { ...ok, exit: 1 }] })).text, "unverified: the test run failed (npm test, exit 1)")
+  // A command as a list of words reads as one; any other non-text command is none.
+  assert.deepEqual(reportProof(done({ tested: { ...ok, command: ["npm", "test"] } })), { ok: true, text: "tested (npm test, exit 0)" })
+  assert.equal(reportProof(done({ tested: { ...ok, command: { run: "npm test" } } })).text, "unverified: no test command in its report")
+  assert.equal(reportProof(done({ tested: { ...ok, command: ["npm", 1] } })).text, "unverified: no test command in its report")
+})
+
+test("job-report: a report applied before the upgrade (a 0.17.0 key) is unchanged on a re-run, and a card closed since stays closed", () => {
+  const s = setup()
+  try {
+    const hash16 = (parts) => createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16)
+    // What 0.17.0 wrote: "r2-" over path, column, ask, summary, held, the question; no proof.
+    const asIn017 = (id, column, ask, summary) => {
+      const state = JSON.parse(readFileSync(s.file, "utf8"))
+      const item = state.items.find((i) => i.id === id)
+      const old = `r2-${hash16([item.report, column, ask, summary, ""])}`
+      for (const key of Object.keys(state.reports)) if (key === item.reported) delete state.reports[key]
+      state.reports[old] = { id, at: "2026-11-03T10:00:00.000Z" }
+      item.reported = old
+      delete item.proof
+      writeFileSync(s.file, JSON.stringify(state))
+    }
+    // A review job's question, read-only: Waiting, then closed by the coordinator.
+    const review = join(s.base, "review.json")
+    s.ok("job-start", "review", "--title", "Login fix: review", "--report", review)
+    const ask = "Merge the login fix now or wait for QA?"
+    writeFileSync(review, JSON.stringify({ status: "done", summary: "Reviewed it.", needs_user: [ask], tested: "read-only" }))
+    s.ok("job-report", "review")
+    assert.equal(s.card(1).column, "waiting")
+    s.ok("done", "1")
+    asIn017(1, "waiting", ask, "Reviewed it.")
+    // A job with its proof: Done, and the coordinator wrote its own status line since.
+    const fix = join(s.base, "fix.json")
+    s.ok("job-start", "fix", "--title", "Export fix: build", "--report", fix)
+    writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the export.", ids: { commit: "abc1234" }, tested: { command: "npm test", exit: 0, after_last_edit: true } }))
+    s.ok("job-report", "fix")
+    asIn017(2, "done", "", "Fixed the export.")
+    s.ok("now", "2", "merged and installed")
+    const before = s.hash()
+    const notes = readInbox(s.file).messages.length
+    // The upgrade: the same unchanged reports again.
+    for (const [slug, id] of [["review", 1], ["fix", 2]]) {
+      // As a watcher runs it (quiet), then by hand.
+      const quiet = s.ok("job-report", slug, "--if-final")
+      assert.equal(quiet.stderr, "")
+      assert.equal(s.hash(), before, slug)
+      const r = s.ok("job-report", slug)
+      assert.match(r.stdout, new RegExp(`^${id} unchanged \\(done\\)`), r.stdout)
+      assert.equal(r.stderr, "")
+    }
+    assert.equal(s.card(1).column, "done")
+    assert.equal(s.card(2).now.text, "merged and installed")
+    assert.equal(s.hash(), before)
+    assert.equal(readInbox(s.file).messages.length, notes)
+    // A rewrite after the upgrade still applies.
+    writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the export and its test.", ids: { commit: "abc1235" }, tested: { command: "npm test", exit: 0, after_last_edit: true } }))
+    assert.doesNotMatch(s.ok("job-report", "fix").stdout, /unchanged/)
+    assert.match(s.card(2).reported, /^r3-/)
+  } finally {
+    s.done()
+  }
+})
+
+test("details agree with the row: a card applied before 0.18.0 says nothing of its tests; a Doing card says what its report says", () => {
+  const s = setup()
+  try {
+    const path = join(s.base, "old.json")
+    s.ok("job-start", "old", "--title", "Docs fix: build", "--report", path)
+    writeFileSync(path, JSON.stringify({ status: "done", summary: "Fixed the docs.", ids: { pr: 12 } }))
+    s.ok("job-report", "old")
+    assert.equal(s.card(1).proof.ok, false)
+    // As 0.17.0 left it: no proof on the card.
+    const state = JSON.parse(readFileSync(s.file, "utf8"))
+    delete state.items[0].proof
+    writeFileSync(s.file, JSON.stringify(state))
+    const now = new Date("2026-11-04T10:00:00Z")
+    const text = render(buildView(readBoard(s.file), null, { now }), { width: 120, color: false, now, layout: "wide", scroll: { doneOpen: true } })
+    assert.doesNotMatch(text.split("\n").find((l) => l.includes("Docs fix: build")) || "", /unverified/)
+    assert.doesNotMatch(plain(detailLines(s.card(1), 100).lines).join("\n"), /Unverified|Tested after/)
+    // A Doing card whose report isn't applied yet: the report's own, as on its row.
+    s.ok("job-start", "next", "--title", "Search fix: build", "--report", s.report)
+    s.write({ status: "done", summary: "Fixed the search.", ids: { pr: 13 } })
+    const view = buildView(readBoard(s.file), null, { now })
+    const entry = view.doing.find((e) => e.title === "Search fix: build")
+    assert.equal(entry.reportProof.ok, false)
+    assert.match(plain(detailLines(entry, 100).lines).join("\n"), /Unverified: no test run after the last edit\./)
+  } finally {
+    s.done()
+  }
 })
