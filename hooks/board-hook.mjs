@@ -860,7 +860,8 @@ export function stopMessage(slug, input, report = null) {
   if (FINAL.includes(report?.status)) {
     return make("finished", `[job finished] ${slug} — ${report.status} — ${hideSecret(oneLine(report.summary, max)) || lastLine(said, max) || "no summary"}`)
   }
-  if (asksUser(said)) return make("waiting", `[job waiting] ${slug} — needs: ${questionOf(said, max) || "an answer in its tab"}`)
+  // Whether it asks is read from the message itself; only the words shown are hidden.
+  if (asksUser(input.last_assistant_message)) return make("waiting", `[job waiting] ${slug} — needs: ${questionOf(said, max) || "an answer in its tab"}`)
   return make("finished", `[job finished] ${slug} — no report yet — ${lastLine(said, max) || "it wrote nothing"}`)
 }
 

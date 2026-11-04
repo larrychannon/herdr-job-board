@@ -324,4 +324,8 @@ test("the Stop hook's inbox line hides a summary or last message that looks like
   const none = stopMessage("fix", stop, null)
   assert.equal(none.text, `[job finished] fix — no report yet — ${HIDDEN_SECRET}`)
   assert.equal(stopMessage("fix", { ...stop, last_assistant_message: "Done. Tests pass." }, null).text, "[job finished] fix — no report yet — Done. Tests pass.")
+  // A question that also holds a secret still waits on the user, with its words hidden.
+  const asking = stopMessage("fix", { ...stop, last_assistant_message: `I pushed with ${FAKE.token}. Should I merge the login fix now?` }, null)
+  assert.equal(asking.state, "waiting")
+  assert.equal(asking.text.includes(FAKE.token), false)
 })
