@@ -372,7 +372,14 @@ button itself. A click on the question never sends.
   (or the front coordinator, `board.mjs front`). That last one gets a card nobody owns of its
   own project at once, but another project's card only after a second press: the card first
   says `no ai coordinator is running: press Go again to send it to the board's coordinator (sfc,
-  pane w4:p6)`. With no coordinator at all: `couldn't send: no ai coordinator is running; start
+  pane w4:p6)`. When that pane is gone too (after a restart the card's owner, the front and the
+  pane that opened the board can all be dead panes), the newest running coordinator of any
+  project, by when it last wrote to the board or its session started (0.19.0), again after a
+  second press: `no ai coordinator is running (the card's own, wA:p1, is gone): press Go again
+  to send it to the newest live coordinator (work, pane w2:p1)`, and the card then shows
+  `sent: Go · 18:30 · to the newest live work coordinator (w2:p1)`. A coordinator that has
+  neither written to the board nor noted its session (no inbox socket) isn't known yet. With no
+  coordinator at all: `couldn't send: no ai coordinator is running; start
   one there, or use Other…`. With several projects on the board, an open Waiting card says
   where a press goes now (`answers go to: sfc coordinator (w4:p6)`). Only a coordinator's pane
   counts: an agent Herdr names after a job on the board is a worker and never gets answers.

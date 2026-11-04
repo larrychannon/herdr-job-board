@@ -11,7 +11,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { answerText, frontOf, routeAnswer, secondPressNote, tokenFor, writeRefusal } from "../board.mjs"
+import { answerText, frontOf, newestCoordinator, routeAnswer, secondPressNote, sentTo, tokenFor, writeRefusal } from "../board.mjs"
 import { handle, mineOf, reminder, snapshot, waitingTouched } from "../hooks/board-hook.mjs"
 
 const SCRIPTS = fileURLToPath(new URL("../", import.meta.url))
@@ -138,6 +138,64 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     h.live("w4:p7", "w4:p9")
     r = h.pane(sfc, "\x1b[C\r", "w4:p9")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w4:p7", "Board card 6 (sfc · sfc question): Ship"]])
+  } finally {
+    h.done()
+  }
+})
+
+test("routeAnswer: with the owner, its project's coordinators and the front all gone, the newest live coordinator of any project, after a second press (0.19.0)", () => {
+  const state = {
+    front: "w9:p1",
+    panes: { "w9:t1": { pane: "w9:p2", origin: "w9:p1", at: "2026-11-04T17:00:00Z" } },
+    projects: { "ai-config": { tag: "ai" }, work: { tag: "work" }, "sfc-integration": { tag: "sfc" } },
+    coordinators: {
+      "wA:p1": { project: "ai-config", seen: "2026-11-04T17:40:00Z" },
+      "w2:p1": { project: "work", seen: "2026-11-04T18:10:00Z" },
+      "w4:p6": { project: "sfc-integration", seen: "2026-11-04T18:00:00Z" },
+    },
+  }
+  const agents = (...panes) => panes.map((pane_id) => ({ pane_id }))
+  const card = { id: 483, project: "ai-config", origin: "wA:p1" }
+  const route = routeAnswer(state, card, agents("w2:p1", "w4:p6"))
+  assert.deepEqual(route, { pane: "w2:p1", to: "work coordinator (w2:p1)", second: true, newest: true })
+  assert.equal(secondPressNote(state, card, route, "Merge it"), "no ai coordinator is running (the card's own, wA:p1, is gone): press Merge it again to send it to the newest live coordinator (work, pane w2:p1)")
+  assert.equal(sentTo(route), "the newest live work coordinator (w2:p1)")
+  // A coordinator that only started its session (its note, not a board write) counts, by its note's time.
+  assert.equal(routeAnswer(state, card, agents("w2:p1", "w4:p6", "w7:p1"), { notes: [{ pane: "w7:p1", at: "2026-11-04T18:20:00Z" }] }).pane, "w7:p1")
+  // A note of a pane that isn't running doesn't count; nor does a job's worker.
+  assert.equal(routeAnswer(state, card, agents("w4:p6"), { notes: [{ pane: "w7:p1", at: "2026-11-04T18:20:00Z" }] }).pane, "w4:p6")
+  assert.equal(newestCoordinator(state, new Set(), [{ pane: "w7:p1", at: "2026-11-04T18:20:00Z" }]), "")
+  // The front or the pane that opened the board still comes first while it runs.
+  assert.equal(routeAnswer(state, card, agents("w2:p1", "w9:p1")).pane, "w9:p1")
+  assert.equal(routeAnswer(state, card, agents("w2:p1", "w9:p1")).newest, undefined)
+})
+
+test("buttons after a restart: the card's owner, the front and the opener are gone; a press asks, then goes to the newest live coordinator, and the card says so", () => {
+  const h = home()
+  try {
+    const ai = h.repo("ai-config")
+    const work = h.repo("work")
+    h.live("wA:p1", "w9:p1", "w2:p1")
+    h.ok(ai, ["add", "waiting", "Guard update: install", "--ask", "install it?", "--option", "Install it", "--option", "Keep it waiting", "--suggest", "Install it", "--allow-wording"], h.at("wA:p1"))
+    h.ok(work, ["front"], h.at("w9:p1"))
+    // The coordinator that runs after the restart has written to the board once.
+    h.ok(work, ["add", "todo", "Start check: write it"], h.at("w2:p1"))
+    h.live("w2:p1", "w5:p3")
+    let r = h.pane(work, "\x1b[C\r", "w9:p1")
+    assert.equal(h.prompts().length, 0)
+    assert.match(flat(r.stdout), /no ai coordinator is running \(the card's own, wA:p1, is gone\): press Install it again to send it to the newest live coordinator \(work, pane w2:p1\)/)
+    r = h.pane(work, "\x1b[C\r\r", "w9:p1")
+    assert.deepEqual(h.prompts(), [["agent", "prompt", "w2:p1", "Board card 1 (ai · Guard update: install): Install it"]])
+    assert.equal(h.card(1).sent.to, "the newest live work coordinator (w2:p1)")
+    r = h.pane(work, "", "w9:p1")
+    assert.match(flat(r.stdout), /sent: Install it · 12:03 · to the newest live work coordinator \(w2:p1\)/)
+    // answer: the same route, only with --front.
+    h.ok(ai, ["add", "waiting", "Second: pick", "--option", "Yes please", "--option", "Not now", "--allow-wording"], h.at("wA:p1"))
+    h.live("w2:p1", "w5:p3")
+    const refused = h.run(work, ["answer", "3", "Yes please"], h.at("w5:p3"))
+    assert.equal(refused.status, 1)
+    assert.match(refused.stderr, /no ai coordinator is running \(the card's own, wA:p1, is gone\); nothing sent\. To send it to the newest live coordinator \(work, pane w2:p1\): add --front/)
+    assert.match(h.ok(work, ["answer", "3", "Yes please", "--front"], h.at("w5:p3")), /^sent to the newest live work coordinator \(w2:p1\): Yes please$/m)
   } finally {
     h.done()
   }

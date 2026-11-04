@@ -66,7 +66,8 @@
 //                           button's label (any case), its number, or free text (300 characters
 //                           at most); it goes to the card's coordinator (see "Answers" below);
 //                           --front sends it to the front coordinator when the card's project has
-//                           none running. Not for workers
+//                           none running (or, with the front gone too, to the newest live
+//                           coordinator of any project). Not for workers
 //   tell "<one line>"       from a job's pane (a worker): put "[job note] <its job> — <line>" in
 //                           its coordinator's inbox. Its own job only: the job is this pane's
 //                           Herdr agent name. Its hooks already say when it stops ("[job
@@ -200,7 +201,8 @@
 // Answers: a button (or `answer`) sends "Board card <id> (<tag> · <title>): <label>" to the
 // card's owner pane while it runs, else to its project's newest live coordinator, else to the
 // pane that opened the board (or the front coordinator), after a second press when that is
-// another project's coordinator; the card notes where it went. A pane whose session keeps an
+// another project's coordinator, else (0.19.0) to the newest live coordinator of any project,
+// after a second press too; the card notes where it went. A pane whose session keeps an
 // inbox-socket note (0.10.0) gets it as an inbox message (kind answer) posted into its session
 // ("[board answer] card <id> (…): <label> #<msg id>"); one with the job-board channel
 // (channel/, 0.9.0) as an inbox message the channel pushes; any other pane has it typed in
@@ -5451,11 +5453,14 @@ export function coordinatorName(state, pane) {
  *    for a card nobody owns when that pane is of the card's project (or never wrote to the
  *    board, as in 0.4); otherwise only after a second press (`second`), since it is another
  *    project's coordinator;
- * 4. else nowhere: { error }.
+ * 4. else the newest live coordinator of any project (0.19.0), after a second press (`newest`):
+ *    by when it last wrote to the board, or its session started (`notes`: coordinatorNotes);
+ *    a restart leaves the card's owner and the front pointing at panes that are gone;
+ * 5. else nowhere: { error }.
  * With no agent list, the owner or else the fallback, as they are (sending says if it fails).
- * Returns { pane, to, second } or { error }.
+ * Returns { pane, to, second, newest } or { error }.
  */
-export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
+export function routeAnswer(state, item, agents, { fallback = "", notes = [] } = {}) {
   const to = (pane, second = false) => ({ pane, to: coordinatorName(state, pane), second })
   if (!Array.isArray(agents)) {
     const fb = fallback || frontOf(state)
@@ -5473,27 +5478,60 @@ export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
     const fbProject = state.coordinators?.[fb]?.project
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
+  const newest = newestCoordinator(state, live, notes)
+  if (newest) return { ...to(newest, true), newest: true }
   return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…${fb ? "" : ` (no front coordinator: ${noFrontReason(state, live)}; board.mjs front, from a coordinator's pane, sets one)`}` }
 }
+
+/**
+ * The newest live coordinator pane of any project: by when it last wrote to the board
+ * (`state.coordinators`) or its session noted itself (`notes`: coordinatorNotes, { pane, at }).
+ * `live`: coordinatorPanes. "" when none.
+ */
+export function newestCoordinator(state, live, notes = []) {
+  if (!live) return ""
+  const seen = [...Object.entries(state.coordinators || {}).map(([pane, c]) => [pane, c?.seen]), ...(Array.isArray(notes) ? notes : []).map((n) => [n?.pane, n?.at])]
+  const times = new Map()
+  for (const [pane, at] of seen) {
+    const t = Date.parse(at) || 0
+    if (pane && live.has(pane) && t >= (times.get(pane) ?? -1)) times.set(pane, t)
+  }
+  return [...times].sort((a, b) => b[1] - a[1])[0]?.[0] || ""
+}
+
+/** The coordinator notes as { pane, at } for routeAnswer; [] when the folder can't be read. */
+export function routeNotes(file) {
+  try {
+    return file ? coordinatorNotes(file).map((n) => ({ pane: n.pane, at: n.at })) : []
+  } catch {
+    return []
+  }
+}
+
+/** Where a route goes, in words, for a card's notes: "the newest live coordinator (ai, pane w1:p2)". */
+const routeWho = (state, route) => `${route.newest ? "the newest live coordinator" : "the board's coordinator"} (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`
+// Why a press asks first: no coordinator of the card's project runs (and its own is gone).
+const noOwnCoordinator = (state, item) => `no ${tagOf(state, item.project)} coordinator is running${item.origin ? ` (the card's own, ${item.origin}, is gone)` : ""}`
 
 /**
  * The line an open Waiting card with buttons ends with in the pane: where a press goes now, or
  * that it asks first (another project's coordinator), or that no coordinator runs.
  */
-export function routeNote(state, entry, agents, fallback = "") {
+export function routeNote(state, entry, agents, fallback = "", notes = []) {
   const item = entry?.id == null ? null : state.items.find((i) => i.id === entry.id)
   if (!item) return null
-  const route = routeAnswer(state, item, agents, { fallback })
+  const route = routeAnswer(state, item, agents, { fallback, notes })
   if (route.error) return { t: route.error, s: "blocked" }
-  if (route.second) {
-    return { t: `no ${tagOf(state, item.project)} coordinator is running: a press asks first, then sends to the board's coordinator (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`, s: "note" }
-  }
+  if (route.second) return { t: `${route.newest ? noOwnCoordinator(state, item) : `no ${tagOf(state, item.project)} coordinator is running`}: a press asks first, then sends to ${routeWho(state, route)}`, s: "note" }
   return { t: `answers go to: ${route.to}`, s: "dim" }
 }
 
 /** The card's note when the answer would go to another project's coordinator: press again to send. */
 export const secondPressNote = (state, item, route, label) =>
-  `no ${tagOf(state, item.project)} coordinator is running: press ${clean(label)} again to send it to the board's coordinator (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`
+  `${route.newest ? noOwnCoordinator(state, item) : `no ${tagOf(state, item.project)} coordinator is running`}: press ${clean(label)} again to send it to ${routeWho(state, route)}`
+
+/** What the card notes as where a press went: the newest live coordinator says so (0.19.0). */
+export const sentTo = (route) => (route.newest ? `the newest live ${route.to}` : route.to)
 
 /**
  * Whether pressing `label` on `item` sends now. A card already answered asks first ("send
@@ -5584,7 +5622,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
         return
       }
     }
-    const route = routeAnswer(state, item, agents(), { fallback: origin })
+    const route = routeAnswer(state, item, agents(), { fallback: origin, notes: routeNotes(fileOf()) })
     if (route.error) {
       notes[action.key] = { t: `couldn't ${action.type === "send" ? "send" : "open the chat"}: ${route.error}`, s: "blocked" }
       return
@@ -5599,7 +5637,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
       }
       second = null
     }
-    notes[action.key] = { t: action.type === "send" ? `sending: ${clean(action.label)} to ${route.to}…` : "opening the chat…", s: "dim" }
+    notes[action.key] = { t: action.type === "send" ? `sending: ${clean(action.label)} to ${sentTo(route)}…` : "opening the chat…", s: "dim" }
     onChange()
     const error = await send(action, { ...item, tag: tagOf(state, item.project) }, route.pane, env, fileOf())
     if (error) {
@@ -5612,7 +5650,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
     }
     delete notes[action.key]
     try {
-      markSent(fileOf(), item.id, action.label, now(), { pane: route.pane, to: route.to })
+      markSent(fileOf(), item.id, action.label, now(), { pane: route.pane, to: sentTo(route) })
     } catch (e) {
       notes[action.key] = { t: `sent, but couldn't note it on the card: ${clean(e.message)}`, s: "blocked" }
     }
@@ -5671,8 +5709,10 @@ export async function answerCard(file, ref, text, opts, { env, now, me }) {
     answer = typed
   }
   if (!inHerdr(env)) throw new Error("answer sends through Herdr (HERDR_ENV=1); nothing sent")
-  const route = routeAnswer(state, item, listAgents(env))
+  const route = routeAnswer(state, item, listAgents(env), { notes: routeNotes(file) })
   if (route.error) throw new Error(`couldn't send: ${route.error}`)
+  // The newest live coordinator, when the card's own and its project's are gone (0.19.0): said so.
+  const to = sentTo(route)
   const from = opts.from === "telegram" ? "telegram" : ""
   if (route.second && !opts.front) {
     throw new Error(`${secondPressNote(state, item, route, answer).replace(/: press .* again to send it/, "; nothing sent. To send it")}: add --front`)
@@ -5685,21 +5725,21 @@ export async function answerCard(file, ref, text, opts, { env, now, me }) {
   const mode = deliveryOf(env)
   const viaSocket = await answerBySocket(file, tagged, answer, route.pane, { from, env, now })
   if (viaSocket && !viaSocket.fallback) {
-    if (viaSocket.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaSocket.error}`)
-    markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-    return [`sent to ${route.to} (posted to its session${viaSocket.maybe ? "; it was slow to take it: posted again in 10 minutes unless acked" : ""}): ${answer}`]
+    if (viaSocket.error) throw new Error(`couldn't send to ${to}: the inbox couldn't take it: ${viaSocket.error}`)
+    markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+    return [`sent to ${to} (posted to its session${viaSocket.maybe ? "; it was slow to take it: posted again in 10 minutes unless acked" : ""}): ${answer}`]
   }
   const viaChannel = mode === "auto" || mode === "channel" ? answerByChannelSync(file, tagged, answer, route.pane, { from, env, now }) : null
   if (viaChannel) {
-    if (viaChannel.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaChannel.error}`)
-    markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-    return [`sent to ${route.to} (its job-board channel): ${answer}`]
+    if (viaChannel.error) throw new Error(`couldn't send to ${to}: the inbox couldn't take it: ${viaChannel.error}`)
+    markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+    return [`sent to ${to} (its job-board channel): ${answer}`]
   }
   const r = spawnSync(herdrBin(env), ["agent", "prompt", route.pane, answerText(tagged, answer, from)], { env, encoding: "utf8", timeout: 10_000 })
   const error = herdrError(r)
-  if (error) throw new Error(`couldn't send to ${route.to}: ${error}`)
-  markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-  return [`sent to ${route.to}: ${answer}`]
+  if (error) throw new Error(`couldn't send to ${to}: ${error}`)
+  markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+  return [`sent to ${to}: ${answer}`]
 }
 
 // --- job messages: a job tells its coordinator when it stops (0.7.2; an inbox since 0.8.0) -----
@@ -7532,7 +7572,8 @@ Buttons
 Answers and Telegram
 - answer <id> "<a button's label, its number, or text>" does what a press does: it goes to the
   card's owner while it runs, else its project's newest live coordinator; to the front
-  coordinator only with --front.
+  coordinator (or, when it is gone too, the newest live coordinator of any project) only with
+  --front.
 - Telegram: one bot, held by the front coordinator (board.mjs front makes your pane the front).
   A reply such as "170 go" becomes: board.mjs answer 170 "go" --from telegram. When it exits 1
   saying "add --front", ask the user before sending it to yourself with --front.
