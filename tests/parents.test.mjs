@@ -580,3 +580,40 @@ test("sub-card names (0.19.0): a check or review under a card shows as its paren
     t.done()
   }
 })
+
+test("sub-card names count the archived ones: archiving an older review moves no name, and ls --done names what commands take", () => {
+  const t = setup()
+  const at = (day) => ({ JOB_BOARD_NOW: `2026-10-${day}T10:00:00Z` })
+  try {
+    t.ok(["add", "doing", "Parent work: build", "--desc", "The parent."], t.app, at("01"))
+    t.ok(["add", "todo", "Parent work: review", "--parent", "1", "--desc", "First."], t.app, at("01"))
+    t.ok(["done", "2"], t.app, at("01"))
+    t.ok(["add", "todo", "Parent work: second review", "--parent", "1", "--desc", "Second."], t.app, at("06"))
+    t.ok(["add", "todo", "Parent work: third review", "--parent", "1", "--desc", "Third."], t.app, at("06"))
+    const ls = (args, day) => t.ok(["ls", "--width", "120", "--project", "all", ...args], t.app, at(day)).stdout
+    assert.match(ls([], "06"), /1 · review2 \(3\)[\s\S]*1 · review3 \(4\)|1 · review3 \(4\)[\s\S]*1 · review2 \(3\)/)
+    // 9 Oct: a write archives card 2; the names stay as they were.
+    t.ok(["now", "1", "building", "--only"], t.app, at("09"))
+    assert.equal(t.item(2), undefined, "card 2 is archived")
+    const after = ls([], "09")
+    assert.match(after, /1 · review2 \(3\)/)
+    assert.match(after, /1 · review3 \(4\)/)
+    assert.match(t.ok(["done", "1-review2"], t.app, at("09")).stdout, /^3 → done: Parent work: second review/m)
+    assert.equal(t.item(4).column, "todo", "card 4 untouched")
+    // A name that stands for the archived card is refused, naming it.
+    const r = t.run(["edit", "1-review", "--desc", "x"], t.app, at("09"))
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /1-review is card 2, done and archived/)
+    // ls --done (the archive read too) shows the names the commands take.
+    const done = ls(["--done", "30d"], "09")
+    for (const name of ["1 · review \\(2\\)", "1 · review2 \\(3\\)", "1 · review3 \\(4\\)"]) assert.match(done, new RegExp(name))
+    t.ok(["edit", "1-review3", "--desc", "Edited by its name."], t.app, at("09"))
+    assert.equal(t.item(4).desc, "Edited by its name.")
+    assert.notEqual(t.item(3).desc, "Edited by its name.")
+    // --parent takes it the same way.
+    t.ok(["add", "todo", "Notes on the third: write", "--parent", "1-review3", "--desc", "Under it."], t.app, at("09"))
+    assert.equal(t.item(5).parent, 4)
+  } finally {
+    t.done()
+  }
+})

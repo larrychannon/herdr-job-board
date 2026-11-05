@@ -148,8 +148,10 @@ itself out again at once.
   is the title's last `: <action>` when it starts with check or review (one word before it at
   most: `: check`, `: second review`, `: re-check`; not `: built — in independent review`), else
   the job's slug (`board-find-review`). Numbered by card number among the cards of the same
-  parent and kind on the board (Done cards of the last 7 days included; an archived one no
-  longer counts).
+  parent and kind, the archived ones counted too, so a name never moves to another card when an
+  older one is archived (a name that stands for an archived card is refused, naming it).
+  Removing a card (`rm`), giving a card another parent or a title edit that changes its kind
+  renumbers the ones after it.
 - **QUEUE** (0.14.0): To do cards you want started next, without asking for each. Put a To do
   card in it from its details (`u`, or a click on `Add to the Queue`; `Back to To do` takes a
   queued one out) or with `move <ref> queue`; a card goes in last, and `Shift+↑` `Shift+↓` (or
@@ -733,8 +735,8 @@ DOING (1)
   the Waiting-card check). Cards with no line, and Done cards, are never out of date. A line
   that `job-start` made old (0.19.0: a check or a next round started under the card with
   `--parent`, or a Done card started again, as `job-open` and `job-round` do) is still listed
-  in the reminder but doesn't block the Stop: the script that started the job writes the
-  parent's line itself. A line that was out of date before the start still blocks.
+  in the reminder and on the card but doesn't block the Stop (`job-open` and `job-round` are to
+  write the parent's line themselves). A line that was out of date before the start still blocks.
 - **A parent with no job or question of its own builds its line** (0.16.0) from the open cards
   under it, instead of showing the line written on it (or copied up from a card under it):
   `Now: #437 working · #438 waiting on you · #439 to do · 2 done`. Each card's word is its

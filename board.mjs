@@ -517,6 +517,14 @@ function legacyProject(file) {
  * written back as v2 by the next write.
  */
 export function readBoard(file) {
+  return withArchivedSubs(readBoardFile(file), file)
+}
+
+// The archived sub-cards, for a sub-card name a command is given (findItem, --parent): read when
+// asked, never written (not enumerable). A copy of the state ({ ...state }) has none.
+const withArchivedSubs = (state, file) => Object.defineProperty(state, "archivedSubs", { value: () => archivedSubs(file), enumerable: false, configurable: true })
+
+function readBoardFile(file) {
   if (!existsSync(file)) return emptyBoard()
   let state
   try {
@@ -987,7 +995,7 @@ export function scopeOf(state, project, me, agents = null) {
 export function findItem(state, ref, me = null) {
   const text = String(ref ?? "")
   // A sub-card by its parent and kind (0.19.0): "500-review", "500-check2".
-  if (isSubRef(text)) return findSubCard(state.items, text)
+  if (isSubRef(text)) return findSubCard(state.items, text, state.archivedSubs?.() ?? [])
   if (/^\d+$/.test(text)) {
     const item = state.items.find((i) => i.id === Number(text))
     if (!item) throw new Error(`no item ${text} on the board`)
@@ -1967,8 +1975,9 @@ export function deploysTitle(title) {
 // its own number kept beside it: "500 · review (511)", the second one "500 · review2 (515)".
 // Commands take "500-review" (and "500-check", "500-review2") as well as 511. The kind comes from
 // the title's last ": <action>" when it starts so ("…: check", "…: second review"), else the job's slug
-// ("board-find-review"). Counted among the cards on the board (Done ones of the last 7 days
-// included; an archived one no longer counts).
+// ("board-find-review"). Counted among the cards on the board and the archived ones, so a name
+// doesn't move to another card when an older one is archived; a name that stands for an archived
+// card is refused, naming it.
 
 // The action is the kind, with one word before it at most: "check", "second review", "re-check";
 // not "built — in independent review", which says where it stands.
@@ -2010,12 +2019,47 @@ export function subNames(items) {
 /** Whether `ref` names a sub-card ("500-review", "500-check2"). */
 export const isSubRef = (ref) => SUB_REF.test(String(ref ?? "").trim())
 
-/** The card a sub-card name stands for ("500-review2"), else throws (naming what is under that card). */
-export function findSubCard(items, ref) {
+/** `items` and the archived sub-cards (archivedSubs) not among them: what sub-card names count. */
+export const withSubs = (items, archived = []) => {
+  const ids = new Set(items.map((i) => i.id))
+  return [...items, ...archived.filter((a) => !ids.has(a.id))]
+}
+
+// The archived sub-cards by archive folder, with the archive files' names, sizes and times they
+// were read at: the pane redraws every 3 s.
+const subArchive = new Map()
+/** The archived cards that are a check or review under a card (subKind), for sub-card names. */
+export function archivedSubs(file) {
+  const dir = join(sideDir(file), "archive")
+  let key = ""
+  try {
+    key = readdirSync(dir)
+      .filter((f) => /^\d{4}-\d{2}\.jsonl$/.test(f))
+      .sort()
+      .map((f) => ((st) => `${f}:${st.size}:${st.mtimeMs}`)(statSync(join(dir, f))))
+      .join("|")
+  } catch {}
+  const hit = subArchive.get(dir)
+  if (hit?.key === key) return hit.subs
+  const subs = key ? readArchive(file).filter((a) => subKind(a)) : []
+  subArchive.set(dir, { key, subs })
+  return subs
+}
+
+/**
+ * The card a sub-card name stands for ("500-review2"), counted with the archived sub-cards
+ * (`archived`), else throws (naming what is under that card, or the archived card it names).
+ */
+export function findSubCard(items, ref, archived = []) {
   const [, parent, kind, nth] = SUB_REF.exec(String(ref).trim())
   const want = `${parent}-${kind.toLowerCase()}${Number(nth) > 1 ? Number(nth) : ""}`
-  const names = subNames(items)
-  for (const [id, name] of names) if (name.ref === want) return items.find((i) => i.id === id)
+  const names = subNames(withSubs(items, archived))
+  for (const [id, name] of names) {
+    if (name.ref !== want) continue
+    const item = items.find((i) => i.id === id)
+    if (!item) throw new Error(`${want} is card ${id}, done and archived: it is not on the board`)
+    return item
+  }
   const under = [...names.values()].filter((n) => String(n.parent) === parent).map((n) => `${n.ref} (${n.label.split("(")[1]}`)
   throw new Error(`no ${kind.toLowerCase()}${Number(nth) > 1 ? ` number ${Number(nth)}` : ""} under card ${parent} on the board${under.length ? ` (it has ${under.join(", ")})` : ""}`)
 }
@@ -2089,7 +2133,7 @@ function clearReady(item) {
  */
 function setParent(state, item, ref) {
   if (!/^\d+$/.test(String(ref ?? "").trim()) && !isSubRef(ref)) throw usage(`--parent takes a card's id (or a sub-card's name, 500-review), not "${clean(ref)}"`)
-  const id = isSubRef(ref) ? findSubCard(state.items, ref).id : Number(String(ref).trim())
+  const id = isSubRef(ref) ? findSubCard(state.items, ref, state.archivedSubs?.() ?? []).id : Number(String(ref).trim())
   const parent = state.items.find((i) => i.id === id)
   if (!parent) throw new Error(`no item ${id} on the board`)
   if (parent.column === "done") throw usage(`${id} is done: a card can only be made for an open card`)
@@ -2692,7 +2736,7 @@ export function jobAgent(agents, name, workspace = "") {
  * too. `agents` null means Herdr couldn't be asked, so no live status at all. `stops`: each job's
  * last stop (readStops), for "job finished — not reviewed yet" (`unreviewed`).
  */
-export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {} } = {}) {
+export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {}, archived = [] } = {}) {
   const view = { waiting: [], doing: [], queue: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
   // Done shows today's cards; with `doneDays` (ls --done 30d), those of the last N days, each
   // with its date.
@@ -2706,8 +2750,9 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
   // Parents and children are looked up among every card (`links`: ls draws a scope of them).
   const all = { items: links || state.items }
   const sorted = [...state.items].sort(byOrder)
-  // A check or review under a card: its parent's number and its kind (0.19.0), from every card.
-  const names = subNames(all.items)
+  // A check or review under a card: its parent's number and its kind (0.19.0), from every card
+  // and the archived sub-cards (`archived`: archivedSubs), as commands read the names.
+  const names = subNames(withSubs(all.items, archived))
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
@@ -5481,7 +5526,8 @@ export function answerText(item, label, from = "") {
  */
 export function coordinatorPanes(state, agents) {
   if (!Array.isArray(agents)) return null
-  const jobs = new Set((state.items || []).map((i) => i.job).filter(Boolean))
+  // A card's former jobs too: a worker job-close unlinked from its card still runs as one.
+  const jobs = new Set((state.items || []).flatMap((i) => [i.job, ...(Array.isArray(i.former_jobs) ? i.former_jobs : [])]).filter(Boolean))
   return new Set(agents.filter((a) => a?.pane_id && !(a.name && jobs.has(a.name))).map((a) => a.pane_id))
 }
 
@@ -5585,13 +5631,17 @@ export function routeAnswer(state, item, agents, { fallback = "", notes = [] } =
  */
 export function newestCoordinator(state, live, notes = []) {
   if (!live) return ""
-  const seen = [...Object.entries(state.coordinators || {}).map(([pane, c]) => [pane, c?.seen]), ...(Array.isArray(notes) ? notes : []).map((n) => [n?.pane, n?.at])]
+  const noted = (Array.isArray(notes) ? notes : []).filter((n) => n?.pane)
+  const seen = [...Object.entries(state.coordinators || {}).map(([pane, c]) => [pane, c?.seen]), ...noted.map((n) => [n.pane, n.at])]
   const times = new Map()
   for (const [pane, at] of seen) {
     const t = Date.parse(at) || 0
     if (pane && live.has(pane) && t >= (times.get(pane) ?? -1)) times.set(pane, t)
   }
-  return [...times].sort((a, b) => b[1] - a[1])[0]?.[0] || ""
+  // A pane whose session note is live (its process checked) first: a pane known only from an
+  // old board write may since run something else.
+  const withNote = new Set(noted.map((n) => n.pane))
+  return [...times].sort((a, b) => withNote.has(b[0]) - withNote.has(a[0]) || b[1] - a[1])[0]?.[0] || ""
 }
 
 /** The coordinator notes as { pane, at } for routeAnswer; [] when the folder can't be read. */
@@ -8621,8 +8671,9 @@ function reportLinesFor(path, cache) {
     if (statSync(path).size <= FIND_REPORT_MAX) {
       const report = readJson(path)
       if (isRecord(report)) {
-        const texts = [report.summary, ...[].concat(report.needs_user ?? []).map((n) => (isRecord(n) ? n.ask : n)), ...[].concat(report.notes ?? [])]
-        lines = texts.filter((t) => typeof t === "string").flatMap((t) => t.split("\n")).map(clean).filter(Boolean)
+        // Needs and notes read as the card reads them: an entry by its first text field.
+        const texts = [report.summary, ...needsList(report.needs_user), ...[].concat(report.notes ?? []).map(itemText)]
+        lines = texts.filter((t) => typeof t === "string" && t !== "(not text)").flatMap((t) => t.split("\n")).map(clean).filter(Boolean)
       }
     }
   } catch {}
@@ -9480,12 +9531,13 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           out(`no card has ${rest.length > 1 ? "any of these words" : "this word"}: ${rest.map(clean).join(" ")}${project ? ` (in ${project}; --project all for every project)` : ""}`)
           return 1
         }
-        const names = subNames(state.items)
+        const names = subNames(all)
         const byId = new Map(all.map((i) => [i.id, i]))
         for (const { item, count, of, field, line, at } of hits.slice(0, FIND_MAX)) {
           const name = names.get(item.id)?.ref
           const where = item.archived ? `done ${shortTime(item.since, now)}, archived` : item.column === "done" ? `done ${shortTime(item.since, now)}` : label(item.column)
-          const parent = item.parent != null ? ` · for #${item.parent}${byId.get(item.parent) ? ` ${shortTitle(byId.get(item.parent).title)}` : ""}` : ""
+          const pt = byId.get(item.parent)?.title
+          const parent = item.parent != null ? ` · for #${item.parent}${pt ? ` ${secretsIn(clean(pt)).length ? HIDDEN_SECRET : shortTitle(pt)}` : ""}` : ""
           // Each line is screened whole, before it is cut: a cut token no longer looks like one.
           // (An archived card from before 0.18.0, or a report, was never refused one.)
           out(`#${item.id}${name ? ` (${name})` : ""} · ${where} · ${tagOf(state, item.project) || "?"}${parent} · ${hideSecret(clean(item.title))}${of > 1 ? `  [${count} of ${of} words]` : ""}`)
@@ -9529,7 +9581,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const scope = opts.project === undefined ? scopeOf(state, opts.project, me, agents) : { items: state.items, label: "all projects", hidden: 0 }
         const shownProject = opts.project !== undefined && opts.project !== "all" ? projectRef(state, opts.project) : ""
         if (opts.project !== undefined && opts.project !== "all" && !shownProject) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them, or --project all)`)
-        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays, links: state.items, stops: readStops(file) })
+        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays, links: state.items, stops: readStops(file), archived: archivedSubs(file) })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined

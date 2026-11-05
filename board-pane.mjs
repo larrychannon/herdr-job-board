@@ -80,6 +80,7 @@ import { fileURLToPath } from "node:url"
 import {
   animates,
   animationTimer,
+  archivedSubs,
   barTick,
   boardPath,
   buildView,
@@ -190,7 +191,7 @@ function compose(data, file, env, layout, origin = "") {
   layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
-  const view = buildView(data.state, data.agents, { now, workspace, stops: data.stops })
+  const view = buildView(data.state, data.agents, { now, workspace, stops: data.stops, archived: data.error ? [] : archivedSubs(file) })
   // A Waiting card with buttons says where a press goes (the card's coordinator, or this pane's).
   const route = (e) => routeNote(data.state, e, data.agents, origin, data.notes)
   const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace, route })

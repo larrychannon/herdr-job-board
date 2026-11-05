@@ -90,11 +90,16 @@ test("find: a line with a secret is hidden whole, even when the part shown would
     t.ok(t.sfc, "2026-11-03T16:00:00Z", "job-start", "snmp-docs", "--title", "SNMP docs: write", "--report", report, "--desc", "Docs.")
     // An archived card from before the screen, with one in its title.
     mkdirSync(join(t.store, "archive"), { recursive: true })
-    writeFileSync(join(t.store, "archive", "2026-09.jsonl"), `${JSON.stringify({ id: 50, project: "x", title: `snmpwalk key ${token}`, column: "done", since: "2026-09-01T10:00:00Z" })}\n`)
+    // Its child: the parent's title, shown after "for #50", is screened whole too.
+    const child = { id: 51, project: "x", parent: 50, title: "Child work: check", column: "done", since: "2026-09-01T11:00:00Z" }
+    writeFileSync(join(t.store, "archive", "2026-09.jsonl"), `${JSON.stringify({ id: 50, project: "x", title: `snmpwalk key ${token}`, column: "done", since: "2026-09-01T10:00:00Z" })}\n${JSON.stringify(child)}\n`)
     const out = t.ok(t.ai, "2026-11-04T16:05:00Z", "find", "snmpwalk")
     assert.match(out, /^ {4}report: \(hidden: looked like a secret\)$/m)
     assert.match(out, /^#50 · [^\n]*· \(hidden: looked like a secret\)$/m)
     assert.equal(out.includes(token.slice(0, 20)), false, out)
+    const kid = t.ok(t.ai, "2026-11-04T16:05:00Z", "find", "child")
+    assert.match(kid, /^#51 \(50-check\) · [^\n]*· for #50 \(hidden: looked like a secret\) · Child work: check$/m)
+    assert.equal(kid.includes(token.slice(0, 12)), false, kid)
   } finally {
     t.done()
   }
@@ -109,4 +114,19 @@ test("find: at most 20 cards, then how many more; a long line is cut around its 
   const cut = findSnippet(long, long.indexOf("snmpwalk"))
   assert.match(cut, /^…a+ snmpwalk b+…$/)
   assert.ok([...cut].length <= 100)
+})
+
+test("find: a report's needs and notes written as objects are searched as the card reads them", () => {
+  const t = setup()
+  try {
+    const report = join(t.root, "report.json")
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "All good.", needs_user: [{ question: "Should the zebrafish migration run tonight?" }], notes: [{ text: "The quokka cache was cleared." }, { odd: 1 }] }))
+    t.ok(t.sfc, "2026-11-03T16:00:00Z", "job-start", "snmp-docs", "--title", "SNMP docs: write", "--report", report, "--desc", "Docs.")
+    assert.match(t.ok(t.ai, "2026-11-04T16:05:00Z", "find", "zebrafish"), /^ {4}report: Should the zebrafish migration run tonight\?$/m)
+    assert.match(t.ok(t.ai, "2026-11-04T16:05:00Z", "find", "quokka"), /^ {4}report: The quokka cache was cleared\.$/m)
+    // An entry with no text field isn't searched as "(not text)".
+    assert.equal(t.run(t.ai, "2026-11-04T16:05:00Z", "find", "text").status, 1)
+  } finally {
+    t.done()
+  }
 })

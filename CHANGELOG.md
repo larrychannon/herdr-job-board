@@ -39,6 +39,8 @@ checks after a job start, and a tighter secret screen.
   511, also 500-check`. Every command that takes a card takes `500-check`, `500-review`,
   `500-review2` too, `--parent` and `answer` included. The kind is the title's last `: <action>`
   when it starts with check or review (one word before it at most), else the job's slug.
+  Numbered with the archived ones counted, so archiving an older one moves no name; a name that
+  stands for an archived card is refused, naming it.
 - **Secret screen**: a passphrase in capitals (`XKCDHORSEBATTERYSTAPLE`), a password with a
   version inside it (`Hunt3.14-love`) and 8 to 12 hex after a secret's key (`deadbeef42`) are
   refused again. Still fine: git's short hash (7 hex) and a full one, versions (`fw8.5.1s024`,

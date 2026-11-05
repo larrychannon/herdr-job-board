@@ -170,6 +170,24 @@ test("routeAnswer: with the owner, its project's coordinators and the front all 
   assert.equal(routeAnswer(state, card, agents("w2:p1", "w9:p1")).newest, undefined)
 })
 
+test("routeAnswer: the newest-coordinator fallback never picks a job's worker, one job-close unlinked from its card included; a pane with a live session note comes first", () => {
+  const state = {
+    projects: { "ai-config": { tag: "ai" }, work: { tag: "work" } },
+    coordinators: { "w3:p2": { project: "work", seen: "2026-11-04T18:30:00Z" }, "w2:p1": { project: "work", seen: "2026-11-04T18:10:00Z" } },
+    items: [{ id: 490, project: "work", job: "", former_jobs: ["fix-login"] }],
+  }
+  const card = { id: 483, project: "ai-config", origin: "wA:p1" }
+  const agents = [
+    { pane_id: "w3:p2", name: "fix-login" },
+    { pane_id: "w2:p1", name: "claude" },
+  ]
+  assert.deepEqual(routeAnswer(state, card, agents), { pane: "w2:p1", to: "work coordinator (w2:p1)", second: true, newest: true })
+  // Two coordinators: the one whose session note is live wins over a later board write.
+  const two = { ...state, items: [] }
+  assert.equal(newestCoordinator(two, new Set(["w3:p2", "w2:p1"]), [{ pane: "w2:p1", at: "2026-11-04T17:00:00Z" }]), "w2:p1")
+  assert.equal(newestCoordinator(two, new Set(["w3:p2", "w2:p1"])), "w3:p2")
+})
+
 test("buttons after a restart: the card's owner, the front and the opener are gone; a press asks, then goes to the newest live coordinator, and the card says so", () => {
   const h = home()
   try {
