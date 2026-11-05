@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.19.0 · unreleased
+
+Board search, a press that reaches a coordinator after a restart, sub-card names, quieter Stop
+checks after a job start, and a tighter secret screen.
+
+- **Why**: "which card did we test snmpwalk on?" took ten tries of scripts over board.json and
+  still missed the card. After a machine restart, presses on two cards went nowhere: the cards,
+  the front and the pane that opened the board all pointed at dead panes. Starting a check
+  under a card made the coordinator's Stop hook ask it to rewrite that card's status line,
+  several times a day. Four open cards pointed to files in /tmp that the restart had deleted.
+  Checks and reviews under a card were hard to tell apart from the card itself. And the secret
+  screen's exemptions let a few real-looking passwords through.
+- **find**: `board.mjs find <words…> [--project P]` searches every project's cards, Done and
+  archived ones too: title, description, question, status line, job, project (tag or name) and
+  the job report's summary, needs and notes. Any case, each word at a word's start. Most words
+  first, then the newest, 20 at most; each with its column, project, parent and the line that
+  matches (text that looks like a secret hidden). Read-only; exit 1 when nothing matches. The
+  agent guide says to use it first for "which card …?".
+- **A press with no live owner**: when the card's owner, its project's coordinators, the front
+  and the pane that opened the board are all gone, a press asks first and then sends to the
+  newest live coordinator of any project (by its last board write, or the session note its
+  inbox socket keeps): `no ai coordinator is running (the card's own, wA:p1, is gone): press Go
+  again to send it to the newest live coordinator (work, pane w2:p1)`, and the card shows `sent:
+  Go · to the newest live work coordinator (w2:p1)`. `answer` does the same with `--front`. A
+  coordinator that has neither written to the board nor noted its session isn't known yet.
+- **Stop hook after a job start**: the events `job-start` notes (a card added under another
+  with `--parent`, a Done card started again: what `job-open` and `job-round` do) are marked
+  as its own, and the coordinator's Stop hook doesn't block over a status line only such an
+  event made old. The turn reminder and the card still say "out of date". A line that was out
+  of date before the start still blocks.
+- **lint** warns on a card that points to a file in a temporary folder (`/tmp`, `/private/tmp`,
+  `/var/folders`) in its title, description, question or status line, and says when the file
+  is gone already.
+- **Sub-card names**: a check or a review made for a card shows as its parent's number and its
+  kind where its number goes, its number kept: `500 · check (511)`, the second review
+  `500 · review2 (515)` (the number alone when the pane is too narrow). Its details say `card
+  511, also 500-check`. Every command that takes a card takes `500-check`, `500-review`,
+  `500-review2` too, `--parent` and `answer` included. The kind is the title's last `: <action>`
+  when it starts with check or review (one word before it at most), else the job's slug.
+  Numbered with the archived ones counted, so archiving an older one moves no name; a name that
+  stands for an archived card is refused, naming it.
+- **Secret screen**: a passphrase in capitals (`XKCDHORSEBATTERYSTAPLE`), a password with a
+  version inside it (`Hunt3.14-love`) and 8 to 12 hex after a secret's key (`deadbeef42`) are
+  refused again. Still fine: git's short hash (7 hex) and a full one, versions (`fw8.5.1s024`,
+  `v2.0.0-rc.1`, `1.0.0+build.5`), variable names (`DEPLOY_KEY`, `DEPLOYTOKEN`), and AWS's
+  example key after a key name. The version check reads each value one way, in linear time.
+- README (commands, Came from, answers, status lines, writing cards), help, agent guide.
+  Version 0.19.0.
+
 ## 0.18.0 · unreleased
 
 Test proof in job reports; no secrets on a card.

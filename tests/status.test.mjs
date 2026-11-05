@@ -306,6 +306,67 @@ test("hooks: the reminder lists stale cards; Stop blocks once per card and event
   }
 })
 
+test("hooks: a line job-start made old (a check started under it, a Done card started again) doesn't block the Stop; one already old still does", () => {
+  const t = setup()
+  try {
+    family(t)
+    t.ok("2026-10-30T10:01:00Z", "now", "1", "built, the review is running")
+    t.own(1, 2)
+    const env = { HERDR_ENV: "1", HERDR_PANE_ID: PANE, JOB_BOARD_HOME: t.state, HOME: join(t.base, ".git", "home") }
+    const stop = (session) => ({ hook_event_name: "Stop", session_id: session, cwd: t.base, stop_hook_active: false, last_assistant_message: "Started the check." })
+    // job-open --check --parent 1: a new card under 1. Its line is older than that event, but the
+    // job start made it: the reminder still lists it, the Stop hook doesn't block.
+    t.ok("2026-10-30T10:02:00Z", "job-start", "login-check", "--title", "Login fix: second check", "--parent", "1", "--desc", "Check the fix again.")
+    assert.equal(statusStale(t.item(1)), true)
+    assert.equal(t.item(1).event.via, "job-start")
+    assert.match(staleReminder(readBoard(t.file)), /#1 "Login fix: build"/)
+    assert.equal(handle(stop("a"), env).stdout, "")
+    // job-round on a Done card: it comes back out of Done, its lineage's lines too.
+    t.ok("2026-10-30T10:03:00Z", "now", "1", "the second check is running")
+    t.ok("2026-10-30T10:04:00Z", "done", "2")
+    t.ok("2026-10-30T10:05:00Z", "now", "1", "the review is done; the second check is running")
+    t.ok("2026-10-30T10:06:00Z", "job-start", "rev", "--id", "2")
+    assert.equal(t.item(2).column, "doing")
+    assert.equal(t.item(1).event.via, "job-start")
+    assert.equal(handle(stop("b"), env).stdout, "")
+    // Moved under it by job-start's --parent (an existing card): the same.
+    t.ok("2026-10-30T10:07:00Z", "now", "1", "the review runs again")
+    t.ok("2026-10-30T10:08:00Z", "job-start", "docs", "--id", "4", "--parent", "1")
+    assert.equal(t.item(1).event.via, "job-start")
+    assert.equal(handle(stop("c"), env).stdout, "")
+    // A line already out of date before the start keeps its event: the Stop still blocks.
+    t.ok("2026-10-30T10:09:00Z", "now", "1", "three jobs are running")
+    t.ok("2026-10-30T10:10:00Z", "done", "3")
+    t.ok("2026-10-30T10:11:00Z", "job-start", "login-check2", "--title", "Login fix: third check", "--parent", "1", "--desc", "Check once more.")
+    assert.equal(t.item(1).event.via, undefined)
+    assert.equal(JSON.parse(handle(stop("d"), env).stdout).decision, "block")
+  } finally {
+    t.done()
+  }
+})
+
+test("lint: a card that points to a file in a temporary folder warns (exit 0), in each field; gone files say so", () => {
+  const t = setup()
+  // The test's folder is a temporary one too: this file is there, for now.
+  const kept = join(realpathSync("/tmp"), `board-lint-${process.pid}.md`)
+  try {
+    writeFileSync(kept, "x")
+    t.ok("2026-10-30T10:00:00Z", "add", "todo", "Login fix: build", "--desc", "Brief: /tmp/claude-0/x/scratchpad/login-brief.md (the plan).\nNotes: ~/notes/tmp/a.md and ./tmp/b.md are fine.")
+    t.ok("2026-10-30T10:00:00Z", "add", "todo", "Export to CSV", "--desc", `The plan is in ${kept}.`)
+    t.ok("2026-10-30T10:00:00Z", "now", "2", "report at /private/tmp/job/report.json")
+    const r = t.run("2026-10-30T10:01:00Z", "lint")
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /card 1 .*\n  warn the description says "\/tmp\/claude-0\/x\/scratchpad\/login-brief\.md", a file in a temporary folder, gone already: keep what the card needs where it lasts/)
+    assert.doesNotMatch(r.stdout, /notes\/tmp|\.\/tmp/)
+    assert.match(r.stdout, /card 2 .*\n  warn the description says "(?:\/private)?\/tmp\/board-lint-\d+\.md", a file in a temporary folder, which a restart deletes: /)
+    assert.match(r.stdout, /\n  warn the status line says "\/private\/tmp\/job\/report\.json", a file in a temporary folder, gone already/)
+    assert.match(r.stdout, /0 of 2 open cards fail the wording check \(2 more with a warning only\)/)
+  } finally {
+    rmSync(kept, { force: true })
+    t.done()
+  }
+})
+
 test("hooks: the Waiting-card block comes first; a status line write is not a Waiting card update", () => {
   const t = setup()
   try {

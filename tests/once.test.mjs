@@ -95,8 +95,9 @@ test("inbox: the same order; the selected sub-task opens under its own row, inde
   const d = draw(board(), { width: 90, layout: "inbox", scroll: { card: "#279" } })
   const doing = section(d.text, "DOING", "TO DO").filter((l) => l.trim())
   assert.match(doing[0], /^ 231   Node health/)
-  assert.match(doing[1], /^▸ {8}↳ 279  Node health fixes/)
-  assert.match(doing[2], /^ {16}Card 279\./, "its body starts under its title")
+  // A review under 231 (its job, pr-review3): shown as 231's review, its number beside it (0.19.0).
+  assert.match(doing[1], /^▸ {8}↳ 231 · review \(279\)  Node health fixes/)
+  assert.match(doing[2], /^ {31}Card 279\./, "its body starts under its title")
   assert.match(doing.find((l) => /↳ 282/.test(l)), /^ {9}↳ 282  Badge tweaks/)
 })
 
@@ -140,6 +141,6 @@ test("a sub-task whose parent the project filter hides is a top card again; one 
   for (const i of state.items) if (i.id !== 231) i.project = "mine"
   const d = draw(state, { layout: "compact", scroll: { project: "mine" } })
   const doing = section(d.text, "DOING", "TO DO")
-  assert.match(doing.join("\n"), /^.279 +mine Node health fixes[^\n]*\n {12}for other #231 Node health\n/m)
+  assert.match(doing.join("\n"), /^.231 · review \(279\) +mine Node health[^\n]*\n {27}for other #231 Node health\n/m)
   assert.doesNotMatch(plain(d.text), /\n {9}↳ \d/)
 })

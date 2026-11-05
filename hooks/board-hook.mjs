@@ -482,11 +482,11 @@ export function staleReminder(state, mine = null) {
   )
 }
 
-/** The stale cards this pane owns (origin) whose (card, event) hasn't blocked a stop of this session yet. */
+/** The stale cards this pane owns (origin) whose (card, event) hasn't blocked a stop of this session yet; not one a job start made out of date (0.19.0: job-open, job-round). */
 export function staleToBlock(state, pane, nagged = []) {
   if (!pane) return []
   const seen = new Set(nagged)
-  return state.items.filter((i) => i.origin === pane && statusStale(i) && !seen.has(staleKey(i)) && !statusBuilt(state, i))
+  return state.items.filter((i) => i.origin === pane && statusStale(i) && i.event?.via !== "job-start" && !seen.has(staleKey(i)) && !statusBuilt(state, i))
 }
 
 export const staleKey = (i) => `${Number(i.id)}@${String(i.event?.at || "")}`

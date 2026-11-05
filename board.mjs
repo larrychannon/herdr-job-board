@@ -14,7 +14,10 @@
 //                           the cards under it until they are done; under a card whose title's
 //                           action says deploy: "waits for the deploy on #ID", and ID "deploys N")
 //   move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]
-//                           <ref> is an item id or a job slug. A new question (--ask) needs
+//                           <ref> is an item id, a job slug or a sub-card's name: a check or
+//                           review made for a card (--parent) is shown and taken as its
+//                           parent's number and kind ("500 · review (511)", ref 500-review, the
+//                           second 500-review2; 0.19.0). A new question (--ask) needs
 //                           --desc with a line that starts "Now:" in the same call (or a current
 //                           status line), and a command the user must run goes on the card too
 //                           (see edit)
@@ -45,8 +48,16 @@
 //                           another press in flight keeps its record. Not for workers
 //   lint [--project P]      every open card whose words fail the check, with each fix (read-only;
 //                           exit 1 when one must be fixed); it also warns on a description that
-//                           still has a Now line next to a status line, and on a plain line over
-//                           about three lines
+//                           still has a Now line next to a status line, on a plain line over
+//                           about three lines, and on a file in a temporary folder (/tmp,
+//                           /private/tmp, /var/folders: a restart deletes it)
+//   find <words…> [--project P]
+//                           every card with these words (any case, at a word's start), of every
+//                           project (or P's), Done and archived ones too: in its title,
+//                           description, question, status line, job, project or its report's
+//                           summary, needs and notes. Most words first, then the newest; each
+//                           with its column, project, parent and the line that matches. 20 at
+//                           most; exit 1 when none matches. Read-only. "Which card …?": this first
 //   done <ref>                                                 same as move <ref> done; when it was
 //                           the last open card under its parent, the parent is ready to resume
 //                           and goes on top of its section
@@ -65,7 +76,8 @@
 //                           button's label (any case), its number, or free text (300 characters
 //                           at most); it goes to the card's coordinator (see "Answers" below);
 //                           --front sends it to the front coordinator when the card's project has
-//                           none running. Not for workers
+//                           none running (or, with the front gone too, to the newest live
+//                           coordinator of any project). Not for workers
 //   tell "<one line>"       from a job's pane (a worker): put "[job note] <its job> — <line>" in
 //                           its coordinator's inbox. Its own job only: the job is this pane's
 //                           Herdr agent name. Its hooks already say when it stops ("[job
@@ -199,7 +211,8 @@
 // Answers: a button (or `answer`) sends "Board card <id> (<tag> · <title>): <label>" to the
 // card's owner pane while it runs, else to its project's newest live coordinator, else to the
 // pane that opened the board (or the front coordinator), after a second press when that is
-// another project's coordinator; the card notes where it went. A pane whose session keeps an
+// another project's coordinator, else (0.19.0) to the newest live coordinator of any project,
+// after a second press too; the card notes where it went. A pane whose session keeps an
 // inbox-socket note (0.10.0) gets it as an inbox message (kind answer) posted into its session
 // ("[board answer] card <id> (…): <label> #<msg id>"); one with the job-board channel
 // (channel/, 0.9.0) as an inbox message the channel pushes; any other pane has it typed in
@@ -504,6 +517,14 @@ function legacyProject(file) {
  * written back as v2 by the next write.
  */
 export function readBoard(file) {
+  return withArchivedSubs(readBoardFile(file), file)
+}
+
+// The archived sub-cards, for a sub-card name a command is given (findItem, --parent): read when
+// asked, never written (not enumerable). A copy of the state ({ ...state }) has none.
+const withArchivedSubs = (state, file) => Object.defineProperty(state, "archivedSubs", { value: () => archivedSubs(file), enumerable: false, configurable: true })
+
+function readBoardFile(file) {
   if (!existsSync(file)) return emptyBoard()
   let state
   try {
@@ -973,6 +994,8 @@ export function scopeOf(state, project, me, agents = null) {
 
 export function findItem(state, ref, me = null) {
   const text = String(ref ?? "")
+  // A sub-card by its parent and kind (0.19.0): "500-review", "500-check2".
+  if (isSubRef(text)) return findSubCard(state.items, text, state.archivedSubs?.() ?? [])
   if (/^\d+$/.test(text)) {
     const item = state.items.find((i) => i.id === Number(text))
     if (!item) throw new Error(`no item ${text} on the board`)
@@ -1266,8 +1289,13 @@ const KEY_KIND = (word) => {
   return w.startsWith("pass") ? "a password" : w === "secret" ? "a secret" : w === "token" ? "a token" : w.startsWith("private") ? "a private key" : w.startsWith("access") ? "an access key" : "an API key"
 }
 
-// A variable that holds a secret, named in its place: ANTHROPIC_API_KEY, DEPLOYTOKEN.
-const variableName = (v) => /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]+$/.test(v)
+// A variable that holds a secret, named in its place: ANTHROPIC_API_KEY, DEPLOYTOKEN. One word
+// in capitals only when it ends like such a name: XKCDHORSEBATTERYSTAPLE is a passphrase.
+const variableName = (v) => /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(v) || /^[A-Z]*(?:TOKEN|KEY|PASSWORD|PASSWD|PASS|SECRET|PAT)$/.test(v)
+// A version: dotted numbers after "v" or a short lower-case name (fw8.5.1s024, node18.2,
+// v2.0.0-rc.1), with a pre-release or build mark at most. Hunt3.14-love is a password.
+// Each mark starts at a "-", "+" or a letter, so a value is read one way only (linear time).
+const versionShape = (v) => /^(?:v|[a-z]{1,4})?\d+(?:\.\d+)+(?:[-+](?:(?:alpha|beta|rc|dev|pre|preview|snapshot|final|lts|build)(?:\.?\d+)?|[a-z]?\d+)|\.?(?:(?:alpha|beta|rc|dev|pre|preview|snapshot|final|lts|build)(?:\.?\d+)?|[a-z]\d+))*$/.test(v)
 // A path in lower case: prod/db, auth/v2/endpoints.
 const lowerPath = (v) => /^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+\/?$/.test(v)
 
@@ -1294,9 +1322,10 @@ function realSecretValue(value, key = "") {
   // A variable's name, a secret's name, or code: a function call (token = "readTokenFromKeychain(name)")
   // or a property (config.db_password, input.last_message).
   if (variableName(v) || (/^_*secret_*$/i.test(key) && secretName(v)) || /^[A-Za-z_$][\w$.]*\(/.test(v) || (/^[a-z_$][a-z_$]*(?:\.[A-Za-z_$][A-Za-z_$]*)+$/.test(v) && !/\d/.test(v))) return false
-  // A git hash (short, 7 to 10 hex, or 40 hex), a UUID, a date or a version is an id, not a secret.
-  if (/^[0-9a-f]{7,10}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
-  if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || /^[a-z]{0,4}v?\d+(?:\.\d+)+[a-z0-9-]*$/i.test(v)) return false
+  // A git hash (git's short one, 7 hex, or 40 hex), a UUID, a date or a version is an id, not a
+  // secret. 8 to 12 hex is read as a value (deadbeef42): a hash after a secret's key is rare.
+  if (/^[0-9a-f]{7}$/i.test(v) || /^[0-9a-f]{40}$/i.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return false
+  if (/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?$/.test(v) || versionShape(v)) return false
   // A plain word ("rotated", "expired") is prose; a value has a digit, or is long.
   return /\d/.test(v) || v.length >= 16
 }
@@ -1620,8 +1649,28 @@ export function wordingFailures(items) {
     const problems = cardWording(item)
       .filter((p) => !(p.level !== "warn" && allowed.has(wordingLine(p))))
       .map((p) => (p.level === "slug" ? { ...p, level: "warn" } : p))
-    problems.push(...descWarnings(item))
+    problems.push(...descWarnings(item), ...tmpPathWarnings(item))
     if (problems.length) out.push({ item, problems })
+  }
+  return out
+}
+
+// A file in a temporary folder (/tmp, macOS's /private/tmp and /var/folders): gone after a restart.
+const TMP_PATH = /(?<![\w.~/-])(?:\/private)?\/tmp\/[^\s"'`),;\]}>]+|(?<![\w.~/-])\/var\/folders\/[^\s"'`),;\]}>]+/g
+const TMP_FIELDS = [["title", (i) => i.title], ["description", (i) => i.desc], ["question", (i) => i.ask], ["status line", (i) => i.now?.text]]
+
+/**
+ * lint's warning for a card that points to a file in a temporary folder (0.19.0): a restart
+ * deletes it, and the card then points nowhere. One a field, naming the first path.
+ */
+export function tmpPathWarnings(item) {
+  const out = []
+  for (const [field, get] of TMP_FIELDS) {
+    const text = get(item)
+    const path = typeof text === "string" ? text.match(TMP_PATH)?.[0].replace(/[.:]+$/, "") : ""
+    if (!path) continue
+    const gone = !existsSync(path)
+    out.push({ field, text: path.length > 60 ? `${path.slice(0, 59)}…` : path, why: `a file in a temporary folder${gone ? ", gone already" : ", which a restart deletes"}`, fix: "keep what the card needs where it lasts (the repo, the job's record) and point there, or say what it held", level: "warn" })
   }
   return out
 }
@@ -1920,6 +1969,101 @@ export function deploysTitle(title) {
   return /\bdeploy(?:s|ing)?\b/i.test(action)
 }
 
+// --- sub-card names (0.19.0): "500 · review (511)" ------------------------------------------------
+//
+// A check or a review made for a card (--parent) is shown as its parent's number and its kind,
+// its own number kept beside it: "500 · review (511)", the second one "500 · review2 (515)".
+// Commands take "500-review" (and "500-check", "500-review2") as well as 511. The kind comes from
+// the title's last ": <action>" when it starts so ("…: check", "…: second review"), else the job's slug
+// ("board-find-review"). Counted among the cards on the board and the archived ones, so a name
+// doesn't move to another card when an older one is archived; a name that stands for an archived
+// card is refused, naming it.
+
+// The action is the kind, with one word before it at most: "check", "second review", "re-check";
+// not "built — in independent review", which says where it stands.
+const SUB_KIND = /^(?:\w+[- ])?(review|check)\b/i
+const SUB_REF = /^(\d+)-(review|check)(\d*)$/i
+
+/** A card's kind as a sub-card: "review", "check", or "" (no parent, or neither in its title's action or its job). */
+export function subKind(item) {
+  if (item?.parent == null) return ""
+  const title = clean(item.title)
+  const action = title.includes(": ") ? title.slice(title.lastIndexOf(": ") + 2) : ""
+  const kind = SUB_KIND.exec(action)?.[1] || /(?:^|[-_])(review|check)(?:\d*)(?=[-_]|$)/.exec(clean(item.job))?.[1] || ""
+  return kind.toLowerCase()
+}
+
+/**
+ * The sub-card names on the board: id → { parent, kind, n, ref ("500-review2"), label
+ * ("500 · review2 (515)") }, numbered by id among the cards of the same parent and kind.
+ */
+export function subNames(items) {
+  const groups = new Map()
+  for (const item of [...(items || [])].sort((a, b) => a.id - b.id)) {
+    const kind = subKind(item)
+    if (!kind || !Number.isSafeInteger(item.parent)) continue
+    const key = `${item.parent}-${kind}`
+    groups.set(key, [...(groups.get(key) || []), item])
+  }
+  const names = new Map()
+  for (const list of groups.values()) {
+    list.forEach((item, i) => {
+      const name = `${item.parent}-${subKind(item)}${i ? i + 1 : ""}`
+      const kind = name.slice(String(item.parent).length + 1)
+      names.set(item.id, { parent: item.parent, kind, n: i + 1, ref: name, label: `${item.parent} · ${kind} (${item.id})` })
+    })
+  }
+  return names
+}
+
+/** Whether `ref` names a sub-card ("500-review", "500-check2"). */
+export const isSubRef = (ref) => SUB_REF.test(String(ref ?? "").trim())
+
+/** `items` and the archived sub-cards (archivedSubs) not among them: what sub-card names count. */
+export const withSubs = (items, archived = []) => {
+  const ids = new Set(items.map((i) => i.id))
+  return [...items, ...archived.filter((a) => !ids.has(a.id))]
+}
+
+// The archived sub-cards by archive folder, with the archive files' names, sizes and times they
+// were read at: the pane redraws every 3 s.
+const subArchive = new Map()
+/** The archived cards that are a check or review under a card (subKind), for sub-card names. */
+export function archivedSubs(file) {
+  const dir = join(sideDir(file), "archive")
+  let key = ""
+  try {
+    key = readdirSync(dir)
+      .filter((f) => /^\d{4}-\d{2}\.jsonl$/.test(f))
+      .sort()
+      .map((f) => ((st) => `${f}:${st.size}:${st.mtimeMs}`)(statSync(join(dir, f))))
+      .join("|")
+  } catch {}
+  const hit = subArchive.get(dir)
+  if (hit?.key === key) return hit.subs
+  const subs = key ? readArchive(file).filter((a) => subKind(a)) : []
+  subArchive.set(dir, { key, subs })
+  return subs
+}
+
+/**
+ * The card a sub-card name stands for ("500-review2"), counted with the archived sub-cards
+ * (`archived`), else throws (naming what is under that card, or the archived card it names).
+ */
+export function findSubCard(items, ref, archived = []) {
+  const [, parent, kind, nth] = SUB_REF.exec(String(ref).trim())
+  const want = `${parent}-${kind.toLowerCase()}${Number(nth) > 1 ? Number(nth) : ""}`
+  const names = subNames(withSubs(items, archived))
+  for (const [id, name] of names) {
+    if (name.ref !== want) continue
+    const item = items.find((i) => i.id === id)
+    if (!item) throw new Error(`${want} is card ${id}, done and archived: it is not on the board`)
+    return item
+  }
+  const under = [...names.values()].filter((n) => String(n.parent) === parent).map((n) => `${n.ref} (${n.label.split("(")[1]}`)
+  throw new Error(`no ${kind.toLowerCase()}${Number(nth) > 1 ? ` number ${Number(nth)}` : ""} under card ${parent} on the board${under.length ? ` (it has ${under.join(", ")})` : ""}`)
+}
+
 /** The open cards anywhere under `item` (children, their children, …), by id. */
 export function waitingOn(state, item) {
   const out = []
@@ -1988,8 +2132,8 @@ function clearReady(item) {
  * itself or a card under it (no loops). A parent that was ready to resume waits again.
  */
 function setParent(state, item, ref) {
-  if (!/^\d+$/.test(String(ref ?? "").trim())) throw usage(`--parent takes a card's id, not "${clean(ref)}"`)
-  const id = Number(String(ref).trim())
+  if (!/^\d+$/.test(String(ref ?? "").trim()) && !isSubRef(ref)) throw usage(`--parent takes a card's id (or a sub-card's name, 500-review), not "${clean(ref)}"`)
+  const id = isSubRef(ref) ? findSubCard(state.items, ref, state.archivedSubs?.() ?? []).id : Number(String(ref).trim())
   const parent = state.items.find((i) => i.id === id)
   if (!parent) throw new Error(`no item ${id} on the board`)
   if (parent.column === "done") throw usage(`${id} is done: a card can only be made for an open card`)
@@ -2592,7 +2736,7 @@ export function jobAgent(agents, name, workspace = "") {
  * too. `agents` null means Herdr couldn't be asked, so no live status at all. `stops`: each job's
  * last stop (readStops), for "job finished — not reviewed yet" (`unreviewed`).
  */
-export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {} } = {}) {
+export function buildView(state, agents, { now = new Date(), workspace = "", doneDays = 0, links = null, stops = {}, archived = [] } = {}) {
   const view = { waiting: [], doing: [], queue: [], todo: [], doneToday: [], counts: {}, projects: state.projects || {} }
   // Done shows today's cards; with `doneDays` (ls --done 30d), those of the last N days, each
   // with its date.
@@ -2606,9 +2750,14 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
   // Parents and children are looked up among every card (`links`: ls draws a scope of them).
   const all = { items: links || state.items }
   const sorted = [...state.items].sort(byOrder)
+  // A check or review under a card: its parent's number and its kind (0.19.0), from every card
+  // and the archived sub-cards (`archived`: archivedSubs), as commands read the names.
+  const names = subNames(withSubs(all.items, archived))
   for (const item of sorted) {
     // `report` stays the report's path; `reportStatus` is what it says, when final.
     const entry = { ...item, live: "", reportStatus: "", age: now - new Date(item.since || item.updated || now), ...linksOf(all, item, state.projects) }
+    const name = names.get(item.id)
+    if (name) [entry.subName, entry.subRef] = [name.label, name.ref]
     // A card ready to resume shows how long since it got ready.
     if (entry.ready) entry.age = now - new Date(entry.ready)
     // Its status line, out of date when a card above or under it changed since it was written (0.13.0).
@@ -3436,13 +3585,15 @@ const barOf = (entry, ui) => (entry.live === "working" && Number.isInteger(ui.fr
 function card(entry, column, width, idWidth, descMax, ui = {}) {
   // The project's tag after the id; the title and the body start after it.
   const tag = tagSegs(ui)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag) - segWidth(subSegs(entry, ui)), idWidth, 20)
+  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
   const base = idWidth + 1 + segWidth(tag)
   const blocked = entry.live === "blocked"
-  const mark = entry.id == null ? "•" : String(entry.id)
   // A sub-task straight under its parent's card (nestView): "  ↳ 279  title", its id moved in
   // two cells right of where its parent's title starts, so it reads as inside the parent; its
   // whole card is indented as far.
-  const sub = subSegs(entry, ui)
+  const sub = subSegs(entry, ui, mark)
   const indent = { t: " ".repeat(base + segWidth(sub)) }
   const inner = Math.max(4, width - textWidth(indent.t))
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
@@ -3483,13 +3634,15 @@ const STALE_ROW_TEXT = "status out of date"
 const START_ROW_TEXT = "starts without asking"
 function cardRow(entry, column, width, idWidth, ui = {}) {
   const blocked = entry.live === "blocked"
-  const mark = entry.id == null ? "•" : String(entry.id)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - 1 - idWidth - 3 - segWidth(tagSegs(ui)) - segWidth(subSegs(entry, ui)), idWidth, 30)
+  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
   // "»": a queued card the user marked "start without asking" (0.15.0).
   const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : entry.startMarked ? { t: "»", s: "state-queue" } : { t: " " }
   const tag = tagSegs(ui)
   // A sub-task under its parent (nestView): its id moves in, after a ↳ two cells right of where
   // its parent's title starts (deeper ones two more), so it reads as inside the parent.
-  const sub = subSegs(entry, ui)
+  const sub = subSegs(entry, ui, mark)
   // Selected, only its id is highlighted where it is drawn: a sub-task's empty id column stays plain.
   const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, sub.length ? { t: " ".repeat(idWidth) } : { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
   const base = 1 + idWidth + 3 + segWidth(tag)
@@ -3541,8 +3694,20 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
 }
 
 // A sub-task's lead-in under its parent (nestView): "  ↳ 279  ", deeper ones two cells further.
-const subSegs = (entry, ui = {}) =>
-  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: entry.id == null ? "•" : String(entry.id), s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+const subSegs = (entry, ui = {}, mark = entry.id == null ? "•" : String(entry.id)) =>
+  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: mark, s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+
+/**
+ * What a card shows for its id: its number, or a sub-card's name ("500 · review (511)", 0.19.0)
+ * when, put there instead, it leaves `keep` cells or more for the rest (`room`: the cells left
+ * with the number, which takes `idWidth` cells, or its own width under a parent).
+ */
+function idMark(entry, room, idWidth, keep) {
+  const plain = entry.id == null ? "•" : String(entry.id)
+  if (!entry.subName) return plain
+  const more = textWidth(entry.subName) - (entry.depth ? textWidth(plain) : Math.max(idWidth, textWidth(plain)))
+  return room - Math.max(0, more) >= keep ? entry.subName : plain
+}
 
 const DESC_LINES = 3
 /** The board's sections, in the order Tab moves through them. */
@@ -3564,11 +3729,14 @@ const entriesOf = (view, section) => (section === "done" ? view.doneToday : view
 /** A finished card: the title, with the time it was finished on the right. */
 function doneCard(entry, width, idWidth, ui = {}) {
   const tag = tagSegs(ui)
+  // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
+  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag), idWidth, 20)
+  idWidth = Math.max(idWidth, textWidth(mark))
   const indent = { t: " ".repeat(idWidth + 1 + segWidth(tag)) }
   const inner = Math.max(4, width - textWidth(indent.t))
   const titles = wrap(entry.title, inner, 2)
   const urls = urlsIn(entry.title)
-  const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${String(entry.id).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
+  const lines = titles.map((t, i) => [...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : "dim" }, ...tag]), ...linkify(t, "", urls)])
   const at = entry.when || clockOf(new Date(entry.since))
   const room = inner - textWidth(titles.at(-1) || "") - textWidth(at)
   // 0.18.0: "unverified" before the time when its job's done report has no test proof, where it
@@ -4110,7 +4278,8 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   const buttonRows = {}
 
   for (const t of wrap(capText(entry.title, 400), width, Infinity)) lines.push(linkify(t, "title", urls))
-  lines.push([ind, { t: statusLine(entry, now), s: "dim" }])
+  // A sub-card says both its names (0.19.0): commands take either.
+  lines.push([ind, { t: `${statusLine(entry, now)}${entry.subRef ? ` · card ${entry.id}, also ${entry.subRef}` : ""}`, s: "dim" }])
   lines.push(...nowLines(entry, inner, ind, Infinity))
   if (entry.ready) lines.push([ind, { t: `Ready to resume${afterText(entry) ? `: ${afterText(entry)}` : ""}`, s: "ready" }])
   if (entry.unreviewed) lines.push([ind, { t: "Job finished — not reviewed yet: update the card", s: "unreviewed" }])
@@ -5357,7 +5526,8 @@ export function answerText(item, label, from = "") {
  */
 export function coordinatorPanes(state, agents) {
   if (!Array.isArray(agents)) return null
-  const jobs = new Set((state.items || []).map((i) => i.job).filter(Boolean))
+  // A card's former jobs too: a worker job-close unlinked from its card still runs as one.
+  const jobs = new Set((state.items || []).flatMap((i) => [i.job, ...(Array.isArray(i.former_jobs) ? i.former_jobs : [])]).filter(Boolean))
   return new Set(agents.filter((a) => a?.pane_id && !(a.name && jobs.has(a.name))).map((a) => a.pane_id))
 }
 
@@ -5424,11 +5594,14 @@ export function coordinatorName(state, pane) {
  *    for a card nobody owns when that pane is of the card's project (or never wrote to the
  *    board, as in 0.4); otherwise only after a second press (`second`), since it is another
  *    project's coordinator;
- * 4. else nowhere: { error }.
+ * 4. else the newest live coordinator of any project (0.19.0), after a second press (`newest`):
+ *    by when it last wrote to the board, or its session started (`notes`: coordinatorNotes);
+ *    a restart leaves the card's owner and the front pointing at panes that are gone;
+ * 5. else nowhere: { error }.
  * With no agent list, the owner or else the fallback, as they are (sending says if it fails).
- * Returns { pane, to, second } or { error }.
+ * Returns { pane, to, second, newest } or { error }.
  */
-export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
+export function routeAnswer(state, item, agents, { fallback = "", notes = [] } = {}) {
   const to = (pane, second = false) => ({ pane, to: coordinatorName(state, pane), second })
   if (!Array.isArray(agents)) {
     const fb = fallback || frontOf(state)
@@ -5446,27 +5619,64 @@ export function routeAnswer(state, item, agents, { fallback = "" } = {}) {
     const fbProject = state.coordinators?.[fb]?.project
     return to(fb, Boolean(item.origin) || Boolean(fbProject && fbProject !== item.project))
   }
+  const newest = newestCoordinator(state, live, notes)
+  if (newest) return { ...to(newest, true), newest: true }
   return { error: `no ${tagOf(state, item.project)} coordinator is running; start one there, or use Other…${fb ? "" : ` (no front coordinator: ${noFrontReason(state, live)}; board.mjs front, from a coordinator's pane, sets one)`}` }
 }
+
+/**
+ * The newest live coordinator pane of any project: by when it last wrote to the board
+ * (`state.coordinators`) or its session noted itself (`notes`: coordinatorNotes, { pane, at }).
+ * `live`: coordinatorPanes. "" when none.
+ */
+export function newestCoordinator(state, live, notes = []) {
+  if (!live) return ""
+  const noted = (Array.isArray(notes) ? notes : []).filter((n) => n?.pane)
+  const seen = [...Object.entries(state.coordinators || {}).map(([pane, c]) => [pane, c?.seen]), ...noted.map((n) => [n.pane, n.at])]
+  const times = new Map()
+  for (const [pane, at] of seen) {
+    const t = Date.parse(at) || 0
+    if (pane && live.has(pane) && t >= (times.get(pane) ?? -1)) times.set(pane, t)
+  }
+  // A pane whose session note is live (its process checked) first: a pane known only from an
+  // old board write may since run something else.
+  const withNote = new Set(noted.map((n) => n.pane))
+  return [...times].sort((a, b) => withNote.has(b[0]) - withNote.has(a[0]) || b[1] - a[1])[0]?.[0] || ""
+}
+
+/** The coordinator notes as { pane, at } for routeAnswer; [] when the folder can't be read. */
+export function routeNotes(file) {
+  try {
+    return file ? coordinatorNotes(file).map((n) => ({ pane: n.pane, at: n.at })) : []
+  } catch {
+    return []
+  }
+}
+
+/** Where a route goes, in words, for a card's notes: "the newest live coordinator (ai, pane w1:p2)". */
+const routeWho = (state, route) => `${route.newest ? "the newest live coordinator" : "the board's coordinator"} (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`
+// Why a press asks first: no coordinator of the card's project runs (and its own is gone).
+const noOwnCoordinator = (state, item) => `no ${tagOf(state, item.project)} coordinator is running${item.origin ? ` (the card's own, ${item.origin}, is gone)` : ""}`
 
 /**
  * The line an open Waiting card with buttons ends with in the pane: where a press goes now, or
  * that it asks first (another project's coordinator), or that no coordinator runs.
  */
-export function routeNote(state, entry, agents, fallback = "") {
+export function routeNote(state, entry, agents, fallback = "", notes = []) {
   const item = entry?.id == null ? null : state.items.find((i) => i.id === entry.id)
   if (!item) return null
-  const route = routeAnswer(state, item, agents, { fallback })
+  const route = routeAnswer(state, item, agents, { fallback, notes })
   if (route.error) return { t: route.error, s: "blocked" }
-  if (route.second) {
-    return { t: `no ${tagOf(state, item.project)} coordinator is running: a press asks first, then sends to the board's coordinator (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`, s: "note" }
-  }
+  if (route.second) return { t: `${route.newest ? noOwnCoordinator(state, item) : `no ${tagOf(state, item.project)} coordinator is running`}: a press asks first, then sends to ${routeWho(state, route)}`, s: "note" }
   return { t: `answers go to: ${route.to}`, s: "dim" }
 }
 
 /** The card's note when the answer would go to another project's coordinator: press again to send. */
 export const secondPressNote = (state, item, route, label) =>
-  `no ${tagOf(state, item.project)} coordinator is running: press ${clean(label)} again to send it to the board's coordinator (${tagOf(state, state.coordinators?.[route.pane]?.project) || "?"}, pane ${route.pane})`
+  `${route.newest ? noOwnCoordinator(state, item) : `no ${tagOf(state, item.project)} coordinator is running`}: press ${clean(label)} again to send it to ${routeWho(state, route)}`
+
+/** What the card notes as where a press went: the newest live coordinator says so (0.19.0). */
+export const sentTo = (route) => (route.newest ? `the newest live ${route.to}` : route.to)
 
 /**
  * Whether pressing `label` on `item` sends now. A card already answered asks first ("send
@@ -5557,7 +5767,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
         return
       }
     }
-    const route = routeAnswer(state, item, agents(), { fallback: origin })
+    const route = routeAnswer(state, item, agents(), { fallback: origin, notes: routeNotes(fileOf()) })
     if (route.error) {
       notes[action.key] = { t: `couldn't ${action.type === "send" ? "send" : "open the chat"}: ${route.error}`, s: "blocked" }
       return
@@ -5572,7 +5782,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
       }
       second = null
     }
-    notes[action.key] = { t: action.type === "send" ? `sending: ${clean(action.label)} to ${route.to}…` : "opening the chat…", s: "dim" }
+    notes[action.key] = { t: action.type === "send" ? `sending: ${clean(action.label)} to ${sentTo(route)}…` : "opening the chat…", s: "dim" }
     onChange()
     const error = await send(action, { ...item, tag: tagOf(state, item.project) }, route.pane, env, fileOf())
     if (error) {
@@ -5585,7 +5795,7 @@ export function createAnswerer({ file, origin = "", env = process.env, now = () 
     }
     delete notes[action.key]
     try {
-      markSent(fileOf(), item.id, action.label, now(), { pane: route.pane, to: route.to })
+      markSent(fileOf(), item.id, action.label, now(), { pane: route.pane, to: sentTo(route) })
     } catch (e) {
       notes[action.key] = { t: `sent, but couldn't note it on the card: ${clean(e.message)}`, s: "blocked" }
     }
@@ -5628,7 +5838,7 @@ function herdrError(r) {
  * sent and to whom. Returns the lines to print.
  */
 export async function answerCard(file, ref, text, opts, { env, now, me }) {
-  if (!/^\d+$/.test(String(ref))) throw usage("answer takes a card's id")
+  if (!/^\d+$/.test(String(ref)) && !isSubRef(ref)) throw usage("answer takes a card's id (or a sub-card's name, 500-review)")
   const state = readBoard(file)
   const item = findItem(state, ref)
   if (item.column !== "waiting") throw new Error(`card ${item.id} isn't waiting on you (it is in ${label(item.column)}); nothing sent`)
@@ -5644,8 +5854,10 @@ export async function answerCard(file, ref, text, opts, { env, now, me }) {
     answer = typed
   }
   if (!inHerdr(env)) throw new Error("answer sends through Herdr (HERDR_ENV=1); nothing sent")
-  const route = routeAnswer(state, item, listAgents(env))
+  const route = routeAnswer(state, item, listAgents(env), { notes: routeNotes(file) })
   if (route.error) throw new Error(`couldn't send: ${route.error}`)
+  // The newest live coordinator, when the card's own and its project's are gone (0.19.0): said so.
+  const to = sentTo(route)
   const from = opts.from === "telegram" ? "telegram" : ""
   if (route.second && !opts.front) {
     throw new Error(`${secondPressNote(state, item, route, answer).replace(/: press .* again to send it/, "; nothing sent. To send it")}: add --front`)
@@ -5658,21 +5870,21 @@ export async function answerCard(file, ref, text, opts, { env, now, me }) {
   const mode = deliveryOf(env)
   const viaSocket = await answerBySocket(file, tagged, answer, route.pane, { from, env, now })
   if (viaSocket && !viaSocket.fallback) {
-    if (viaSocket.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaSocket.error}`)
-    markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-    return [`sent to ${route.to} (posted to its session${viaSocket.maybe ? "; it was slow to take it: posted again in 10 minutes unless acked" : ""}): ${answer}`]
+    if (viaSocket.error) throw new Error(`couldn't send to ${to}: the inbox couldn't take it: ${viaSocket.error}`)
+    markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+    return [`sent to ${to} (posted to its session${viaSocket.maybe ? "; it was slow to take it: posted again in 10 minutes unless acked" : ""}): ${answer}`]
   }
   const viaChannel = mode === "auto" || mode === "channel" ? answerByChannelSync(file, tagged, answer, route.pane, { from, env, now }) : null
   if (viaChannel) {
-    if (viaChannel.error) throw new Error(`couldn't send to ${route.to}: the inbox couldn't take it: ${viaChannel.error}`)
-    markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-    return [`sent to ${route.to} (its job-board channel): ${answer}`]
+    if (viaChannel.error) throw new Error(`couldn't send to ${to}: the inbox couldn't take it: ${viaChannel.error}`)
+    markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+    return [`sent to ${to} (its job-board channel): ${answer}`]
   }
   const r = spawnSync(herdrBin(env), ["agent", "prompt", route.pane, answerText(tagged, answer, from)], { env, encoding: "utf8", timeout: 10_000 })
   const error = herdrError(r)
-  if (error) throw new Error(`couldn't send to ${route.to}: ${error}`)
-  markSent(file, item.id, answer, now, { pane: route.pane, to: route.to, from })
-  return [`sent to ${route.to}: ${answer}`]
+  if (error) throw new Error(`couldn't send to ${to}: ${error}`)
+  markSent(file, item.id, answer, now, { pane: route.pane, to, from })
+  return [`sent to ${to}: ${answer}`]
 }
 
 // --- job messages: a job tells its coordinator when it stops (0.7.2; an inbox since 0.8.0) -----
@@ -7390,6 +7602,10 @@ One board for every project
 - Your cards: \`ls\` and \`json\` show this project's cards and the ones your pane owns (the front
   coordinator also gets cards no live coordinator can take); --project P or --project all for
   more. The prompt hook reminds you of the same Waiting cards and counts the others.
+- "Which card …?": \`find <words…>\` first: every project's cards, Done and archived ones too,
+  most words first, with the line that matches (no scripts over board.json).
+- A check or review made for a card shows as its parent's number and kind ("500 · check (511)");
+  every command takes 500-check, 500-review, 500-review2 as well as 511.
 - Another project's card that your pane doesn't own needs --project <its project> to change
   (exit 2 otherwise).
 
@@ -7505,7 +7721,8 @@ Buttons
 Answers and Telegram
 - answer <id> "<a button's label, its number, or text>" does what a press does: it goes to the
   card's owner while it runs, else its project's newest live coordinator; to the front
-  coordinator only with --front.
+  coordinator (or, when it is gone too, the newest live coordinator of any project) only with
+  --front.
 - Telegram: one bot, held by the front coordinator (board.mjs front makes your pane the front).
   A reply such as "170 go" becomes: board.mjs answer 170 "go" --from telegram. When it exits 1
   saying "add --front", ask the user before sending it to yourself with --front.
@@ -8421,6 +8638,7 @@ export const COMMAND_FLAGS = {
   "not-run": ["type", "run", "label", "project"],
   ls: ["width", "project", "done"],
   lint: ["project"],
+  find: ["project"],
   json: ["archive", "project"],
   import: ["dry-run", "keep-stale", "retag"],
   export: ["legacy", "project"],
@@ -8436,6 +8654,79 @@ export const COMMAND_FLAGS = {
   contract: [],
   guide: [],
   version: [],
+}
+
+// --- find (0.19.0): which card was that? ---------------------------------------------------------
+
+export const FIND_MAX = 20
+// A report file read for find: at most this big (a report is a few KB).
+const FIND_REPORT_MAX = 512 * 1024
+
+/** A report's text for find: its summary, needs_user and notes, as lines; [] when unreadable. */
+function reportLinesFor(path, cache) {
+  if (!path) return []
+  if (cache.has(path)) return cache.get(path)
+  let lines = []
+  try {
+    if (statSync(path).size <= FIND_REPORT_MAX) {
+      const report = readJson(path)
+      if (isRecord(report)) {
+        // Needs and notes read as the card reads them: an entry by its first text field.
+        const texts = [report.summary, ...needsList(report.needs_user), ...[].concat(report.notes ?? []).map(itemText)]
+        lines = texts.filter((t) => typeof t === "string" && t !== "(not text)").flatMap((t) => t.split("\n")).map(clean).filter(Boolean)
+      }
+    }
+  } catch {}
+  cache.set(path, lines)
+  return lines
+}
+
+/**
+ * The cards that hold `words` (any case, each at the start of a word), best first: the most
+ * words matched, then the newest. Every card in `items` (the board's and the archive's, marked
+ * `archived`), in its title, description, question, status line, job, project (its tag and
+ * name, matched but not shown) and its report's summary, needs and notes. Each hit:
+ * { item, count, field, line } with the line that matches most of the words.
+ */
+export function findCards(items, words, { projects = {}, reports = true } = {}) {
+  const wanted = [...new Set(words.flatMap((w) => clean(w).toLowerCase().split(/\s+/)).map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean))]
+  if (!wanted.length) return []
+  const res = wanted.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu"))
+  const cache = new Map()
+  const hits = []
+  for (const item of items) {
+    const fields = [
+      ["title", [clean(item.title)]],
+      ["status line", [clean(item.now?.text)]],
+      ["question", cleanLines(item.ask).split("\n")],
+      ["description", cleanDesc(item.desc).split("\n")],
+      ["job", [clean(item.job)]],
+      ["report", reports ? reportLinesFor(item.report, cache) : []],
+    ]
+    const project = [clean(item.project), clean(projects[item.project]?.tag)].join(" ")
+    const found = new Set()
+    let best = null
+    for (const [field, lines] of fields) {
+      for (const line of lines) {
+        if (!line) continue
+        const n = res.filter((re, i) => re.test(line) && found.add(i)).length
+        if (n && (!best || n > best.n)) best = { field, line, n }
+      }
+    }
+    res.forEach((re, i) => re.test(project) && found.add(i))
+    if (!found.size) continue
+    hits.push({ item, count: found.size, field: best?.field || "project", line: best?.line || "", re: res.find((re) => re.test(best?.line || "")) })
+  }
+  const at = (i) => Date.parse(i.updated || i.since || i.created || "") || 0
+  return hits.sort((a, b) => b.count - a.count || at(b.item) - at(a.item) || b.item.id - a.item.id).map(({ re, ...h }) => ({ ...h, at: h.line ? h.line.search(re) : -1, of: wanted.length }))
+}
+
+/** A hit's line cut to about `max` characters around its first match, "…" where cut. */
+export function findSnippet(line, at, max = 100) {
+  const chars = [...line]
+  if (chars.length <= max) return line
+  const from = Math.max(0, Math.min(Math.max(0, at - 30), chars.length - max))
+  return `${from ? "…" : ""}${chars.slice(from + (from ? 1 : 0), from + max - 1).join("").trim()}${from + max - 1 < chars.length ? "…" : ""}`
 }
 
 /** The usage at the top of this file, without the comment marks. */
@@ -8893,9 +9184,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         let asking = null
         // A new card's title is set here (the slug without --title: refused); an old card's only with --title.
         const checked = (it, title = true) => (checkWording(it, opts, (w) => warnings.push(w), { title }), it)
-        const item = change((s) => {
-          warnings = []
-          asking = null
+        const start = (s) => {
           // The job's open card: To do or Doing, else a Waiting one that asks nothing (0.12.0: a
           // new round of a job goes on that card, not on a new one titled with the slug). A
           // Waiting card with a question or buttons is the user's open question from the last
@@ -8920,6 +9209,20 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           if (me.workspace) it.workspace = me.workspace
           if (me.coordinator && !it.origin) it.origin = me.pane
           return checked(editItem(s, it, { ...opts, job: slug, id: undefined, project: undefined, worktree: undefined }, now, (w) => warnings.push(w)), opts.title !== undefined)
+        }
+        const item = change((s) => {
+          warnings = []
+          asking = null
+          // The events this start notes (a sub-card added above it, a Done card reopened) are
+          // marked as the job start's (0.19.0): the Stop hook doesn't ask for a line they made
+          // old. A line that was out of date already keeps its event unmarked: it still blocks.
+          const before = new Map(s.items.map((i) => [i.id, { event: i.event, stale: statusStale(i) }]))
+          const started = start(s)
+          for (const i of s.items) {
+            const was = before.get(i.id)
+            if (i.event && i.event !== was?.event && !was?.stale) i.event = { ...i.event, via: "job-start" }
+          }
+          return started
         })
         for (const w of warnings) err(w)
         if (asking) err(`board: card ${asking.id} of job ${slug} still waits on the user, so this round has a new card (${item.id}). For a round on card ${asking.id} instead: board.mjs job-start ${slug} --id ${asking.id}`)
@@ -9213,6 +9516,36 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         out(`${item.id} → waiting on you: ${item.title}\n  ask: ${item.ask}\n  ${pressed ? `the "${pressed}" button is gone from the card` : "no press on record: the card says a press can't run this"}${optionsOf(item).length ? ` (buttons left: ${optionsOf(item).map((o) => o.label).join(" · ")})` : ""}`)
         return 0
       }
+      case "find": {
+        // Read-only (0.19.0): which card holds these words, of every project, Done and archived too.
+        only(opts, command)
+        if (!rest.length) throw usage("usage: board.mjs find <words…> [--project P]")
+        const state = readBoard(file)
+        const project = opts.project === undefined || opts.project === "all" ? "" : projectRef(state, opts.project)
+        if (opts.project !== undefined && opts.project !== "all" && !project) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them)`)
+        const onBoard = new Set(state.items.map((i) => i.id))
+        const archived = readArchive(file).filter((a) => !onBoard.has(a.id)).map((a) => ({ ...a, archived: true }))
+        const all = [...state.items, ...archived]
+        const hits = findCards(all.filter((i) => !project || i.project === project), rest, { projects: state.projects })
+        if (!hits.length) {
+          out(`no card has ${rest.length > 1 ? "any of these words" : "this word"}: ${rest.map(clean).join(" ")}${project ? ` (in ${project}; --project all for every project)` : ""}`)
+          return 1
+        }
+        const names = subNames(all)
+        const byId = new Map(all.map((i) => [i.id, i]))
+        for (const { item, count, of, field, line, at } of hits.slice(0, FIND_MAX)) {
+          const name = names.get(item.id)?.ref
+          const where = item.archived ? `done ${shortTime(item.since, now)}, archived` : item.column === "done" ? `done ${shortTime(item.since, now)}` : label(item.column)
+          const pt = byId.get(item.parent)?.title
+          const parent = item.parent != null ? ` · for #${item.parent}${pt ? ` ${secretsIn(clean(pt)).length ? HIDDEN_SECRET : shortTitle(pt)}` : ""}` : ""
+          // Each line is screened whole, before it is cut: a cut token no longer looks like one.
+          // (An archived card from before 0.18.0, or a report, was never refused one.)
+          out(`#${item.id}${name ? ` (${name})` : ""} · ${where} · ${tagOf(state, item.project) || "?"}${parent} · ${hideSecret(clean(item.title))}${of > 1 ? `  [${count} of ${of} words]` : ""}`)
+          if (line && field !== "title") out(`    ${field}: ${secretsIn(line).length ? HIDDEN_SECRET : findSnippet(line, at)}`)
+        }
+        if (hits.length > FIND_MAX) out(`+${plural(hits.length - FIND_MAX, "more card")}: add a word to narrow it`)
+        return 0
+      }
       case "lint": {
         // Read-only: every open card whose words fail the check (--project P: P's), with each fix.
         only(opts, command)
@@ -9248,7 +9581,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         const scope = opts.project === undefined ? scopeOf(state, opts.project, me, agents) : { items: state.items, label: "all projects", hidden: 0 }
         const shownProject = opts.project !== undefined && opts.project !== "all" ? projectRef(state, opts.project) : ""
         if (opts.project !== undefined && opts.project !== "all" && !shownProject) throw usage(`no project "${clean(opts.project)}" on the board (board.mjs projects lists them, or --project all)`)
-        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays, links: state.items, stops: readStops(file) })
+        const view = buildView({ ...state, items: scope.items }, listAgents(env), { now, workspace: env.HERDR_WORKSPACE_ID || "", doneDays, links: state.items, stops: readStops(file), archived: archivedSubs(file) })
         const width = Number(opts.width) || process.stdout.columns || 100
         // Not a terminal and no --width (an agent reading it): the wide layout, every card whole.
         const layout = !opts.width && !process.stdout.isTTY ? "wide" : undefined

@@ -80,6 +80,7 @@ import { fileURLToPath } from "node:url"
 import {
   animates,
   animationTimer,
+  archivedSubs,
   barTick,
   boardPath,
   buildView,
@@ -100,6 +101,7 @@ import {
   repostDue,
   reportToken,
   routeNote,
+  routeNotes,
   screenDiff,
   textWidth,
   tokenFor,
@@ -177,9 +179,9 @@ const legacyNotice = (legacy) => (legacy && existsSync(legacy) ? `this repo's 0.
 async function load(file, env) {
   const [agents, tabs] = await Promise.all([listAgentsAsync(env), listTabsAsync(env)])
   try {
-    return { state: readBoard(file), agents, tabs, stops: readStops(file), error: "" }
+    return { state: readBoard(file), agents, tabs, stops: readStops(file), notes: routeNotes(file), error: "" }
   } catch (e) {
-    return { state: emptyBoard(), agents, tabs, stops: {}, error: e.message }
+    return { state: emptyBoard(), agents, tabs, stops: {}, notes: [], error: e.message }
   }
 }
 
@@ -189,9 +191,9 @@ function compose(data, file, env, layout, origin = "") {
   layout = { ...layout, notice: data.notice || "" }
   const now = clockNow(env)
   const workspace = env.HERDR_WORKSPACE_ID || ""
-  const view = buildView(data.state, data.agents, { now, workspace, stops: data.stops })
+  const view = buildView(data.state, data.agents, { now, workspace, stops: data.stops, archived: data.error ? [] : archivedSubs(file) })
   // A Waiting card with buttons says where a press goes (the card's coordinator, or this pane's).
-  const route = (e) => routeNote(data.state, e, data.agents, origin)
+  const route = (e) => routeNote(data.state, e, data.agents, origin, data.notes)
   const drawn = renderBoard(view, { ...layout, now, repo: repoName(file), error: data.error, interactive: true, agents: data.agents, tabs: data.tabs, workspace, route })
   // The sidebar counts this workspace's own cards (the board shows every project).
   return { drawn, token: data.error ? null : tokenFor(data.state, data.agents, workspace) }

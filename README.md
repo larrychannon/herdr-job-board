@@ -139,6 +139,19 @@ itself out again at once.
   DOING (1) ──────────────────────────────────────────────────
    1   Node health: goes live after… ready to resume  just now
   ```
+- **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
+  and its kind, its own number beside it: `500 · check (511)`, the second review under 500
+  `500 · review2 (515)`, where the number goes (after the `↳` when drawn under its parent; the
+  plain number when the pane is too narrow for the name). Its details say `card 511, also
+  500-check`. Every command that takes a card (`move`, `edit`, `done`, `now`, `answer`,
+  `--parent`, `--id`, …) takes `500-check`, `500-review`, `500-review2` as well as `511`. The kind
+  is the title's last `: <action>` when it starts with check or review (one word before it at
+  most: `: check`, `: second review`, `: re-check`; not `: built — in independent review`), else
+  the job's slug (`board-find-review`). Numbered by card number among the cards of the same
+  parent and kind, the archived ones counted too, so a name never moves to another card when an
+  older one is archived (a name that stands for an archived card is refused, naming it).
+  Removing a card (`rm`), giving a card another parent or a title edit that changes its kind
+  renumbers the ones after it.
 - **QUEUE** (0.14.0): To do cards you want started next, without asking for each. Put a To do
   card in it from its details (`u`, or a click on `Add to the Queue`; `Back to To do` takes a
   queued one out) or with `move <ref> queue`; a card goes in last, and `Shift+↑` `Shift+↓` (or
@@ -372,7 +385,14 @@ button itself. A click on the question never sends.
   (or the front coordinator, `board.mjs front`). That last one gets a card nobody owns of its
   own project at once, but another project's card only after a second press: the card first
   says `no ai coordinator is running: press Go again to send it to the board's coordinator (sfc,
-  pane w4:p6)`. With no coordinator at all: `couldn't send: no ai coordinator is running; start
+  pane w4:p6)`. When that pane is gone too (after a restart the card's owner, the front and the
+  pane that opened the board can all be dead panes), the newest running coordinator of any
+  project, by when it last wrote to the board or its session started (0.19.0), again after a
+  second press: `no ai coordinator is running (the card's own, wA:p1, is gone): press Go again
+  to send it to the newest live coordinator (work, pane w2:p1)`, and the card then shows
+  `sent: Go · 18:30 · to the newest live work coordinator (w2:p1)`. A coordinator that has
+  neither written to the board nor noted its session (no inbox socket) isn't known yet. With no
+  coordinator at all: `couldn't send: no ai coordinator is running; start
   one there, or use Other…`. With several projects on the board, an open Waiting card says
   where a press goes now (`answers go to: sfc coordinator (w4:p6)`). Only a coordinator's pane
   counts: an agent Herdr names after a job on the board is a worker and never gets answers.
@@ -639,10 +659,11 @@ and the flags it takes.
 | Command | What it does |
 |---|---|
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
-| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id or its job slug. A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
+| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
-| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, and on a plain description line over about three lines (60 columns each). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question or status line: a restart deletes it, so the card would point nowhere (it says when the file is gone already). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
@@ -711,7 +732,11 @@ DOING (1)
   check that a board press it is given is a real answer on the card it ships.
 - **The coordinator hears of it**: its turn reminder lists its cards with a line out of date,
   and its Stop hook blocks once per card and event while a card its pane owns has one (after
-  the Waiting-card check). Cards with no line, and Done cards, are never out of date.
+  the Waiting-card check). Cards with no line, and Done cards, are never out of date. A line
+  that `job-start` made old (0.19.0: a check or a next round started under the card with
+  `--parent`, or a Done card started again, as `job-open` and `job-round` do) is still listed
+  in the reminder and on the card but doesn't block the Stop (`job-open` and `job-round` are to
+  write the parent's line themselves). A line that was out of date before the start still blocks.
 - **A parent with no job or question of its own builds its line** (0.16.0) from the open cards
   under it, instead of showing the line written on it (or copied up from a card under it):
   `Now: #437 working · #438 waiting on you · #439 to do · 2 done`. Each card's word is its
@@ -1226,9 +1251,12 @@ Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`
 `**password**: …`, `**DB password:** …`). The refusal exits 2 and names the field and the kind, never the text;
 `--allow-wording` doesn't change it. It reads the text as the card would store it, without
 format characters (a soft hyphen or zero-width space can't split a token). Not a secret: a git
-hash (7 to 10 or 40 hex), a UUID, a date, a version, `${VAR}`, `$VAR`, `<placeholder>`,
+hash (7 or 40 hex; 8 to 12 hex after a secret's key is read as its value), a UUID, a date, a
+version (dotted numbers after `v` or a short lower-case name, with a mark such as `-rc.1` at
+most: `fw8.5.1s024`, not `Hunt3.14-love`), `${VAR}`, `$VAR`, `<placeholder>`,
 `****`, an `op://` reference, `os.environ/…`, `secrets.…`, an AWS ARN, a variable's name
-(`ANTHROPIC_API_KEY`), a property (`config.db_password`), a function call, a secret's name
+(`ANTHROPIC_API_KEY`; one word in capitals only when it ends like one, `DEPLOYTOKEN`, not a
+passphrase in capitals), a property (`config.db_password`), a function call, a secret's name
 after `secret:` (`secret: prod/db-credentials`; after `passphrase:` the same shape is the
 passphrase), a file path, AWS's documented example key, or a word ("token: expired"). Say where the secret is kept instead ("the deploy token is in
 1Password: Service-Accounts-Vault", "Deploy token: 1Password (Dev vault)").
