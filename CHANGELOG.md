@@ -42,7 +42,8 @@ checks after a job start, and a tighter secret screen.
   Numbered with the archived ones counted, so archiving an older one moves no name; a name that
   stands for an archived card is refused, naming it.
 - **Nested cards in the pane**: a card drawn under its parent keeps its number in the id column
-  with every other card's (a check under it too: `12`, not `11 · check (12)`), and its title
+  with every other card's (a check under it too: `12`, not `11 · check (12)`; also a check
+  drawn under its grandparent when its own parent is done), and its title
   steps in two cells a level after the `↳`, so a parent, its sub-card, that one's check and the
   next sibling line up. A card's `Waiting on:` line leaves out the cards drawn as rows under it,
   and its built status line (`Now: #12 working`) isn't drawn when it names only those. An open

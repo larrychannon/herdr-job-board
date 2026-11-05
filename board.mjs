@@ -3711,8 +3711,9 @@ const subSegs = (entry) => (entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ 
  */
 function idMark(entry, room, idWidth, keep) {
   const plain = entry.id == null ? "•" : String(entry.id)
-  // Drawn under its own parent (nestView), the parent's number is the row above: its own number.
-  if (!entry.subName || (entry.depth && entry.nest === entry.parentOf?.id)) return plain
+  // Drawn under a card (nestView): its own number, in the shared id column. Under its own parent
+  // the parent's number is the row above; under a grandparent its "for #… (done)" line names it.
+  if (!entry.subName || entry.depth) return plain
   const more = textWidth(entry.subName) - (entry.depth ? textWidth(plain) : Math.max(idWidth, textWidth(plain)))
   return room - Math.max(0, more) >= keep ? entry.subName : plain
 }

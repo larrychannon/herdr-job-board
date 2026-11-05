@@ -84,3 +84,23 @@ test("a parent's built status line stays when it names a card not drawn under it
   assert.match(text, /Now: #12 to do/)
   assert.match(text, /Waiting on: Checkout follow-up fixes \[to do\]/)
 })
+
+// 11 done: its check (12) is drawn under the grandparent, 10. It keeps its own number in the id
+// column (its "for #11 … (done)" line names the parent), not "11 · check (12)", which would push
+// its tag and ↳ out of line with its sibling 13.
+for (const width of [100, 160]) {
+  test(`${width} columns: a check whose parent is done, drawn under the grandparent, keeps its number in line`, () => {
+    const s = state()
+    s.items.find((i) => i.id === 11).column = "done"
+    const lines = renderBoard(buildView(s, agents, { now: NOW, workspace: "w9" }), { width, height: 40, interactive: true, now: NOW, frame: 0, scroll: { selected: "doing", card: "#12", anchors: {} } }).text.split("\n")
+    for (const l of lines) assert.ok(textWidth(l) <= width, `fits ${width}: ${l}`)
+    assert.ok(!lines.some((l) => /· check \(12\)/.test(l)), "its number, not its sub-card name")
+    const row = (id) => lines.find((l) => new RegExp(`^[▸ ]? *${id}[ ▸]`).test(l))
+    const family = [10, 12, 13, 9].map(row)
+    for (const [i, l] of family.entries()) assert.ok(l, `${[10, 12, 13, 9][i]} drawn`)
+    const ends = family.map((l) => l.search(/\d(?!\d)/))
+    assert.equal(new Set(ends).size, 1, `ids line up: ${family.join("\n")}`)
+    assert.equal(family[1].indexOf("shop"), family[2].indexOf("shop"), "tag in its sibling's column")
+    assert.equal(family[1].indexOf("↳"), family[2].indexOf("↳"), "↳ on its sibling's step")
+  })
+}

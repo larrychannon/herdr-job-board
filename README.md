@@ -144,7 +144,7 @@ itself out again at once.
   ```
 - **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
   and its kind, its own number beside it: `500 · check (511)`, the second review under 500
-  `500 · review2 (515)`, where the number goes (the plain number when drawn under its parent,
+  `500 · review2 (515)`, where the number goes (the plain number when drawn under a card,
   the row above, or when the pane is too narrow for the name). Its details say `card 511, also
   500-check`. Every command that takes a card (`move`, `edit`, `done`, `now`, `answer`,
   `--parent`, `--id`, …) takes `500-check`, `500-review`, `500-review2` as well as `511`. The kind
