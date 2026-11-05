@@ -155,7 +155,9 @@ test("what the views say: the strip, the title's counts, filtered headers, the o
     assert.match(all, /^Job board · all projects · 4 need you +11:57$/m)
     assert.match(all, /^Projects: ▸all  sfc 3  ai 1  herdr  home +p filter · P all$/m)
     assert.match(all, /^▸108 ! sfc   UI consistency plan: answer 10 questions +3 days$/m)
-    assert.match(all, /^ {13}sfc-integration · Fable plan \(docs PR #143\)/m)
+    // The open row's tag names its project: its description starts straight away.
+    assert.match(all, /^ {13}Fable plan \(docs PR #143\)/m)
+    assert.doesNotMatch(all, /sfc-integration ·/)
     assert.match(all, /^ {13}answers go to: sfc coordinator \(w4:p6\)$/m)
     assert.match(all, /^ 211   herdr Job board 0\.5\.0, one board for all projects: plan +working \[= {3}\] +3 min$/m)
     assert.match(all, /^ 200   home  3CX SSL certificate/m)

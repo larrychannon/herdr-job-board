@@ -20,8 +20,8 @@ Projects: ▸all  sfc 3  ai 1  herdr  home                                      
 
 ▸ WAITING ON YOU (4) ──────────────────────────────────────────────────────────────────────────
 ▸108 ! sfc   UI consistency plan: answer 10 questions                                    3 days
-             sfc-integration · Fable plan (docs PR #143): audit of every page with screenshots,
-             one wording guide, shared components (CitySummaryRow, CountChip, DefaultVersion…)
+             Fable plan (docs PR #143): audit of every page with screenshots, one wording
+             guide, shared components (CitySummaryRow, CountChip, DefaultVersion…)
              Question: Accept all 10 suggested answers (then mockup M1 first), or go through
                them?
              [ Accept all suggested ✓ ]  [ Go through them ]  [ Later ]  [ Other… ]
@@ -94,14 +94,17 @@ itself out again at once.
 - **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
   doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
   where its state goes (bold) and so never looks finished, and the cards under it are drawn
-  **straight under it** when they are in its section, in every layout, further in than its title
-  (0.7.3): `↳`, the id, then the card, with its state as a tag (`[to do]`). **The section a card
+  **straight under it** when they are in its section, in every layout (0.7.3): its number in the
+  id column with every other card's, then its title two cells further in than its parent's per
+  level, after a `↳`, with its state as a tag (`[to do]`). **The section a card
   shows in says what it needs from you** (0.7.5): a card in another section than its parent's
   keeps its own row (or card) there, with its own state, buttons, age and order, counted there,
   and one line under its title, `for #1 Node health` (with the parent's project when it is
   another's; `(done)` when the parent is done). A blocked job's card counts as Waiting on you. On
   the parent's card, its open row and its details, `Waiting on:` names every open card under it
-  with its state as a tag in its section's colour: `Waiting on: Phone alerts [waiting on you] ·
+  that isn't drawn under it there (its details: every one), with its state as a tag in its
+  section's colour; a status line built from the cards under it (`Now: #12 working`) isn't
+  drawn when they all are: `Waiting on: Phone alerts [waiting on you] ·
   Badge and chart fixes [doing] · Phone alerts move [to do]`, amber, blue (Doing's) and grey
   (plain text with `NO_COLOR`); a closed row says `waiting on 3` where its state goes. A
   section's header counts the cards drawn in it, sub-tasks under a parent included; `N need you`
@@ -127,7 +130,7 @@ itself out again at once.
        Needs you: Tonight?
   DOING (2) ──────────────────────────────────────────────────
    1   Node health: goes live after it… waiting on 3  just now
-         ↳ 3  Badge and chart fixes before … [doing]  just now
+   3     ↳ Badge and chart fixes before goi… [doing]  just now
   TO DO (1) ──────────────────────────────────────────────────
    2   Phone alerts move: then merge it               just now
        for #1 Node health
@@ -141,8 +144,8 @@ itself out again at once.
   ```
 - **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
   and its kind, its own number beside it: `500 · check (511)`, the second review under 500
-  `500 · review2 (515)`, where the number goes (after the `↳` when drawn under its parent; the
-  plain number when the pane is too narrow for the name). Its details say `card 511, also
+  `500 · review2 (515)`, where the number goes (the plain number when drawn under a card,
+  the row above, or when the pane is too narrow for the name). Its details say `card 511, also
   500-check`. Every command that takes a card (`move`, `edit`, `done`, `now`, `answer`,
   `--parent`, `--id`, …) takes `500-check`, `500-review`, `500-review2` as well as `511`. The kind
   is the title's last `: <action>` when it starts with check or review (one word before it at

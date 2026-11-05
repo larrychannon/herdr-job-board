@@ -87,8 +87,9 @@ test("a sub-task in another section keeps its own row there, 'for #231 …' unde
   const text = draw(board({ question: false })).text
   const doing = section(text, "DOING", "QUEUE")
   assert.match(doing[1], /^.231   Node health/)
-  // 60 cells: no room for its name ("231 · review (279)"), so its number.
-  assert.match(doing[2], /^ {9}↳ 279  Node health fixes[^\n]* working +\d/)
+  // Under its own parent (231, the row above): its number in the id column, not its name
+  // ("231 · review (279)"); its title one step in after the ↳.
+  assert.match(doing[2], /^ 279 {5}↳ Node health fixes[^\n]* working +\d/)
   assert.equal(doing.length, 3)
   const todo = section(text, "TO DO", "DONE")
   assert.match(todo[1], /^ 274   Phone alerts move: merged, not live yet +\d/)
@@ -127,20 +128,21 @@ test("the parent's 'Waiting on:' tags each open sub-task with its state in its s
   const open = { layout: "inbox", scroll: { selected: "todo", card: "#300" } }
   const coloured = draw(state, { ...open, width: 120, color: true }).text
   const tags = { waiting: "\x1b[33m[waiting on you]\x1b[0m", doing: "\x1b[34m[working]\x1b[0m", todo: "\x1b[90m[to do]\x1b[0m" }
-  // Each open one named with its tag; 303 (To do, with it) is drawn under it with the same tag.
-  assert.ok(coloured.includes(`\x1b[1mWaiting on: \x1b[0mPhone alerts move ${tags.waiting}\x1b[2m · \x1b[0mBadge and chart fixes ${tags.doing}\x1b[2m · \x1b[0mChangelog wording ${tags.todo}`), coloured)
-  assert.match(coloured, new RegExp(`↳ [^\\n]*303[^\\n]*Changelog wording[^\\n]*${tags.todo.replace(/[[\]]/g, "\\$&")}`))
+  // Each open one in another section named with its tag; 303 (To do, with it) is drawn under it
+  // with its own tag, and not named again.
+  assert.ok(coloured.includes(`\x1b[1mWaiting on: \x1b[0mPhone alerts move ${tags.waiting}\x1b[2m · \x1b[0mBadge and chart fixes ${tags.doing}\n`), coloured)
+  assert.match(coloured, new RegExp(`303[^\\n]*↳ [^\\n]*Changelog wording[^\\n]*${tags.todo.replace(/[[\]]/g, "\\$&")}`))
   // The colours are four different ones: To do's is not Doing's.
   assert.equal(new Set(Object.values(tags).map((t) => t.match(/\[(\d+)m/)[1])).size, 3)
   const text = draw(state, { ...open, width: 120, color: false }).text
   assert.doesNotMatch(text, /\x1b/)
-  assert.match(text, /\n {7}Waiting on: Phone alerts move \[waiting on you\] · Badge and chart fixes \[working\] · Changelog wording \[to do\]\n {7}Card 300\.\n {9}↳ 303  Changelog wording +\[to do\] /)
+  assert.match(text, /\n {7}Waiting on: Phone alerts move \[waiting on you\] · Badge and chart fixes \[working\]\n {7}Card 300\.\n 303 {5}↳ Changelog wording +\[to do\] /)
   // Closed, a row says how many where its state goes; its sub-tasks show in their own sections.
-  assert.match(plain(draw(state, { width: 120 }).text), /\n 300   Release checklist: ship it +waiting on 3 +\d[^\n]*\n {9}↳ 303/)
+  assert.match(plain(draw(state, { width: 120 }).text), /\n 300   Release checklist: ship it +waiting on 3 +\d[^\n]*\n 303 {5}↳ Changelog/)
   // A narrow pane: the label on its own line, one card a line; names cut, tags never.
   const narrow = section(draw(state, { ...open, width: 40 }).text, "TO DO", "DONE")
-  assert.deepEqual(narrow.slice(2, 6), ["       Waiting on:", "         Phone alerts … [waiting on you]", "         Badge and chart fixes [working]", "         Changelog wording [to do]"])
-  // The details name every open one, with its state.
+  assert.deepEqual(narrow.slice(2, 6), ["       Waiting on:", "         Phone alerts … [waiting on you]", "         Badge and chart fixes [working]", "       Card 300."])
+  // The details (no rows under the card there) name every open one, with its state.
   const parent = view(state).todo.find((e) => e.id === 300)
   const details = detailLines(parent, 100, { now: NOW }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
   assert.match(details, /\n  Waiting on:\n    Phone alerts move \[waiting on you\]\n    Badge and chart fixes \[working\]\n    Changelog wording \[to do\]\n/)
@@ -233,14 +235,14 @@ test("the coordinator's reminder lists a Waiting sub-task after its parent when 
   assert.match(reminder(state), /; #290 "Phone alerts: go live tonight\?"\. Close/)
 })
 
-test("a selected sub-task row highlights only its id after the ↳; the empty id column and the ▸ stay plain (inbox and compact)", () => {
+test("a selected sub-task row highlights only its id, in the id column with the top cards' ids, before the ↳ (inbox and compact)", () => {
   for (const layout of ["inbox", "compact"]) {
     for (const card of ["#279", "#286"]) {
       const d = draw(board(), { layout, color: true, scroll: { selected: card === "#286" ? "waiting" : "doing", card, open: false } })
       const row = d.text.split("\n").find((l) => l.includes(`\x1b[1;7m${card.slice(1)}\x1b[0m`))
       assert.ok(row, `${card} highlighted (${layout})`)
       assert.equal(row.match(/\x1b\[1;7m/g).length, 1, `one highlight only (${layout} ${card})`)
-      assert.match(row, /^\x1b\[1m▸\x1b\[0m {4}[ !\x1b[0-9;m]*↳ \x1b\[0m\x1b\[1;7m\d+\x1b\[0m/, `▸ then a plain blank id column (${layout} ${card})`)
+      assert.match(row, /^\x1b\[1m▸\x1b\[0m\x1b\[1;7m\d{3}\x1b\[0m[ !\x1b[0-9;m]*↳ /, `▸, its id in the id column, then the ↳ (${layout} ${card})`)
     }
   }
   // A top card still highlights its id in the id column.
@@ -252,8 +254,8 @@ test("wide, two cards a row: a sub-task's card stays under its parent's, never b
   const text = plain(renderBoard(view(board()), { width: 120, now: NOW, layout: "wide", scroll: { todoOpen: true, doneOpen: true } }).text)
   const lines = text.split("\n")
   const parent = lines.findIndex((l) => /^261 One 'Edit/.test(l))
-  const child = lines.findIndex((l) => /↳ 286/.test(l))
+  const child = lines.findIndex((l) => /^286 /.test(l))
   assert.ok(child > parent)
-  assert.match(lines[child], /^ {6}↳ 286  Edit targets dialog/)
-  assert.equal(text.match(/↳ 286|^286 /gm).length, 1)
+  assert.match(lines[child], /^286   ↳ Edit targets dialog/)
+  assert.equal(text.match(/(^| )286 /gm).length, 1)
 })
