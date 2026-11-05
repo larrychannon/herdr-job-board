@@ -3434,8 +3434,9 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   } else if (status && entry.depth) lines.push([indent, stateTag(entry, column)])
   // "for #231 …" on a card; a row draws it under its own line, open or not.
   lines.push(...linkLines(entry, inner, indent, { parent: status }))
-  // With several projects on the board, an open card names its project in full first:
-  // "sfc-integration · <description>".
+  // With several projects on the board, an open card in `ls` names its project in full on a line
+  // first; an open row in the pane shows its project's tag already, so its description starts
+  // straight away.
   // In `ls` an open card shows its description in full, with its paragraphs and lists
   // (ui.detail); elsewhere its first paragraph, cut with "…" (previewLines).
   const head = ui.projectName ? `${ui.projectName} · ` : ""
@@ -3445,13 +3446,7 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
     // A description in parts ends with a blank line before the question, so it doesn't read as one more part.
     if (column === "waiting" && entry.desc.includes("\n") && (entry.ask || shownOptions(entry, column).length)) lines.push([indent])
   } else {
-    const preview = previewLines(entry.desc, inner, descMax)
-    const shown = head ? (preview.length ? wrap(`${head}${preview.join(" ")}`, inner, descMax) : [ui.projectName]) : preview
-    shown.forEach((t, i) => {
-      if (i || !head || !t.startsWith(ui.projectName)) return lines.push([indent, ...linkify(t, "", urls)])
-      const rest = t.slice(head.length)
-      lines.push([indent, { t: ui.projectName, s: ui.tag?.s || "dim" }, ...(rest ? [{ t: " · ", s: "dim" }, ...linkify(rest, "", urls)] : [])])
-    })
+    for (const t of previewLines(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
   }
   // The buttons come straight under the question; anything else about it goes after them.
   const buttons = shownOptions(entry, column).length > 0
@@ -3478,6 +3473,16 @@ export function notRunLine(entry) {
   return `couldn't run: the "${label}" press${Number.isNaN(at.getTime()) ? "" : ` · ${clockOf(at)}`} (see the question)`
 }
 
+/**
+ * Whether a card's built status line ("#589 working · #590 to do", builtStatus) names only the
+ * cards drawn as rows under it (nestView), which show their own state: then it isn't drawn.
+ */
+const nestedOnly = (entry) =>
+  Boolean(entry.now?.built && entry.nested?.length) &&
+  clean(entry.now.text)
+    .split(" · ")
+    .every((part) => entry.nested.includes(Number(/^#(\d+) /.exec(part)?.[1])))
+
 /** A card's status line as lines: "Now: …", or "Now (out of date: a job report since): …" in amber. */
 export function nowText(entry) {
   const text = clean(entry?.now?.text)
@@ -3489,7 +3494,7 @@ export function nowText(entry) {
 // two cells when the label takes more than a third of the width ("Now (out of date: …):").
 function nowLines(entry, inner, indent, max) {
   const n = nowText(entry)
-  if (!n || max <= 0) return []
+  if (!n || max <= 0 || nestedOnly(entry)) return []
   const hang = textWidth(n.label) + 1 > inner / 3 ? 2 : textWidth(n.label) + 1
   const rest = Math.max(2, inner - hang)
   const all = wrapHang(`${n.label} ${n.text}`, inner, rest)
@@ -3541,7 +3546,8 @@ const stateTag = (c, section = c.live === "blocked" ? "waiting" : c.column) => {
  * label on its own and one card a line under it. Names are cut, never tags.
  */
 function waitLines(entry, inner, indent) {
-  const list = underOf(entry)
+  // The cards drawn as rows under it (nestView) say so themselves.
+  const list = underOf(entry).filter((c) => !entry.nested?.includes(c.id))
   if (!list.length) return []
   const word = entry.deploys ? "Deploys:" : "Waiting on:"
   const label = { t: `${word} `, s: "title" }
@@ -3586,20 +3592,19 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
   // The project's tag after the id; the title and the body start after it.
   const tag = tagSegs(ui)
   // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
-  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag) - segWidth(subSegs(entry, ui)), idWidth, 20)
-  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
+  const mark = idMark(entry, width - idWidth - 1 - segWidth(tag) - segWidth(subSegs(entry)), idWidth, 20)
+  idWidth = Math.max(idWidth, textWidth(mark))
   const base = idWidth + 1 + segWidth(tag)
   const blocked = entry.live === "blocked"
-  // A sub-task straight under its parent's card (nestView): "  ↳ 279  title", its id moved in
-  // two cells right of where its parent's title starts, so it reads as inside the parent; its
-  // whole card is indented as far.
-  const sub = subSegs(entry, ui, mark)
+  // A sub-task straight under its parent's card (nestView): "279 ↳ title", its title two cells
+  // right of its parent's per level, so it reads as inside the parent; its whole card as far.
+  const sub = subSegs(entry)
   const indent = { t: " ".repeat(base + segWidth(sub)) }
   const inner = Math.max(4, width - textWidth(indent.t))
   const urls = urlsIn(entry.title, entry.desc, entry.ask)
   const titles = wrap(entry.title, inner, 2)
   const lines = titles.map((t, i) => [
-    ...(i ? [indent] : [{ t: `${(sub.length ? "" : mark).padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag, ...sub]),
+    ...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag, ...sub]),
     ...linkify(t, blocked ? "blocked" : "title", urls),
   ])
   lines.push(...cardBody(entry, column, width, indent, descMax, ui))
@@ -3635,16 +3640,17 @@ const START_ROW_TEXT = "starts without asking"
 function cardRow(entry, column, width, idWidth, ui = {}) {
   const blocked = entry.live === "blocked"
   // A sub-card's name ("500 · review (511)", 0.19.0) where its number goes, when it leaves room.
-  const mark = idMark(entry, width - 1 - idWidth - 3 - segWidth(tagSegs(ui)) - segWidth(subSegs(entry, ui)), idWidth, 30)
-  if (!entry.depth) idWidth = Math.max(idWidth, textWidth(mark))
+  const mark = idMark(entry, width - 1 - idWidth - 3 - segWidth(tagSegs(ui)) - segWidth(subSegs(entry)), idWidth, 30)
+  idWidth = Math.max(idWidth, textWidth(mark))
   // "»": a queued card the user marked "start without asking" (0.15.0).
   const glyph = column === "waiting" ? { t: "!", s: blocked ? "blocked" : "waiting" } : column === "done" ? { t: "✓", s: "done" } : entry.startMarked ? { t: "»", s: "state-queue" } : { t: " " }
   const tag = tagSegs(ui)
-  // A sub-task under its parent (nestView): its id moves in, after a ↳ two cells right of where
-  // its parent's title starts (deeper ones two more), so it reads as inside the parent.
-  const sub = subSegs(entry, ui, mark)
-  // Selected, only its id is highlighted where it is drawn: a sub-task's empty id column stays plain.
-  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, sub.length ? { t: " ".repeat(idWidth) } : { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
+  // A sub-task under its parent (nestView): its title after a ↳ two cells right of where its
+  // parent's title starts (deeper ones two more), so it reads as inside the parent; its number
+  // stays in the id column.
+  const sub = subSegs(entry)
+  // Selected, only its id is highlighted.
+  const head = [{ t: ui.selected ? "▸" : " ", s: "head" }, { t: mark.padStart(idWidth), s: ui.selected ? "cursor" : entry.id == null ? "" : "dim" }, { t: " " }, glyph, { t: " " }, ...tag, ...sub]
   const base = 1 + idWidth + 3 + segWidth(tag)
   const lead = base + segWidth(sub)
   const indent = { t: " ".repeat(lead) }
@@ -3693,9 +3699,10 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
   return lines
 }
 
-// A sub-task's lead-in under its parent (nestView): "  ↳ 279  ", deeper ones two cells further.
-const subSegs = (entry, ui = {}, mark = entry.id == null ? "•" : String(entry.id)) =>
-  entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }, { t: mark, s: ui.selected ? "cursor" : "dim" }, { t: "  " }] : []
+// A sub-task's lead-in under its parent (nestView), before its title: "  ↳ ", each level two cells
+// further in. Its number stays in the id column with every other card's, so a family's numbers
+// line up and its titles step in one level at a time.
+const subSegs = (entry) => (entry.depth ? [{ t: `${"  ".repeat(entry.depth)}↳ `, s: "dim" }] : [])
 
 /**
  * What a card shows for its id: its number, or a sub-card's name ("500 · review (511)", 0.19.0)
@@ -3704,7 +3711,8 @@ const subSegs = (entry, ui = {}, mark = entry.id == null ? "•" : String(entry.
  */
 function idMark(entry, room, idWidth, keep) {
   const plain = entry.id == null ? "•" : String(entry.id)
-  if (!entry.subName) return plain
+  // Drawn under its own parent (nestView), the parent's number is the row above: its own number.
+  if (!entry.subName || (entry.depth && entry.nest === entry.parentOf?.id)) return plain
   const more = textWidth(entry.subName) - (entry.depth ? textWidth(plain) : Math.max(idWidth, textWidth(plain)))
   return room - Math.max(0, more) >= keep ? entry.subName : plain
 }

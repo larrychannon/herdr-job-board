@@ -41,6 +41,12 @@ checks after a job start, and a tighter secret screen.
   when it starts with check or review (one word before it at most), else the job's slug.
   Numbered with the archived ones counted, so archiving an older one moves no name; a name that
   stands for an archived card is refused, naming it.
+- **Nested cards in the pane**: a card drawn under its parent keeps its number in the id column
+  with every other card's (a check under it too: `589`, not `557 · check (589)`), and its title
+  steps in two cells a level after the `↳`, so a parent, its sub-card, that one's check and the
+  next sibling line up. A card's `Waiting on:` line leaves out the cards drawn as rows under it,
+  and its built status line (`Now: #589 working`) isn't drawn when it names only those. An open
+  row's description no longer starts with the project's full name: its tag is on the row.
 - **Secret screen**: a passphrase in capitals (`XKCDHORSEBATTERYSTAPLE`), a password with a
   version inside it (`Hunt3.14-love`) and 8 to 12 hex after a secret's key (`deadbeef42`) are
   refused again. Still fine: git's short hash (7 hex) and a full one, versions (`fw8.5.1s024`,
