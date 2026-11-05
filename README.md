@@ -103,7 +103,7 @@ itself out again at once.
   another's; `(done)` when the parent is done). A blocked job's card counts as Waiting on you. On
   the parent's card, its open row and its details, `Waiting on:` names every open card under it
   that isn't drawn under it there (its details: every one), with its state as a tag in its
-  section's colour; a status line built from the cards under it (`Now: #589 working`) isn't
+  section's colour; a status line built from the cards under it (`Now: #12 working`) isn't
   drawn when they all are: `Waiting on: Phone alerts [waiting on you] ·
   Badge and chart fixes [doing] · Phone alerts move [to do]`, amber, blue (Doing's) and grey
   (plain text with `NO_COLOR`); a closed row says `waiting on 3` where its state goes. A

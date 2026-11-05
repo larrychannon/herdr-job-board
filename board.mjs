@@ -4269,6 +4269,9 @@ function moreBlock(facts, width, needsInFull, fullSummary = facts.brief.cut) {
  * scroll them into view.
  */
 export function detailLines(entry, width, { agents = null, tabs = {}, workspace = "", now = new Date(), more = false, button = -1, note = null } = {}) {
+  // The details cover the rows drawn under the card (nestView): they name every card under it and
+  // its status line, whatever the board draws beside it.
+  if (entry.nested) entry = { ...entry, nested: undefined }
   const inner = Math.max(10, width - 2)
   const ind = { t: "  " }
   const report = reportFacts(entry.report)
