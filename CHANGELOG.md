@@ -30,6 +30,14 @@ checks after a job start, and a tighter secret screen.
   as its own, and the coordinator's Stop hook doesn't block over a status line only such an
   event made old. The turn reminder and the card still say "out of date". A line that was out
   of date before the start still blocks.
+- **A merge or deploy shows on its card**: while a merge, release or deploy ran from the
+  coordinator's pane, its card's state column was empty (only a job in a tab shows there), so
+  the board didn't say anything was happening. `board.mjs running <ref> "<label>"` marks the
+  card (`running: { label, since }`), and its row shows `deploying the GUI · 4 min` in the
+  working colour, unless its job's agent is working or blocked. It counts as busy: not "job
+  finished — not reviewed yet", not in the turn reminder. The same label keeps its time, another
+  starts over; `--clear` and `done` remove it. After 2 h it reads `deploying the GUI · stuck?
+  2 h` in amber and no longer counts as busy.
 - **lint** warns on a card that points to a file in a temporary folder (`/tmp`, `/private/tmp`,
   `/var/folders`) in its title, description, question or status line, and says when the file
   is gone already.

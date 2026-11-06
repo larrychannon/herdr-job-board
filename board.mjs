@@ -153,7 +153,16 @@
 //                           line in --desc (add, edit, move, job-start) writes this card's line
 //                           too (this card only), and leaves the description (0.17.0); a line
 //                           over 200 characters is cut with a warning, never silently
-//   import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
+//   running <ref> "<label>" | running <ref> --clear
+//                           mark the card as running a stage from a pane that is not its job
+//                           ("merging", "deploying the GUI", "cutting the release"): its row
+//                           shows "deploying the GUI · 4 min" where a job's state goes, in the
+//                           working colour, unless its job's agent is working or blocked; it
+//                           counts as busy (not "ready to resume", not "job finished — not
+//                           reviewed yet"). Set again: the new label, its time kept only when
+//                           the label is the same. After 2 h it reads "deploying the GUI ·
+//                           stuck? 2 h" in amber and no longer counts as busy. --clear removes it
+//   import[--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]
 //                           bring 0.4 boards (.git/job-board.json; default: this repo's and those
 //                           of the repos under $HOME) into the one board. Ids are kept when free,
 //                           else renumbered (the map is printed); stale test cards are left out;
@@ -555,6 +564,8 @@ function readBoardFile(file) {
     if (item.parent != null && !(Number.isSafeInteger(item.parent) && item.parent > 0 && item.parent !== item.id)) delete item.parent
     if (item.ready != null && (typeof item.ready !== "string" || Number.isNaN(new Date(item.ready).getTime()))) delete item.ready
     if (item.ready_after != null && !(Array.isArray(item.ready_after) && item.ready_after.every((id) => Number.isSafeInteger(id) && id > 0))) delete item.ready_after
+    // A stage running from another pane (`running`): its label and since when, as text.
+    if (item.running != null && !(isObject(item.running) && typeof item.running.label === "string" && clean(item.running.label) && typeof item.running.since === "string" && !Number.isNaN(new Date(item.running.since).getTime()))) delete item.running
   }
   state.next_id = Math.max(Number(state.next_id) || 1, ...state.items.map((i) => Number(i.id) + 1 || 1))
   if (!isObject(state.panes)) state.panes = {}
@@ -1732,6 +1743,8 @@ function moveItem(state, item, column, now, woke = []) {
       dropOptions(item)
     }
     if (closing) {
+      // Nothing runs on a Done card (a running mark its stage didn't clear).
+      delete item.running
       // A Done card shows no status line: one a person gave in --desc goes back into its
       // description, where the card shows it (0.17.0).
       if (item.now?.from === "desc" && clean(item.now.text)) {
@@ -2392,6 +2405,51 @@ export function statusProblems(text) {
   return numberedIn(text).map((n) => ({ field: "status line", text: n.text, why: n.what, fix: NAME_IT, level: "refuse" }))
 }
 
+// --- a stage running from another pane (0.19.0): "merging", "deploying the GUI" ----------------
+
+// A running mark this old most likely outlived its stage (it died without clearing it).
+export const RUNNING_STUCK_MS = 2 * 3600_000
+// A label is a few words: longer ones are cut.
+export const RUNNING_MAX = 60
+
+/**
+ * Mark `item` as running a stage (`label`), or clear the mark (`label` ""). The same label again
+ * keeps its time; another label starts it over. Returns the mark, or null when cleared.
+ */
+export function setRunning(item, label, now = new Date()) {
+  const text = clean(label).slice(0, RUNNING_MAX)
+  if (!text) {
+    delete item.running
+    return null
+  }
+  const since = item.running?.label === text ? item.running.since : now.toISOString()
+  item.running = { label: text, since }
+  return item.running
+}
+
+/**
+ * A card's running mark as shown: { label, age, stuck } for an open card that has one and whose
+ * job's agent isn't working or blocked (that state wins); else null.
+ */
+export function runningOf(item, live = "", now = new Date()) {
+  const mark = item?.running
+  if (!mark || item.column === "done" || live === "working" || live === "blocked") return null
+  const age = Math.max(0, now - new Date(mark.since))
+  return { label: mark.label, age, stuck: age >= RUNNING_STUCK_MS }
+}
+/** Whether a running mark makes the card busy: it has one, not stuck. */
+const runningBusy = (entry) => Boolean(entry.running && !entry.running.stuck)
+/** The mark in words: "deploying the GUI · 4 min", "deploying the GUI · stuck? 2 h". */
+const runningText = (r) => `${r.label} · ${r.stuck ? `stuck? ${formatAge(r.age)}` : formatAge(r.age)}`
+/** The mark as segments, with the working bar (not when stuck) at `ui.frame`. */
+function runningSegs(entry, ui = {}) {
+  const r = entry.running
+  if (r.stuck) return [{ t: runningText(r), s: "stuck" }]
+  const segs = [{ t: runningText(r), s: "working" }]
+  if (Number.isInteger(ui.frame)) segs.push({ t: ` ${frameOf(ui.frame)}`, s: "working", anim: true })
+  return segs
+}
+
 /**
  * Write a status line on `item`, and on its open lineage unless `only` (the cards above it and
  * under it, not its siblings: a finished sibling keeps its own line); with `event`, note that
@@ -2794,6 +2852,10 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
       // Where it runs, for t (focusAgent): the pane, so a namesake elsewhere isn't the one shown.
       if (agent?.pane_id) entry.agentPane = clean(agent.pane_id)
     }
+    // A stage running from another pane (a merge, a deploy), unless its job's agent works or is blocked.
+    const running = runningOf(item, entry.live, now)
+    if (running) entry.running = running
+    else delete entry.running
     let reportAt = null
     if (item.column === "doing" && item.report) {
       const { report, entry: read } = readReport(item.report)
@@ -2802,7 +2864,7 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
       if (report?.status === "done") entry.reportProof = reportProof(report)
     }
     // A job that finished and nobody has looked at since (0.7.2).
-    if (item.column === "doing" && item.job && entry.live !== "blocked") {
+    if (item.column === "doing" && item.job && entry.live !== "blocked" && !runningBusy(entry)) {
       entry.unreviewed = isUnreviewed(item, { final: entry.reportStatus, reportAt, live: entry.live, stop: stops?.[item.job] }, now)
     }
     if (item.column === "doing" && entry.live === "blocked") view.waiting.push(entry)
@@ -3003,6 +3065,8 @@ const STYLES = {
   ready: "1;33",
   // A Doing card whose job finished and nobody has looked at it since: amber too (0.7.2).
   unreviewed: "1;33",
+  // A running mark (running) over 2 h old: it probably died without clearing; amber too.
+  stuck: "1;33",
   // A sub-task's state tag (0.7.5), "[waiting on you]": its section's colour; To do a grey of its
   // own, so it never reads as Doing; Done dim.
   "state-waiting": "33",
@@ -3419,6 +3483,9 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   lines.push(...nowLines(entry, inner, indent, ui.full || ui.detail ? 4 : 2))
   if (blocked) {
     lines.push([indent, { t: "blocked", s: "blocked" }, { t: `: answer it in tab ${entry.job}`, s: "dim" }])
+  } else if (status && entry.running) {
+    const segs = runningSegs(entry, ui)
+    lines.push([indent, ...(segWidth(segs) <= inner ? segs : [{ t: fit(segs[0].t, inner), s: segs[0].s }])])
   } else if (status && entry.ready) {
     lines.push([indent, { t: fit(readyText(entry), inner), s: "ready" }])
   } else if (status && column === "doing" && entry.unreviewed) {
@@ -3662,6 +3729,8 @@ function cardRow(entry, column, width, idWidth, ui = {}) {
         : { t: formatAge(entry.age), s: ageStyle(entry, column) }
   let status = []
   if (blocked) status = [{ t: "blocked", s: "blocked" }]
+  // A stage running from another pane (a merge, a deploy): before every other state.
+  else if (entry.running && column !== "done") status = runningSegs(entry, ui)
   else if (entry.ready && column !== "done") status = [{ t: readyText(entry), s: "ready" }]
   else if (column === "doing" && entry.unreviewed) status = [{ t: UNREVIEWED_TEXT, s: "unreviewed" }]
   // A status line older than its card's last event (0.13.0).
@@ -4163,7 +4232,7 @@ function statusLine(entry, now) {
     return at ? `Done ${/^\d\d:\d\d$/.test(at) ? "at " : ""}${at}` : "Done"
   }
   const age = entry.age == null ? "" : formatAge(entry.age)
-  return `${own(PLACE, entry.column) ?? "Waiting on you"}${age === "just now" ? " since just now" : age ? ` for ${age}` : ""}${entry.startMarked ? " · starts without asking" : ""}`
+  return `${own(PLACE, entry.column) ?? "Waiting on you"}${age === "just now" ? " since just now" : age ? ` for ${age}` : ""}${entry.startMarked ? " · starts without asking" : ""}${entry.running ? ` · running: ${runningText(entry.running)}` : ""}`
 }
 
 const JOB_WORDS = { working: "is working", idle: "is idle at its prompt", blocked: "is blocked: it needs you in its tab", done: "finished", unknown: "is in an unknown state" }
@@ -6840,6 +6909,8 @@ export function unreviewedReminder(state, stops, { mine = null, agents = () => n
   }
   const cards = state.items
     .filter((i) => i.column === "doing" && i.job && (!mine || mine(i)))
+    // A stage running from another pane (a merge, a deploy) is still at work on it.
+    .filter((i) => !runningOf(i, "", now) || runningOf(i, "", now).stuck)
     .filter((i) => {
       const { report, at } = reportNow(i.report)
       const final = ["done", "blocked", "failed"].includes(report?.status) ? report.status : ""
@@ -8647,6 +8718,7 @@ export const COMMAND_FLAGS = {
   "job-start": ["id", "title", "desc", "report", "project", "worktree", "parent", "allow-wording"],
   "job-report": ["if-final"],
   now: ["only", "event", "clear", "project", "allow-wording"],
+  running: ["clear", "project"],
   "not-run": ["type", "run", "label", "project"],
   ls: ["width", "project", "done"],
   lint: ["project"],
@@ -8773,7 +8845,7 @@ function only(opts, command) {
 
 const label = (column) => (column === "waiting" ? "waiting on you" : column === "todo" ? "to do" : column === "queue" ? "the Queue" : column)
 // The commands that change the board, and those that only read it (see migrate).
-const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report", "now", "not-run"])
+const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report", "now", "running", "not-run"])
 const READS = new Set(["ls", "json", "projects", "token", "export"])
 // answer writes (the sent note) but brings nothing in: the card is on the board already.
 
@@ -9506,6 +9578,21 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         out(`${item.id} ${text ? `now: ${text.slice(0, STATUS_MAX)}` : "status line cleared"}${others.length ? ` (also ${idList(others)})` : ""}${kind ? ` · event: ${kind}` : ""}`)
         // A parent with no job or question of its own shows the line built from its cards instead.
         if (built) err(`board: #${item.id} has no job or question of its own, so it shows the line built from the cards under it ("${built}"); yours is kept for when that changes`)
+        return 0
+      }
+      case "running": {
+        // A stage running from another pane (a merge, a deploy) on a card (0.19.0).
+        only(opts, command)
+        if (opts.clear ? rest.length !== 1 : rest.length !== 2) throw usage('usage: board.mjs running <id|job> "<label>" [--project P]  or  board.mjs running <id|job> --clear')
+        const text = opts.clear ? "" : clean(rest[1])
+        if (!opts.clear && !text) throw usage('a running mark needs a short label: what runs, e.g. "merging" or "deploying the GUI"')
+        const { item, mark } = change((s) => {
+          const it = owned(s, findItem(s, rest[0], me))
+          if (it.column === "done" && text) throw new Error(`card ${it.id} is done: nothing runs on it`)
+          return { item: it, mark: setRunning(it, text, now) }
+        })
+        if (text.length > RUNNING_MAX) err(`board: the label is longer than ${RUNNING_MAX} characters: the card keeps "${mark.label}"`)
+        out(mark ? `${item.id} running: ${mark.label}` : `${item.id} running mark cleared`)
         return 0
       }
       case "not-run": {
