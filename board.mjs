@@ -3637,7 +3637,7 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   }
   // Its result under the description (0.19.0): whole in `ls` and while selecting text (m), else
   // its first lines and how many more (the details show it whole; c copies it).
-  if (cleanResult(entry.result)) lines.push(...cardResult(entry, inner, indent, urls, ui.detail || ui.full ? Infinity : RESULT_PREVIEW))
+  if (cleanResult(entry.result)) lines.push(...cardResult(entry, inner, indent, urls, ui.detail || ui.full || ui.whole ? Infinity : RESULT_PREVIEW))
   // The buttons come straight under the question; anything else about it goes after them.
   const buttons = shownOptions(entry, column).length > 0
   const asks = column === "waiting" || blocked ? asksOf(entry.ask) : []
@@ -4892,7 +4892,7 @@ export function renderBoard(view, opts = {}) {
   // Cards carry their notes everywhere, so heights are the same before and after selection. In
   // `ls` (not interactive, nothing selected) every Waiting row is open.
   // There (0.9.0) a Waiting card's description shows in full, with its paragraphs and lists.
-  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive, detail: !interactive && view.waiting.includes(e), full: selecting, ...tagUi(e) })
+  const noted = (e) => ({ note: notes[keyOf(e)], frame, openWaiting: !interactive, detail: !interactive && view.waiting.includes(e), full: selecting, whole: !interactive, ...tagUi(e) })
   // The selected section's selected card: the one chosen, else the first one in view. Its
   // button is chosen only with ← →, never in advance.
   const uiFor = (section, perRow, w, h, f = form) => {
@@ -8887,7 +8887,7 @@ export const COMMAND_FLAGS = {
   lint: ["project"],
   find: ["project"],
   json: ["archive", "project"],
-  get: ["json", "project"],
+  get: ["json"],
   import: ["dry-run", "keep-stale", "retag"],
   export: ["legacy", "project"],
   restore: [],
@@ -9770,9 +9770,14 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         if (opts.file !== undefined) given = readResultFile(opts.file)
         else if (rest[1] === "-") given = io.stdin !== undefined ? asText(io.stdin) : readFileSync(0, "utf8")
         else if (!opts.clear) given = asText(rest[1]).replace(/\\n/g, "\n")
-        // Text from a file or stdin is screened here, before anything reads it (the argument was, with the flags).
-        if (opts.file !== undefined || rest[1] === "-") throwSecrets(secretsIn(given).length ? [{ field: "the result", kinds: secretsIn(given) }] : [])
+        // Text from a file or stdin is screened here, before anything reads it (the argument was,
+        // with the flags); and the text as it would be stored too, as cleaning removes control
+        // characters that could have split a token.
         const text = cleanResult(given)
+        for (const t of [given, text]) {
+          const kinds = secretsIn(t)
+          if (kinds.length) throwSecrets([{ field: "the result", kinds }])
+        }
         if (!opts.clear && !text) throw usage("a result needs text: the answer, the draft or the figures to keep on the card")
         const size = [...text].length
         if (size > RESULT_MAX) throw usage(`the result is ${size} characters, and a card keeps ${RESULT_MAX} (what c copies whole): put it in a file that lasts (the repo, the job's record), and on the card what it says and where it is`)
@@ -9794,7 +9799,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       case "get": {
         // One card, whole (0.19.0): as text, or as stored (--json). Read-only.
         only(opts, command)
-        need(1, "<id|job> [--json] [--project P]")
+        need(1, "<id|job> [--json]")
         const state = readBoard(file)
         let item
         try {

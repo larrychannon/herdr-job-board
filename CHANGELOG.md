@@ -54,7 +54,7 @@ text, and `get` for one card.
   never its words, once it had one. `c` now steps through the card's result (exactly as
   stored), each link, then the whole card as text (`copied 1/3: the result, 14 lines`), round
   to the first; the key line reads `c copy (again: next)` on such a card. The copy is OSC 52,
-  which Herdr forwards to the attached client's terminal.
+  which Herdr passes on to the terminal you are attached from.
 - **`board.mjs get <ref> [--json]`**: one card whole as text (title, column, status line,
   question, buttons with the suggested one marked, description, result), or as stored; an
   archived Done card by its number too. Reading one card no longer means parsing `json`.

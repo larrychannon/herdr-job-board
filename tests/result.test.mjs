@@ -107,7 +107,11 @@ test("result: usage, empty text, size, a missing file and secrets (argument, fil
     writeFileSync(secret, `deploy with ${token}\n`)
     refused(["result", "1", "--file", secret], undefined, /the result holds what looks like a GitHub token/)
     refused(["result", "1", "-"], `deploy with ${token}\n`, /the result holds what looks like a GitHub token/)
+    // A token split by a control character is whole once cleaned: refused as stored.
+    refused(["result", "1", "-"], `deploy with ${token.slice(0, 10)}\x01${token.slice(10)}\n`, /the result holds what looks like a GitHub token/)
     assert.equal(readFileSync(t.file, "utf8"), before, "nothing written")
+    // get takes no --project (ids are global).
+    refused(["get", "1", "--project", "x"], undefined, /get does not take --project/)
   } finally {
     t.done()
   }
@@ -183,6 +187,17 @@ test("the pane: a card shows the result's first lines and how many more; the det
     assert.ok(details.indexOf("What it is") < details.indexOf("Result") && details.indexOf("Result") < details.indexOf("What you need to do"))
     const ls = t.ok("ls", "--width", "100")
     assert.match(ls, /row 1\n[\s\S]*row 14\n/)
+    assert.doesNotMatch(ls, /more lines: Enter/, "no pane advice in ls")
+    // Every card ls draws whole, not only Waiting ones: Doing and To do too, wide (piped or 120
+    // wide; narrower, ls draws those as closed rows, without their description either).
+    t.ok("add", "doing", "Release notes: draft them", "--desc", "The notes for the next release.")
+    t.ok("add", "todo", "Invoice totals: count them", "--desc", "The totals per month.")
+    for (const id of ["2", "3"]) assert.equal(t.run(["result", id, "-"], long.replace(/row/g, `card ${id} row`)).status, 0)
+    for (const args of [["ls"], ["ls", "--width", "120"]]) {
+      const out = t.ok(...args)
+      assert.match(out, /card 2 row 14\b/, `${args.join(" ")}: the Doing card's whole result`)
+      assert.match(out, /card 3 row 14\b/, `${args.join(" ")}: the To do card's whole result`)
+    }
     // While selecting text (m): the card shows it whole.
     assert.match(t.pane(["--width", "80"], "m").stdout, /row 14/)
   } finally {
