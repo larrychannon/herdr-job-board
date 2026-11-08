@@ -3,7 +3,8 @@
 ## 0.19.0 · unreleased
 
 Board search, a press that reaches a coordinator after a restart, sub-card names, quieter Stop
-checks after a job start, and a tighter secret screen.
+checks after a job start, a tighter secret screen, a result kept on the card, copying a card's
+text, and `get` for one card.
 
 - **Why**: "which card did we test snmpwalk on?" took ten tries of scripts over board.json and
   still missed the card. After a machine restart, presses on two cards went nowhere: the cards,
@@ -38,6 +39,25 @@ checks after a job start, and a tighter secret screen.
   finished — not reviewed yet", not in the turn reminder. The same label keeps its time, another
   starts over; `--clear` and `done` remove it. After 2 h it reads `deploying the GUI · stuck?
   2 h` in amber and no longer counts as busy.
+- **A card keeps its answer**: answers given only in the chat (client figures, a drafted note)
+  were gone from the user's screen once the session compacted or restarted. `board.mjs result
+  <ref> --file <path>` (or `-` for stdin, or `"<text>"`) stores a result on the card (`result`,
+  a string, and `result_at`), kept as written: indentation and the spaces between figures
+  stay, up to 8000 characters. The card shows its first 6 lines and `+N more lines: Enter
+  shows all · c copies it`; the details (a Result section after What it is), `ls`, `get` and
+  the select layout (`m`) show it whole. Numbers and code are allowed; text that looks like a
+  secret is refused, from a file or stdin too; `lint` warns on a long line of prose and a
+  temporary path in it, and `find` searches it. `--clear` removes it. The agent guide says to
+  put an answer, a draft or figures there, never only in the chat.
+- **Copying from the board**: "the board does not allow select and copy and paste". The board
+  takes the mouse, so a drag selected nothing until `m`, and `c` copied a card's first link,
+  never its words, once it had one. `c` now steps through the card's result (exactly as
+  stored), each link, then the whole card as text (`copied 1/3: the result, 14 lines`), round
+  to the first; the key line reads `c copy (again: next)` on such a card. The copy is OSC 52,
+  which Herdr forwards to the attached client's terminal.
+- **`board.mjs get <ref> [--json]`**: one card whole as text (title, column, status line,
+  question, buttons with the suggested one marked, description, result), or as stored; an
+  archived Done card by its number too. Reading one card no longer means parsing `json`.
 - **lint** warns on a card that points to a file in a temporary folder (`/tmp`, `/private/tmp`,
   `/var/folders`) in its title, description, question or status line, and says when the file
   is gone already.

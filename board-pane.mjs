@@ -39,9 +39,10 @@
 //                           More… (the rest of the job's report), and Enter closes the details
 //                           when there is no More…; o is Other…; t goes to the job's tab
 //                           (herdr agent focus); Esc closes them
-//   c                       copy the card's first link, or its text (OSC 52); c again copies its
-//                           next link, round to the first; a new card or opening or closing
-//                           its details starts at the first again
+//   c                       copy the card's result (OSC 52, as stored), else its first link, else
+//                           its text; c again copies the next (each link, then the whole card
+//                           as text), round to the first; a new card or opening or closing its
+//                           details starts at the first again
 //   t, click on To do's line open To do (a column beside Doing); t or a click on its header
 //                           folds it. Folded, Tab skips it. The choice holds while the pane runs
 //   d, click on Done's line open Done (a column); d or a click on its header folds it.
@@ -201,8 +202,8 @@ function compose(data, file, env, layout, origin = "") {
 
 /**
  * The pane's side of an action. Answers go to the answerer (one at a time). c writes the
- * selected card's first link, or its text, to the clipboard with OSC 52: only on that key, and
- * only that card; pressed again on the same card, its next link (ctx.copy keeps the place). t in the details switches to the job's tab; u there moves the card between To do and the Queue, s queues it marked "start without asking" (or marks or unmarks a queued one). m switches mouse capture off and on. Resolves to
+ * selected card's result, a link or its text (copyTargets) to the clipboard with OSC 52: only on that key, and
+ * only that card; pressed again on the same card, the next of them (ctx.copy keeps the place). t in the details switches to the job's tab; u there moves the card between To do and the Queue, s queues it marked "start without asking" (or marks or unmarks a queued one). m switches mouse capture off and on. Resolves to
  * the footer message, if any.
  */
 async function perform(action, ctx) {

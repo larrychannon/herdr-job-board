@@ -110,6 +110,21 @@
 //                           { version, scope, items, projects } for this project's cards and this
 //                           pane's (--project P: P's; --project all: the board file as it is), or
 //                           a month's archived Done cards
+//   get <ref> [--json]      one card as text: its number, column and project, title, status line,
+//                           question, buttons (the suggested one marked), description and result,
+//                           each whole (an archived Done card by its number too); --json: the
+//                           card as stored, as in json's items (read-only)
+//   result <ref> "<text>" | result <ref> --file <path> | result <ref> - | result <ref> --clear
+//                           the card's result (0.19.0): an answer, a draft or figures the user
+//                           asked for, kept with the card, so it is still on the board when the
+//                           chat is gone. Shown under the description: its first lines on the
+//                           card, whole in the details, ls and get; c in the pane copies it. Kept
+//                           as written (indentation, spaces between figures, code lines), up to
+//                           8000 characters; "-" reads it from stdin, --file from a file (both
+//                           as they are), and in "<text>" a literal "\n" is a line break, as in
+//                           --desc. Numbers and code are fine (it is the answer itself); text
+//                           that looks like a secret is refused. Set again: the new text replaces
+//                           it. --clear removes it
 //   job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W | --project P] [--parent ID]
 //                           a job started: its item moves to Doing (--id, never another job's;
 //                           else this job's To do or Doing item, else its Waiting one that asks
@@ -256,7 +271,7 @@ import { hostname, tmpdir, userInfo } from "node:os"
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { findUrls, osc8 } from "./links.mjs"
+import { findUrls, MAX_COPY, osc8 } from "./links.mjs"
 
 export const COLUMNS = ["todo", "queue", "doing", "waiting", "done"]
 const HEADINGS = { waiting: "WAITING ON YOU", queue: "QUEUE", doing: "DOING", todo: "TO DO", done: "DONE" }
@@ -553,7 +568,7 @@ function readBoardFile(file) {
   // (numbers written out, anything else "(not text)"), so nothing downstream stringifies an
   // object or array.
   for (const item of state.items) {
-    for (const key of ["title", "desc", "ask", "job", "column", "since", "updated", "created", "report", "reported", "project", "origin", "workspace", "was", "by"]) {
+    for (const key of ["title", "desc", "result", "result_at", "ask", "job", "column", "since", "updated", "created", "report", "reported", "project", "origin", "workspace", "was", "by"]) {
       if (item[key] != null && typeof item[key] !== "string") item[key] = asText(item[key])
     }
     if (item.sent != null && !(isObject(item.sent) && typeof item.sent.label === "string")) delete item.sent
@@ -944,6 +959,30 @@ export const cleanDesc = (text) => {
   while (out.at(-1) === "") out.pop()
   return out.join("\n")
 }
+// A card's result holds this many characters at most: what c copies whole (MAX_COPY).
+export const RESULT_MAX = MAX_COPY
+/**
+ * A card's result as stored (0.19.0): an answer, a draft or figures, kept as written so code and
+ * columns of figures still line up. Its lines keep their indentation and the spaces inside them;
+ * a tab becomes spaces to the next stop of 8; Windows and Unicode line ends become line breaks;
+ * control and invisible format characters go; spaces at a line's end go; two or more blank lines
+ * in a row are one, and none at either end. A literal "\n" stays as it is (it can be code).
+ */
+export const cleanResult = (text) => {
+  const out = []
+  for (const raw of asText(text).replace(/\r\n?|[\u2028\u2029\u0085]/g, "\n").split("\n")) {
+    let line = ""
+    for (const ch of raw.replace(/\p{Cf}/gu, "")) {
+      if (ch === "\t") line += " ".repeat(8 - (textWidth(line) % 8))
+      else if (!/[\u0000-\u001f\u007f-\u009f]/.test(ch)) line += ch
+    }
+    line = line.replace(/\s+$/u, "")
+    if (!line && (!out.length || out.at(-1) === "")) continue
+    out.push(line)
+  }
+  while (out.at(-1) === "") out.pop()
+  return out.join("\n")
+}
 /** Output that echoes stored or reported text: line breaks kept, every other control removed. */
 export const safeText = (text) => asText(text).split("\n").map((l) => l.replace(CONTROLS, "")).join("\n")
 
@@ -1270,7 +1309,7 @@ export function numberedIn(text) {
 // --- secrets: never on a card (0.18.0) ---------------------------------------------------------
 //
 // A card reaches the pane, the coordinator's session and Telegram, so it never carries a secret:
-// add, edit, move, now, job-start, not-run and tell refuse text with one (exit 2, naming the field
+// add, edit, move, now, result, job-start, not-run and tell refuse text with one (exit 2, naming the field
 // and the kind, never the text; --allow-wording doesn't change that), and job-report, which never
 // refuses, hides the field ("(hidden: looked like a secret)") and tells the coordinator. What is no
 // secret: a git hash, a UUID, ${VAR} / $VAR / <placeholder> / ****, an op:// reference, a path.
@@ -1371,8 +1410,8 @@ export const hideSecret = (text) => (typeof text === "string" && secretsIn(text)
 // What each flag holds, in a refusal: "the description holds what looks like a GitHub token".
 const SECRET_FIELDS = { title: "the title", desc: "the description", ask: "the question", option: "a button", suggest: "the suggested button", label: "the button label", type: "the words to type", run: "the command to run", event: "the event" }
 // The command's positional text (its title, its status line, its note), by index.
-const SECRET_ARGS = { add: { 1: "the title" }, now: { 1: "the status line" }, tell: { 0: "the note" } }
-export const SECRET_SCREENED = new Set(["add", "edit", "move", "now", "job-start", "not-run", "tell"])
+const SECRET_ARGS = { add: { 1: "the title" }, now: { 1: "the status line" }, result: { 1: "the result" }, tell: { 0: "the note" } }
+export const SECRET_SCREENED = new Set(["add", "edit", "move", "now", "result", "job-start", "not-run", "tell"])
 
 /**
  * The text a command was given that holds a secret: [{ field, kinds }] (never the text). Every
@@ -1395,7 +1434,11 @@ export function commandSecrets(command, rest, opts) {
 /** Refuse (throw, exit 2) a command whose text holds a secret; --allow-wording doesn't change it. */
 function refuseSecrets(command, rest, opts) {
   if (!SECRET_SCREENED.has(command)) return
-  const found = commandSecrets(command, rest, opts)
+  throwSecrets(commandSecrets(command, rest, opts))
+}
+
+/** Throw the refusal for `found` ([{ field, kinds }], as commandSecrets gives); nothing when empty. */
+function throwSecrets(found) {
   if (!found.length) return
   const error = usage(
     [
@@ -1660,7 +1703,7 @@ export function wordingFailures(items) {
     const problems = cardWording(item)
       .filter((p) => !(p.level !== "warn" && allowed.has(wordingLine(p))))
       .map((p) => (p.level === "slug" ? { ...p, level: "warn" } : p))
-    problems.push(...descWarnings(item), ...tmpPathWarnings(item))
+    problems.push(...descWarnings(item), ...resultWarnings(item), ...tmpPathWarnings(item))
     if (problems.length) out.push({ item, problems })
   }
   return out
@@ -1668,7 +1711,7 @@ export function wordingFailures(items) {
 
 // A file in a temporary folder (/tmp, macOS's /private/tmp and /var/folders): gone after a restart.
 const TMP_PATH = /(?<![\w.~/-])(?:\/private)?\/tmp\/[^\s"'`),;\]}>]+|(?<![\w.~/-])\/var\/folders\/[^\s"'`),;\]}>]+/g
-const TMP_FIELDS = [["title", (i) => i.title], ["description", (i) => i.desc], ["question", (i) => i.ask], ["status line", (i) => i.now?.text]]
+const TMP_FIELDS = [["title", (i) => i.title], ["description", (i) => i.desc], ["question", (i) => i.ask], ["status line", (i) => i.now?.text], ["result", (i) => i.result]]
 
 /**
  * lint's warning for a card that points to a file in a temporary folder (0.19.0): a restart
@@ -3432,6 +3475,83 @@ export function descLines(desc, width, urls = new Set()) {
   return out
 }
 
+// --- a card's result (0.19.0) -------------------------------------------------------------------
+//
+// An answer, a draft or figures, stored with the card (`result` command) so it stays on the
+// user's screen after the chat is gone. Shown as written: a code line (indented, a command, a
+// line with a backtick, a table's "|" or columns lined up with two spaces) is broken at the
+// width, never re-flowed; a line of prose is word-wrapped.
+
+// A card in the pane shows the first lines of its result; the details, ls, get and the select
+// layout (m) show it whole.
+const RESULT_PREVIEW = 6
+export const CODE_LINE = /^(?:\s|[!$>#] |```)|`|\S {2,}\S|\|/
+
+/** `text` cut every `width` cells, nothing re-flowed: a code line as lines. */
+function chunkLine(text, width) {
+  const out = []
+  let line = ""
+  for (const ch of printable(text)) {
+    if (textWidth(line + ch) > width && line) {
+      out.push(line)
+      line = ""
+    }
+    line += ch
+  }
+  return [...out, line]
+}
+
+/**
+ * A result as lines of segments of at most `width` cells (no indent): code lines broken at the
+ * width, prose word-wrapped, a blank line as an empty one; URLs whole in `urls` as links. At most
+ * `max` lines: { lines, more } (more: the lines of the result left out).
+ */
+export function resultLines(result, width, urls = new Set(), max = Infinity) {
+  const lines = []
+  const stored = cleanResult(result).split("\n")
+  let used = 0
+  for (const text of stored) {
+    const shown = !text ? [""] : CODE_LINE.test(text) ? chunkLine(text, Math.max(2, width)) : wrap(text, Math.max(2, width), Infinity)
+    if (lines.length + shown.length > max) {
+      // A first line longer than `max` lines shows its start; `more` counts every line not shown whole.
+      if (!lines.length) lines.push(...shown.slice(0, max).map((t) => (t ? linkify(t, "", urls) : [])))
+      return { lines, more: stored.length - used }
+    }
+    lines.push(...shown.map((t) => (t ? linkify(t, "", urls) : [])))
+    used++
+  }
+  return { lines, more: 0 }
+}
+
+/** A result's size in words for the key line and a card: "1 line", "14 lines". */
+export const resultSize = (result) => plural(cleanResult(result).split("\n").length, "line")
+
+/**
+ * A card's result on the card, as lines indented by `indent`: a "Result:" label, its lines (at
+ * most `max`), then "+N more lines: Enter shows all · c copies it" when cut.
+ */
+function cardResult(entry, width, indent, urls, max) {
+  const { lines, more } = resultLines(entry.result, width, urls, max)
+  const out = [[indent, { t: "Result:", s: "head" }], ...lines.map((segs) => (segs.length ? [indent, ...segs] : [indent]))]
+  if (more) out.push([indent, { t: fit(`+${plural(more, "more line")}: Enter shows all · c copies it`, width), s: "dim" }])
+  return out
+}
+
+/**
+ * What lint warns about a card's result (0.19.0): as for a description, a line of prose over
+ * about three lines (code lines, numbers and figures are the answer itself, so never). Warnings
+ * only.
+ */
+export function resultWarnings(item) {
+  const out = []
+  for (const line of cleanResult(item.result).split("\n")) {
+    if (!line || CODE_LINE.test(line) || DESC_ITEM.test(line) || DESC_STEP.test(line)) continue
+    if (wrap(line, LINT_WIDTH, Infinity).length <= LINT_LINES) continue
+    out.push({ field: "result", text: `${[...line].slice(0, 40).join("").trimEnd()}…`, why: `a line over ${LINT_LINES === 3 ? "three" : LINT_LINES} lines long`, fix: 'split it into a "Label:" line and "- " items, one point each', level: "warn" })
+  }
+  return out
+}
+
 // lint (0.17.0): a description line that wraps over more than this many lines of LINT_WIDTH
 // cells (about a board pane's card) reads as a wall: split it into a label and "- " items.
 const LINT_WIDTH = 60
@@ -3477,7 +3597,7 @@ function previewLines(desc, width, max) {
 function cardBody(entry, column, width, indent, descMax, ui = {}, { status = true } = {}) {
   const inner = Math.max(4, width - textWidth(indent.t))
   const blocked = entry.live === "blocked"
-  const urls = urlsIn(entry.title, entry.desc, entry.ask)
+  const urls = urlsIn(entry.title, entry.desc, entry.ask, entry.result)
   const lines = []
   // Its status line first (0.13.0): "Now: merged, waiting for your deploy OK".
   lines.push(...nowLines(entry, inner, indent, ui.full || ui.detail ? 4 : 2))
@@ -3515,6 +3635,9 @@ function cardBody(entry, column, width, indent, descMax, ui = {}, { status = tru
   } else {
     for (const t of previewLines(entry.desc, inner, descMax)) lines.push([indent, ...linkify(t, "", urls)])
   }
+  // Its result under the description (0.19.0): whole in `ls` and while selecting text (m), else
+  // its first lines and how many more (the details show it whole; c copies it).
+  if (cleanResult(entry.result)) lines.push(...cardResult(entry, inner, indent, urls, ui.detail || ui.full ? Infinity : RESULT_PREVIEW))
   // The buttons come straight under the question; anything else about it goes after them.
   const buttons = shownOptions(entry, column).length > 0
   const asks = column === "waiting" || blocked ? asksOf(entry.ask) : []
@@ -3668,7 +3791,7 @@ function card(entry, column, width, idWidth, descMax, ui = {}) {
   const sub = subSegs(entry)
   const indent = { t: " ".repeat(base + segWidth(sub)) }
   const inner = Math.max(4, width - textWidth(indent.t))
-  const urls = urlsIn(entry.title, entry.desc, entry.ask)
+  const urls = urlsIn(entry.title, entry.desc, entry.ask, entry.result)
   const titles = wrap(entry.title, inner, 2)
   const lines = titles.map((t, i) => [
     ...(i ? [indent] : [{ t: `${mark.padStart(idWidth)}${ui.selected ? "▸" : " "}`, s: ui.selected ? "head" : entry.id == null ? "" : "dim" }, ...tag, ...sub]),
@@ -4051,7 +4174,7 @@ const foldedLine = (view, section, emoji = false) => [
 // The key line with a card's details open: ← → only when the card has buttons, f only when
 // there is more to show.
 // On a card with several links, the long lines say that c again copies the next one.
-const NEXT_COPY = "c copy (again: next link)"
+const NEXT_COPY = "c copy (again: next)"
 // On a To do card, u adds it to the Queue; on a queued one, u takes it back to To do.
 const detailHint = (wide, buttons, more, copy = "c copy", queue = "") =>
   wide
@@ -4351,6 +4474,7 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
     entry.title,
     entry.desc,
     entry.ask,
+    entry.result,
     ...(facts ? [facts.summary, facts.brief.text, facts.next, ...facts.needs.flatMap((n) => [n.text, n.suggested]), ...facts.findings, ...facts.verified, ...facts.skipped] : []),
   )
   const lines = []
@@ -4387,6 +4511,14 @@ export function detailLines(entry, width, { agents = null, tabs = {}, workspace 
   if (clean(entry.desc)) {
     heading("What it is")
     for (const segs of descLines(entry.desc, inner, urls)) lines.push(segs.length ? [ind, ...segs] : [])
+  }
+
+  // The card's result (0.19.0), whole and as written: the answer, draft or figures itself.
+  if (cleanResult(entry.result)) {
+    heading("Result")
+    const at = shortTime(entry.result_at, now)
+    lines.push([ind, { t: `${at ? `Written ${at} · ` : ""}${resultSize(entry.result)} · c copies it`, s: "dim" }])
+    for (const segs of resultLines(entry.result, inner, urls).lines) lines.push(segs.length ? [ind, ...segs] : [])
   }
 
   const blocked = entry.live === "blocked"
@@ -4510,7 +4642,7 @@ export const queueTarget = (entry) =>
   entry?.id == null || entry.live === "blocked" ? "" : entry.column === "todo" ? "queue" : entry.column === "queue" ? "todo" : ""
 
 /**
- * The links c steps through on a card, in order: those in its title, description and ask, then
+ * The links c steps through on a card, in order: those in its title, description, ask and result, then
  * the report's links, summary and needs; each once. [{ url, label }], label "" when it has none.
  */
 export function copyLinks(entry) {
@@ -4520,7 +4652,7 @@ export function copyLinks(entry) {
   const add = (url, label = "") => {
     if (url && !found.some((l) => l.url === url)) found.push({ url, label })
   }
-  for (const text of [entry.title, entry.desc, entry.ask]) for (const { url } of findUrls(text)) add(url)
+  for (const text of [entry.title, entry.desc, entry.ask, entry.result]) for (const { url } of findUrls(text)) add(url)
   if (facts) {
     for (const l of facts.links) if (findUrls(l.url)[0]?.url === l.url) add(l.url, clean(l.label))
     for (const text of [facts.summary, ...facts.needs.map((n) => n.text)]) for (const { url } of findUrls(text)) add(url)
@@ -4528,43 +4660,64 @@ export function copyLinks(entry) {
   return found
 }
 
-/**
- * What c copies for a card: link number `n` (from 0, wrapping round) of copyLinks, else the card
- * as plain text. { text, what: "link" | "card", label, n, of } (n from 1, of the link count).
- */
-export function copyPayload(entry, n = 0) {
-  const links = copyLinks(entry)
-  if (links.length) {
-    const i = ((Math.trunc(n) % links.length) + links.length) % links.length
-    return { text: links[i].url, what: "link", label: links[i].label, n: i + 1, of: links.length }
-  }
+/** A card as plain text: its number and title, status line, description, result, question and buttons. */
+export function cardText(entry) {
   // Its status line too (0.17.0: a card's Now is no longer in its description).
   const now = nowText(entry)
-  const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, now ? `${now.label} ${now.text}` : "", cleanDesc(entry.desc), asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
+  const result = cleanResult(entry.result)
+  const parts = [`#${entry.id ?? entry.job} ${clean(entry.title)}`, now ? `${now.label} ${now.text}` : "", cleanDesc(entry.desc), result ? `Result:\n${result}` : "", asksOf(entry.ask).map((a) => `→ ${clean(a)}`).join("\n")]
   // Only the buttons the card shows: a blocked job's card has none to copy.
   const options = shownOptions(entry).map((o) => o.label)
   if (options.length) parts.push(`buttons: ${options.join(" · ")}`)
-  return { text: parts.filter(Boolean).join("\n\n"), what: "card", label: "", n: 0, of: 0 }
+  return parts.filter(Boolean).join("\n\n")
+}
+
+/**
+ * What c steps through on a card, in order (0.19.0): its result (as stored, whole), each link of
+ * copyLinks, then the whole card as text (cardText). [{ what: "result" | "link" | "card", text, label }].
+ */
+export function copyTargets(entry) {
+  const result = cleanResult(entry.result)
+  return [
+    ...(result ? [{ what: "result", text: result, label: "" }] : []),
+    ...copyLinks(entry).map((l) => ({ what: "link", text: l.url, label: l.label })),
+    { what: "card", text: cardText(entry), label: "" },
+  ]
+}
+
+/**
+ * What c copies for a card: target number `n` (from 0, wrapping round) of copyTargets.
+ * { text, what: "result" | "link" | "card", label, n, of } (n from 1, of the target count).
+ */
+export function copyPayload(entry, n = 0) {
+  const targets = copyTargets(entry)
+  const i = ((Math.trunc(n) % targets.length) + targets.length) % targets.length
+  return { ...targets[i], n: i + 1, of: targets.length }
 }
 
 /** Where c was pressed: the selected card, in the list or in its details. */
 export const copyPlace = (scroll) => (scroll?.detail ? `details ${scroll.detail.key}` : `list ${scroll?.card ?? ""}`)
 
 /**
- * c pressed on `entry` at `place` (copyPlace). It copies the next link while the place and the
- * card's links stay the same since the last press (`cycle`), else the first. { payload, cycle }.
+ * c pressed on `entry` at `place` (copyPlace). It copies the next target while the place and
+ * the card's targets stay the same since the last press (`cycle`), else the first. { payload, cycle }.
  */
 export function nextCopy(cycle, entry, place) {
-  const sig = copyLinks(entry).map((l) => l.url).join("\n")
+  const sig = copyTargets(entry).map((t) => `${t.what} ${t.text}`).join("\n")
   const n = cycle && cycle.place === place && cycle.sig === sig ? cycle.next : 0
   const payload = copyPayload(entry, n)
-  return { payload, cycle: { place, sig, next: payload.of ? payload.n % payload.of : 0 } }
+  return { payload, cycle: { place, sig, next: payload.n % payload.of } }
 }
 
-/** The footer note for a copy: "copied 2/2: Artifact https://…", one link "copied https://…". */
+/**
+ * The footer note for a copy: "copied 1/3: the result, 14 lines", "copied 2/3: Artifact
+ * https://…", "copied 3/3: card 12 as text"; a card with nothing but its text "copied card 12".
+ * A text over what a copy holds (MAX_COPY) says that only its start was copied.
+ */
 export function copyMessage(payload, entry) {
-  if (payload.what !== "link") return `copied card ${entry.id ?? entry.job}`
-  return payload.of > 1 ? `copied ${payload.n}/${payload.of}: ${payload.label ? `${payload.label} ` : ""}${payload.text}` : `copied ${payload.text}`
+  const what = payload.what === "result" ? `the result, ${resultSize(payload.text)}` : payload.what === "link" ? `${payload.label ? `${payload.label} ` : ""}${payload.text}` : payload.of > 1 ? `card ${entry.id ?? entry.job} as text` : `card ${entry.id ?? entry.job}`
+  const cut = [...payload.text].length > MAX_COPY ? ` (its first ${MAX_COPY} characters)` : ""
+  return `copied ${payload.of > 1 ? `${payload.n}/${payload.of}: ` : ""}${what}${cut}`
 }
 
 // --- the board -----------------------------------------------------------------------------
@@ -5039,7 +5192,7 @@ export function renderBoard(view, opts = {}) {
     // Where none fits (a phone), the shortest: ? shows the rest.
     const keyLine = (...lines) => lines.find(fits) ?? HINT_PHONE
     const selectedKey = detailEntry ? scroll.detail.key : scroll.card
-    const several = selectedKey && entries[selectedKey] ? copyLinks(entries[selectedKey]).length > 1 : false
+    const several = selectedKey && entries[selectedKey] ? copyTargets(entries[selectedKey]).length > 1 : false
     const keys = detailInfo
       ? keyLine(
           ...(several ? [detailHint(wide, detailInfo.buttons, detailInfo.more, NEXT_COPY, detailInfo.queue)] : []),
@@ -7687,6 +7840,8 @@ One board for every project
   more. The prompt hook reminds you of the same Waiting cards and counts the others.
 - "Which card …?": \`find <words…>\` first: every project's cards, Done and archived ones too,
   most words first, with the line that matches (no scripts over board.json).
+- One card: \`get <id>\` prints it whole (title, column, status line, question, buttons,
+  description, result); \`get <id> --json\` the card as stored. No parsing \`json\` for one card.
 - A check or review made for a card shows as its parent's number and kind ("500 · check (511)");
   every command takes 500-check, 500-review, 500-review2 as well as 511.
 - Another project's card that your pane doesn't own needs --project <its project> to change
@@ -7702,7 +7857,14 @@ Writing cards
   ask or labels; name the thing ("the login page fix"). Card numbers and links are fine. A
   refusal writes nothing and lists each problem and its fix: rewrite the card. --allow-wording
   only when that exact text is what the user needs. lint lists the open cards that fail.
-- No secrets on a card (0.18.0): add, edit, move, now, job-start, not-run and tell refuse text
+- An answer, a draft or figures the user asked for goes on the card as its result (0.19.0),
+  never only in the chat: a chat that compacts or restarts loses it from the user's screen.
+  result <id> --file <path> (or "-" for stdin, or "<text>"); kept as written, up to 8000
+  characters, numbers and code fine; it replaces the last one, --clear removes it. The card
+  shows its first lines, the details and get all of it, and c in the pane copies it. The
+  description still says what it is and why. A command the user must run stays in --desc or
+  --ask (below).
+- No secrets on a card (0.18.0): add, edit, move, now, result, job-start, not-run and tell refuse text
   that looks like a private key, a token (GitHub, Anthropic, Slack, Telegram bot, AWS, bearer)
   or a password= / secret= / token= with a real value (exit 2, naming the field and the kind);
   --allow-wording doesn't change it. Say where the secret is kept instead ("the deploy token in
@@ -8668,8 +8830,8 @@ function usage(message) {
   return error
 }
 
-const FLAGS = new Set(["type", "run", "label", "event", "timeout", "parent", "desc", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
-const SWITCHES = new Set(["only", "clear", "all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator", "help"])
+const FLAGS = new Set(["type", "run", "label", "event", "timeout", "parent", "desc", "file", "job", "ask", "title", "id", "report", "width", "share", "option", "suggest", "board", "origin", "project", "worktree", "retag", "archive", "tag", "color", "name", "from", "done", "key"])
+const SWITCHES = new Set(["only", "clear", "json", "all", "stray", "no-parent", "clear-options", "allow-wording", "if-final", "dry-run", "keep-stale", "legacy", "gone", "front", "no-key", "no-sidebar", "no-reload", "coordinator", "help"])
 // Flags that can be given more than once; they collect into a list.
 const REPEATED = new Set(["option"])
 
@@ -8719,11 +8881,13 @@ export const COMMAND_FLAGS = {
   "job-report": ["if-final"],
   now: ["only", "event", "clear", "project", "allow-wording"],
   running: ["clear", "project"],
+  result: ["file", "clear", "project"],
   "not-run": ["type", "run", "label", "project"],
   ls: ["width", "project", "done"],
   lint: ["project"],
   find: ["project"],
   json: ["archive", "project"],
+  get: ["json", "project"],
   import: ["dry-run", "keep-stale", "retag"],
   export: ["legacy", "project"],
   restore: [],
@@ -8784,6 +8948,7 @@ export function findCards(items, words, { projects = {}, reports = true } = {}) 
       ["status line", [clean(item.now?.text)]],
       ["question", cleanLines(item.ask).split("\n")],
       ["description", cleanDesc(item.desc).split("\n")],
+      ["result", cleanResult(item.result).split("\n").map(clean)],
       ["job", [clean(item.job)]],
       ["report", reports ? reportLinesFor(item.report, cache) : []],
     ]
@@ -8845,8 +9010,8 @@ function only(opts, command) {
 
 const label = (column) => (column === "waiting" ? "waiting on you" : column === "todo" ? "to do" : column === "queue" ? "the Queue" : column)
 // The commands that change the board, and those that only read it (see migrate).
-const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report", "now", "running", "not-run"])
-const READS = new Set(["ls", "json", "projects", "token", "export"])
+const WRITES = new Set(["add", "move", "done", "edit", "rm", "order", "retag", "adopt", "front", "project", "job-start", "job-report", "now", "running", "result", "not-run"])
+const READS = new Set(["ls", "json", "get", "projects", "token", "export"])
 // answer writes (the sent note) but brings nothing in: the card is on the board already.
 
 export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
@@ -9595,6 +9760,59 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         out(mark ? `${item.id} running: ${mark.label}` : `${item.id} running mark cleared`)
         return 0
       }
+      case "result": {
+        // A card's result (0.19.0): an answer, a draft or figures, kept with the card.
+        only(opts, command)
+        const usageLine = 'usage: board.mjs result <id|job> "<text>" | --file <path> | - [--project P]  or  board.mjs result <id|job> --clear'
+        const ways = [rest.length === 2, opts.file !== undefined, Boolean(opts.clear)].filter(Boolean).length
+        if (rest.length < 1 || rest.length > 2 || ways !== 1) throw usage(usageLine)
+        let given = ""
+        if (opts.file !== undefined) given = readResultFile(opts.file)
+        else if (rest[1] === "-") given = io.stdin !== undefined ? asText(io.stdin) : readFileSync(0, "utf8")
+        else if (!opts.clear) given = asText(rest[1]).replace(/\\n/g, "\n")
+        // Text from a file or stdin is screened here, before anything reads it (the argument was, with the flags).
+        if (opts.file !== undefined || rest[1] === "-") throwSecrets(secretsIn(given).length ? [{ field: "the result", kinds: secretsIn(given) }] : [])
+        const text = cleanResult(given)
+        if (!opts.clear && !text) throw usage("a result needs text: the answer, the draft or the figures to keep on the card")
+        const size = [...text].length
+        if (size > RESULT_MAX) throw usage(`the result is ${size} characters, and a card keeps ${RESULT_MAX} (what c copies whole): put it in a file that lasts (the repo, the job's record), and on the card what it says and where it is`)
+        const item = change((s) => {
+          const it = owned(s, findItem(s, rest[0], me))
+          if (it.column === "queue") queueWrite(me, "change its cards")
+          if (text) [it.result, it.result_at] = [text, now.toISOString()]
+          else {
+            delete it.result
+            delete it.result_at
+          }
+          it.updated = now.toISOString()
+          return it
+        })
+        out(text ? `${item.id} result: ${resultSize(text)} (board.mjs get ${item.id} shows it)` : `${item.id} result cleared`)
+        for (const p of [...resultWarnings(item), ...tmpPathWarnings(item).filter((p) => p.field === "result")]) err(`board: card ${item.id}: ${wordingLine(p)} (a warning: written as it is)`)
+        return 0
+      }
+      case "get": {
+        // One card, whole (0.19.0): as text, or as stored (--json). Read-only.
+        only(opts, command)
+        need(1, "<id|job> [--json] [--project P]")
+        const state = readBoard(file)
+        let item
+        try {
+          item = findItem(state, rest[0], me)
+        } catch (error) {
+          // An archived Done card by its number.
+          item = /^\d+$/.test(rest[0]) ? readArchive(file).findLast((a) => a.id === Number(rest[0])) : null
+          if (!item) throw error
+          item = { ...item, archived: true }
+        }
+        if (opts.json) {
+          const open = item.column === "done" ? [] : waitingOn(state, item)
+          raw(jsonText(open.length ? { ...item, waiting_on: open } : item))
+          return 0
+        }
+        out(cardGetText(item, state, now))
+        return 0
+      }
       case "not-run": {
         // A press its coordinator couldn't carry out: the card says what to type or run instead.
         only(opts, command)
@@ -9708,9 +9926,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
             : opts.project === "all"
               ? state
               : (({ items, label, hidden }) => ({ version: 2, scope: label, hidden, items, projects: state.projects }))(scoped(state.items))
-        // JSON escapes C0 controls itself; escape C1 and bidirectional controls too.
-        const json = JSON.stringify(data, null, 2)
-        raw(json.replace(/[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`))
+        raw(jsonText(data))
         return 0
       }
       case "import": {
@@ -9763,6 +9979,54 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
     err(`board: ${error.message}`)
     return error.usage ? 2 : 1
   }
+}
+
+/** Data as indented JSON to print: JSON escapes C0 controls itself; C1 and bidirectional controls are escaped too. */
+const jsonText = (data) =>
+  JSON.stringify(data, null, 2).replace(/[\u007f-\u009f؜‎‏‪-‮⁦-⁩]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)
+
+// A result file is read whole only up to this size (a result keeps RESULT_MAX characters).
+const RESULT_FILE_MAX = 256 * 1024
+
+/** The text of `result --file <path>`: the file as it is; a usage error when it can't be a result. */
+function readResultFile(path) {
+  const full = resolve(String(path ?? ""))
+  let stat
+  try {
+    stat = statSync(full)
+  } catch {
+    throw usage(`--file ${path}: no such file`)
+  }
+  if (!stat.isFile()) throw usage(`--file ${path}: not a file`)
+  if (stat.size > RESULT_FILE_MAX) throw usage(`--file ${path}: ${Math.round(stat.size / 1024)} KB, and a card keeps ${RESULT_MAX} characters: put it in a file that lasts, and on the card what it says and where it is`)
+  return readFileSync(full, "utf8")
+}
+
+/**
+ * `get`'s text for one card: "card 12 · waiting on you · project sfc", then its title, job,
+ * status line, question, buttons (the suggested one marked), description and result, each whole,
+ * under its label. Fields it doesn't have are left out.
+ */
+export function cardGetText(item, state, now = new Date()) {
+  const project = state.projects?.[item.project]
+  const where = [`card ${item.id}`, item.archived ? "done (archived)" : label(item.column), item.project ? `project ${item.project}${project?.tag && project.tag !== item.project ? ` (${project.tag})` : ""}` : ""]
+  const lines = [where.filter(Boolean).join(" · "), `Title: ${clean(item.title)}`]
+  if (clean(item.job)) lines.push(`Job: ${clean(item.job)}`)
+  if (item.parent != null) lines.push(`For: card ${item.parent}`)
+  const status = nowText({ ...item, stale: statusStale(item) })
+  if (status) lines.push(`${status.label} ${status.text}`)
+  const asks = asksOf(item.ask)
+  if (asks.length) lines.push(`Question: ${asks.map(clean).join("\n  ")}`)
+  const options = optionsOf(item)
+  if (options.length) lines.push(`Buttons: ${options.map((o) => `${o.label}${o.suggested ? " (suggested)" : ""}`).join(" · ")}`)
+  const desc = cleanDesc(item.desc)
+  if (desc) lines.push("", "Description:", desc)
+  const result = cleanResult(item.result)
+  if (result) {
+    const at = shortTime(item.result_at, now)
+    lines.push("", `Result${at ? ` (written ${at})` : ""}:`, result)
+  }
+  return lines.join("\n")
 }
 
 /** Nudge the writer when a card won't make sense on its own (see README, "Writing cards"). */

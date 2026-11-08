@@ -1,6 +1,6 @@
 ===== card 1 · 120 columns =====
 Job board · all projects                                                                                           10:30
-Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next link) · t go to tab · q quit
+Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next) · t go to tab · q quit
 
 ▸ WAITING ON YOU (2)
 1▸Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
@@ -123,7 +123,7 @@ Order history UI: build
 
 ===== card 4 · 120 columns =====
 Job board · all projects                                                                                           10:30
-Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
+Esc close · ↑↓ scroll · f more · c copy (again: next) · t go to tab · q quit
 
 WAITING ON YOU (2)
 1 Checkout redesign mockup: approve             7 h 30 min   2 Coupons AND gift cards discount an order twice: fix?
@@ -164,7 +164,7 @@ CSV export on the Orders page (PR #48): try it, then merge
 
 ===== card 1 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
-Esc close · ↑↓ scroll · ←→ choose · f more · c copy · t go to tab · q quit
+Esc close · ↑↓ scroll · ←→ choose · f more · c copy (again: next) · t go to tab · q quit
 
 ▸ WAITING ON YOU (2) ───────────────────────────────────────────────────────────────────
 ▸ 1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min
@@ -287,7 +287,7 @@ Order history UI: build
 
 ===== card 4 · 88 columns =====
 Job board · all projects · 2 need you                                              10:30
-Esc close · ↑↓ scroll · f more · c copy (again: next link) · t go to tab · q quit
+Esc close · ↑↓ scroll · f more · c copy (again: next) · t go to tab · q quit
 
 WAITING ON YOU (2) ─────────────────────────────────────────────────────────────────────
   1 ! Checkout redesign mockup: approve                           unverified  7 h 30 min

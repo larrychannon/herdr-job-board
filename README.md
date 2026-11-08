@@ -245,12 +245,12 @@ itself out again at once.
 | `←` `→` on a card with buttons | choose a button (the suggested one first); the key line then says `Enter to send`, `Enter` presses it, `Esc` un-chooses it. Only buttons on screen count: a card whose job is blocked shows none, so none can be chosen; on a card cut off above its buttons none can be chosen either, and `Enter` opens its details. On a closed row (compact) `←` `→` move between sections |
 | `o` | Other… on a card with buttons |
 | in the details | `↑` `↓` `PgUp` `PgDn` `g` `G` scroll; `←` `→` choose one of the card's buttons and `Enter` presses it; with no button chosen, `Enter` or `f` shows or hides More… (the rest of the job's report), and `Enter` closes the details when there is no More…; `o` is Other…; `t` goes to the job's tab; `u` puts a To do card in the Queue (last), or a queued one back in To do; `s` queues a To do card marked start without asking, or marks or unmarks a queued one; `Esc` closes them |
-| `c` | copy the card's first link, or its text; `c` again: its next link (Alt+c does nothing) |
+| `c` | copy the card's result (0.19.0), else its first link, else its text; `c` again: the next of them (result, each link, the whole card as text), round to the first (Alt+c does nothing). See Links and copying |
 | `u` | open the Queue or fold it to its one line (it opens by itself while it has cards); a click on the line, or on the open header, does the same. In a To do card's details `u` puts it in the Queue (a queued card's: back to To do) |
 | `t` | open To do (a column beside Doing) or fold it back to its one line; a click on the line, or on the open header, does the same. In a card's details `t` goes to the job's tab |
 | `d` | open Done (a column) or fold it back to its one line; a click on the line, or on the open header, does the same |
 | `p`, `P`, a click on the strip | with cards of several projects on the board: `p` shows the next project's cards only (in the strip's order), `P` every project again; a click on a project in the strip shows it, on `all` every one. A view of one project counts what it hides (`TO DO (6 · +4 other)`, `(+1 in other projects)` in the title); another project's blocked job still shows under Waiting. The filter is the pane's own |
-| `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description and question (nothing cut with `…`); a card taller than its section says `card cut off: Enter shows the rest in its details`; the key line starts `selecting text: m gives the mouse and the columns back` |
+| `m` | mouse capture off (select text in the terminal) and on again. While it is off the board draws one column (the inbox) at any width, so a drag across the pane selects one card's lines and never the column beside it, and the open card shows all of its title, description, result and question (nothing cut with `…`); a card taller than its section says `card cut off: Enter shows the rest in its details`; the key line starts `selecting text: m gives the mouse and the columns back` |
 | `PgUp` `PgDn`, `g` `G` | scroll a page; first / last card |
 | mouse | wheel scrolls the section under the pointer; a click selects a card, a double click opens it, a click on a button presses it, a click on a card's question chooses its suggested button (or the first) for `Enter`, and never sends; a click on To do's or Done's line or header opens or folds it. A click on a button presses it only once the button has been drawn where it is for a second: a button that just appeared or moved there (a click opened a card and moved the rows, the details opened, closed or scrolled, a refresh moved a section) only selects its card, wherever the click lands, on the board or in the details. The second click of a double click on a card's row opens its details. With mouse capture off (`m`), click reports are ignored |
 | `?` | show every key under the title (wrapped, in place of the key line); `?` again or `Esc` hides the list |
@@ -305,7 +305,9 @@ Checkout redesign mockup: approve
 - **The title**, then where the card is, in words: "Waiting on you for 7 h 30 min", "Doing for
   2 h", "Done at 01:10".
 - **What it is**: the description, whole: its paragraphs, list items and labels (`Why:`) as
-  written (0.9.0). **What you need to do**: the ask and the card's buttons
+  written (0.9.0). **Result** (0.19.0): the card's result, whole and as written (code lines
+  and columns of figures are broken at the width, never re-flowed), under "Written 14:02 · 14
+  lines · c copies it". **What you need to do**: the ask and the card's buttons
   right under it, which work here as on the card (`←` `→` or a click on the question choose
   one, `Enter` or a click on the button presses it), then what was sent. Choosing a button
   below the panel's fold scrolls it into view, and `Enter` presses only a button on screen.
@@ -338,19 +340,26 @@ is read again only when the file changes.
   pane had to cut short is plain text, even when the cut fell just after a dot, a hyphen or a
   port's colon (`https://a.example.…`). Only `http` and `https` count: not `javascript:`,
   `data:` or `file:`, never a `user:password@` part, and never an invisible character.
-- **Copy.** `c` puts the selected card's first link on the clipboard, or the card's text when
-  it has no link (OSC 52, at most 8000 characters), with the buttons it shows (a blocked job's
-  card shows none, so none are copied), and the key line says what was copied. On a card with
-  several links, `c` again copies the next one, in the order the card and its report show them,
-  then the first again; the key line says which (`copied 2/2: Artifact https://…`) and, where it
-  fits, reads `c copy (again: next link)`. Another card, or opening or closing the details,
-  starts at the first link again. It happens only
-  when you press `c`. Herdr passes a pane's clipboard writes to your terminal;
-  your terminal must allow them (most do; some ask first or need a setting such as
-  "allow clipboard access").
-- **Select text yourself.** `m` turns the board's mouse capture off: Herdr's own drag-select
-  works again (`ui.copy_on_select` decides whether selecting copies). Scrolling and buttons then
-  need the keys; `m` gives the mouse back to the board.
+- **Copy.** `c` puts text of the selected card on the clipboard (OSC 52, at most 8000
+  characters), on the board or in its details, and the key line says what was copied. It steps
+  through (0.19.0): the card's **result**, exactly as stored (indentation and spaces kept, never
+  the drawn lines); then each **link**, in the order the card, its result and its report show
+  them; then the **whole card as text** (title, status line, description, result, question and
+  the buttons it shows: a blocked job's card shows none, so none are copied); then round to the
+  first. The key line says which: `copied 1/3: the result, 14 lines`, `copied 2/3: PR #57
+  https://…`, `copied 3/3: card 12 as text`; a card with only its text says `copied card 12`.
+  Where it fits, the key line reads `c copy (again: next)`. Another card, or opening or closing
+  the details, starts at the first again. It happens only when you press `c`. Herdr passes a
+  pane's clipboard writes to the terminal of the client you are attached with (over SSH too:
+  `herdr remote` forwards them to your machine); that terminal must allow them (most do; some
+  ask first or need a setting such as "allow clipboard access").
+- **Select text yourself.** The board takes the mouse (clicks select cards and press buttons),
+  so a drag selects nothing until `m` turns its mouse capture off: Herdr's own drag-select then
+  works in the board's pane (`ui.copy_on_select` decides whether selecting copies), the board
+  draws one column, and the open card shows its title, description, question and result whole.
+  Scrolling and buttons then need the keys; `m` gives the mouse back to the board. A drag copies
+  the drawn lines, wrapped and indented as on screen: for a command or figures, `c` copies the
+  text itself.
 
 ### Answer buttons
 
@@ -665,8 +674,8 @@ and the flags it takes.
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
-| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question or status line: a restart deletes it, so the card would point nowhere (it says when the file is gone already). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
-| `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
+| `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question, status line or result: a restart deletes it, so the card would point nowhere (it says when the file is gone already); and on a result's line of prose over about three lines (never its numbers or code lines). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
+| `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, result, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
 | `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
 | `rm <ref>` | Remove a card. |
@@ -685,11 +694,13 @@ and the flags it takes.
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`. |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`, and `result` (a string) and `result_at` (when it was written) while it has a result (0.19.0). |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). It never makes a card (0.15.0): with no card for the job, the coordinator gets a `[job note]`. |
 | `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's lineage too (the cards above it and every open card under it, not its siblings) unless `--only`. `--event merge\|deploy\|…` notes that event on the lineage first. Words checked as for a card. See Status lines below. |
 | `running <ref> "<label>"` / `running <ref> --clear` | Marks the card as running a stage from a pane that is not its job (0.19.0): a merge, a release, a deploy. Its row shows `deploying the GUI · 4 min` where a job's state goes, in the working colour with the working bar, and its details say `running: …`; a job agent that is working or blocked wins. While it holds, the card is busy: not "job finished — not reviewed yet" and not in the turn reminder. The same label again keeps its time, another starts it over. After 2 h it reads `deploying the GUI · stuck? 2 h` in amber (the stage probably died without clearing it) and no longer counts as busy. `--clear` and `done` remove it; an unknown card exits 1. |
+| `result <ref> "<text>"` / `result <ref> --file <path>` / `result <ref> -` / `result <ref> --clear` | The card's result (0.19.0): an answer, a draft or figures the user asked for, kept with the card, so it is still on the board after the chat compacts or restarts. Shown under the description: its first 6 lines on the card (`+8 more lines: Enter shows all · c copies it`), whole in the details (a **Result** section after What it is), in `ls`, in `get` and while selecting text (`m`); `c` in the pane copies it first. Kept as written, up to 8000 characters (what `c` copies whole): indentation and the spaces between figures stay, a tab becomes spaces, control characters go. `-` reads it from stdin and `--file` from a file, both as they are; in `"<text>"` a literal `\n` is a line break, as in `--desc`. Numbers and code are fine (it is the answer itself); text that looks like a secret is refused, from a file or stdin too (exit 2). `lint` warns on a line of prose over about three lines and on a file in a temporary folder, never on numbers or code lines. Set again, the new text replaces it; `--clear` removes it (the card then has no `result` field). |
+| `get <ref> [--json]` | One card, whole (0.19.0): `card 12 · waiting on you · project sfc`, then `Title:`, `Job:`, `For:` (its parent), `Now:`, `Question:`, `Buttons:` (the suggested one marked), `Description:` and `Result (written 14:02):`, each left out when the card has none. An archived Done card by its number too. `--json`: the card as stored, as `json`'s `items` show it (with `waiting_on`). Read-only; an unknown card exits 1. |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
 | `export --legacy [--project P\|all]` | A project's cards as a 0.4 board file, on stdout. |
 | `restore [<backup>]` | List the board's backups, or put one back. |
@@ -1185,6 +1196,10 @@ The user reads a card with no other context: not the chat, not the job's instruc
   - Change the flow: tell me what to change.
   ```
 - **ask** (Waiting): exactly what the user should do.
+- **result** (0.19.0): the answer, the draft or the figures the user asked for, on the card
+  with `board.mjs result <ref> --file <path>` (or `-` for stdin), never only in the chat: a
+  chat that compacts or restarts loses it from the user's screen, and the card keeps it. It is
+  the text itself, kept as written; the description still says what it is and why.
 - **A new question brings its explanation** (0.16.0): `edit` or `move` that changes `--ask`
   also sets `--desc` in the same call, with a line that starts `Now:` (where things stand and
   what the answer decides), e.g. `--desc "The fix is merged.\nNow: the deploy waits for your
@@ -1247,9 +1262,9 @@ card as it is, with no note (0.14.0).
 `lint` lists the open cards that fail, for cards written before the check.
 
 **No secrets on a card** (0.18.0). A card reaches the pane, the coordinator's session and
-Telegram, so `add`, `edit`, `move`, `now`, `job-start`, `not-run` and `tell` refuse text that
+Telegram, so `add`, `edit`, `move`, `now`, `result`, `job-start`, `not-run` and `tell` refuse text that
 looks like a secret, in any text they are given (title, description, question, button labels,
-status line, the note): a private key, an AWS access key, a GitHub, Anthropic, Slack or
+status line, the note, a result: from a file or stdin too): a private key, an AWS access key, a GitHub, Anthropic, Slack or
 Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`, `token=` or
 `api_key=` (or `:`) with a real value, markdown around it or not (`` password: `…` ``,
 `**password**: …`, `**DB password:** …`). The refusal exits 2 and names the field and the kind, never the text;
@@ -1339,6 +1354,9 @@ tokens.json           the sidebar text last reported for each workspace
   holds one line per thing to do. `options` are the answer buttons; `sent` the last answer sent
   (and to whom). `reported` and `reports` mark which job report already moved a card, so a repeat
   changes nothing, even after the card is archived.
+- `result` (0.19.0) is the card's result, a string with its lines as written, and `result_at`
+  when it was written; a card without one has neither field (`result --clear` removes both).
+  Archived Done cards keep them.
 - Done cards stay 7 days (the Done section shows today's), then move to `archive/`.
 - Only `board.mjs` writes the file (the pane, through it, writes `sent`). It takes a lock
   (`mkdir <file>.lock`, with the owner's process id in it), writes a temp file and renames it

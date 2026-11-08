@@ -192,7 +192,8 @@ test("details: Enter opens the card in words, its job and report rewritten for p
     assert.match(panel, /\nSearch filters: build\n {2}Doing for 25 min\n/)
     assert.match(panel, /What it is\n {2}Sentence 1 of a long description/)
     assert.match(r.stdout, /── ↓ \d+ more lines ─+\n/, "longer than the panel: the closing rule says how much more")
-    assert.match(r.stdout.trimEnd().split("\n")[1], /^Esc close · ↑↓ scroll · f more · c copy · t go to tab · q quit$/)
+    // Its PR link, then its text: c again copies the next (0.19.0).
+    assert.match(r.stdout.trimEnd().split("\n")[1], /^Esc close · ↑↓ scroll · f more · c copy \(again: next\) · t go to tab · q quit$/)
     // Scroll to the end: the job, the report in words, More… and the times.
     r = t.pane([], "\t\rG")
     assert.match(r.stdout, /From the job\n {2}Job search-ui is working · 25 min · its tab: search-ui \(press t\)/)
@@ -673,13 +674,13 @@ test("copy: OSC 52 only when c is pressed, with the selected card's first link o
     seed(t)
     assert.deepEqual(decode52(t.pane().stdout), [], "nothing without c")
     assert.deepEqual(decode52(t.pane([], "\x1b[B\x1b[A\t\t").stdout), [], "nor for moving around")
-    // Card 1 (old question) has no link: its text. Card 2 has a link: the link.
+    // Card 1 (old question) has no link: its text. Card 2 has a link: the link first.
     let r = t.pane([], "c")
     assert.deepEqual(decode52(r.stdout), ["#1 Old question: pick a name\n\n→ Reply with a name"])
     assert.match(r.stdout, /copied card 1 · /)
     r = t.pane([], "\x1b[Bc")
     assert.deepEqual(decode52(r.stdout), ["http://localhost:3000/invoices"])
-    assert.match(r.stdout, /copied http:\/\/localhost:3000\/invoices/)
+    assert.match(r.stdout, /copied 1\/2: http:\/\/localhost:3000\/invoices/)
     // In the details panel: that card. The report's PR link counts when the card has none.
     r = t.pane([], "\t\rc")
     assert.deepEqual(decode52(r.stdout), ["https://github.com/example/app/pull/21"])
@@ -697,11 +698,15 @@ test("copy: c again copies the card's next link, round to the first; a new card 
     const canvas = "https://canvas.example/boards/checkout-v2"
     const pr = "https://github.com/example/app/pull/57"
     const last = (r) => r.stdout.trimEnd().split("\n")[1]
-    // Card 1 has two links (the report's Design canvas, then PR #57): c, c, c copies 1, 2, 1.
-    let r = t.pane(["--width", "120"], "ccc")
-    assert.deepEqual(decode52(r.stdout), [canvas, pr, canvas])
-    assert.match(last(r), /^copied 1\/2: Design canvas https:\/\/canvas\.example\/boards\/checkout-v2 · /)
-    assert.match(last(t.pane(["--width", "120"], "cc")), /^copied 2\/2: PR #57 https:\/\/github\.com\/example\/app\/pull\/57 · /)
+    // Card 1 has two links (the report's Design canvas, then PR #57), then its text (0.19.0): c
+    // four times copies 1, 2, the text, 1.
+    let r = t.pane(["--width", "120"], "cccc")
+    const copied = decode52(r.stdout)
+    assert.deepEqual([copied[0], copied[1], copied[3]], [canvas, pr, canvas])
+    assert.match(copied[2], /^#1 Checkout redesign mockup: approve\n\nNow: /)
+    assert.match(last(t.pane(["--width", "120"], "c")), /^copied 1\/3: Design canvas https:\/\/canvas\.example\/boards\/checkout-v2 · /)
+    assert.match(last(t.pane(["--width", "120"], "cc")), /^copied 2\/3: PR #57 https:\/\/github\.com\/example\/app\/pull\/57 · /)
+    assert.match(last(t.pane(["--width", "120"], "ccc")), /^copied 3\/3: card 1 as text · /)
     // Another card and back, or the details opened or closed: the first link again.
     assert.deepEqual(decode52(t.pane([], "c\x1b[B\x1b[Ac").stdout), [canvas, canvas])
     assert.deepEqual(decode52(t.pane([], "c\rc").stdout), [canvas, canvas], "opening the details")
@@ -709,7 +714,7 @@ test("copy: c again copies the card's next link, round to the first; a new card 
     assert.deepEqual(decode52(t.pane([], "\rcc\x1b\x1b[Ac").stdout), [canvas, pr, canvas], "the same in the details; closing them starts over")
     assert.deepEqual(decode52(t.pane([], "\rc\x1b\x1b[A\rc").stdout), [canvas, canvas], "closed and opened again between presses")
     // The long key line says so on such a card, where it fits; the short ones stay short.
-    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next link) · u queue · t to do · d done · m mouse: board · q quit")
+    assert.equal(last(t.pane(["--width", "120"])), "Tab section · ↑↓ card · Enter details · c copy (again: next) · u queue · t to do · d done · m mouse: board · q quit")
     assert.equal(last(t.pane(["--width", "88"])), "Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · q quit")
     assert.equal(last(t.pane(["--width", "120"], "\x1b[B")), "Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d done · m mouse: board · q quit", "a card without links: as before")
   } finally {
@@ -717,26 +722,31 @@ test("copy: c again copies the card's next link, round to the first; a new card 
   }
 })
 
-test("copy: one link and no link copy as before, each press the same", () => {
+test("copy: no link copies the text each press; one link, then the text (0.19.0)", () => {
   const t = setup({ agents, tabs })
   try {
     seed(t)
     let r = t.pane([], "cc")
     assert.deepEqual(decode52(r.stdout), ["#1 Old question: pick a name\n\n→ Reply with a name", "#1 Old question: pick a name\n\n→ Reply with a name"])
+    assert.match(r.stdout, /copied card 1 · /, "no 1/1")
     r = t.pane([], "\x1b[Bcc")
-    assert.deepEqual(decode52(r.stdout), ["http://localhost:3000/invoices", "http://localhost:3000/invoices"], "the desc and ask's one link, once")
-    assert.match(r.stdout, /copied http:\/\/localhost:3000\/invoices · /, "no 1/1")
+    const two = decode52(r.stdout)
+    assert.equal(two[0], "http://localhost:3000/invoices", "the desc and ask's one link, once")
+    assert.match(two[1], /^#2 Billing fix \(PR #12\): review\n\nInvoices round per line\./, "then the card's text")
+    assert.match(r.stdout, /copied 2\/2: card 2 as text · /)
     // The cycle: the place and the card's links must hold; a changed list starts over.
     const card = { id: 9, title: "a https://a.example/1", desc: "b https://b.example/2" }
     let step = nextCopy(null, card, copyPlace({ card: "9" }))
     assert.equal(step.payload.text, "https://a.example/1")
     step = nextCopy(step.cycle, card, copyPlace({ card: "9" }))
     assert.equal(step.payload.text, "https://b.example/2")
+    step = nextCopy(step.cycle, card, copyPlace({ card: "9" }))
+    assert.equal(step.payload.what, "card")
     assert.equal(nextCopy(step.cycle, card, copyPlace({ card: "9" })).payload.text, "https://a.example/1", "round to the first")
     assert.equal(nextCopy(step.cycle, { ...card, ask: "https://c.example/3" }, copyPlace({ card: "9" })).payload.text, "https://a.example/1", "links changed")
     assert.equal(nextCopy(step.cycle, card, copyPlace({ card: "9", detail: { key: "9" } })).payload.text, "https://a.example/1", "details opened")
     assert.deepEqual(copyLinks(card).map((l) => l.url), ["https://a.example/1", "https://b.example/2"])
-    assert.equal(copyPayload(card, 3).text, "https://b.example/2")
+    assert.equal(copyPayload(card, 4).text, "https://b.example/2")
   } finally {
     t.done()
   }
