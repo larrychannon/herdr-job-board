@@ -3,7 +3,7 @@
 // move it to Doing with `your press "<label>": being carried out`, without its question and
 // buttons; `answered` does the same for words typed in the chat. The press stays in the inbox
 // (inbox get, which ship.mjs reads), not-run still finds it, a new question brings the card back,
-// and a parent whose cards were answered no longer shows under Waiting. Herdr is faked by
+// and a parent shows under Waiting only for a question of its own (a pressed card under it leaves). Herdr is faked by
 // fixtures/fake-herdr.mjs; every test has its own temp HOME and store.
 import "./guard.mjs"
 import assert from "node:assert/strict"
@@ -14,7 +14,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { answeredLine, buildView, createAnswerer, NOT_RUN, readBoard, unacked, updateBoard, waitsOnUser } from "../board.mjs"
+import { answeredLine, buildView, createAnswerer, NOT_RUN, readBoard, unacked, updateBoard } from "../board.mjs"
 import { reminder } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -208,35 +208,58 @@ test("a new question written while a press is on its way stays on the card: the 
   }
 })
 
-test("a parent shows under Waiting only while it, or a card under it, asks something", () => {
-  const at = "2026-11-10T10:00:00Z"
-  const card = (id, column, extra = {}) => ({ id, title: `Card ${id}: do it`, column, since: at, updated: at, ...extra })
-  const ask = { ask: "Merge it?", options: [{ label: "Merge it" }, { label: "Hold it" }] }
-  const answered = { now: { text: 'your press "Merge it": being carried out', at }, answered: { via: "press", label: "Merge it", at, ask: "Merge it?", options: [] } }
-  const where = (items) => {
-    const state = { version: 1, next_id: 10, items, panes: {} }
-    const view = buildView(state, null)
-    return { waiting: view.waiting.map((e) => e.id), doing: view.doing.map((e) => e.id), reminder: reminder(state) }
+test("a parent shows under Waiting only for an unanswered question: a pressed card under it leaves Waiting, and nothing lifts the parent there", async () => {
+  const s = setup()
+  try {
+    // Card 2 (Doing) is the parent of card 1, which asks a question.
+    s.ok(["add", "doing", "Login work: ship it", "--desc", "The login fix and its docs."])
+    s.ok(["edit", "1", "--parent", "2"])
+    const where = () => {
+      const state = readBoard(s.file)
+      const view = buildView(state, null)
+      return { waiting: view.waiting.map((e) => e.id).sort(), doing: view.doing.map((e) => e.id).sort(), reminder: reminder(state) }
+    }
+    let w = where()
+    assert.deepEqual([w.waiting, w.doing], [[1], [2]])
+    assert.match(w.reminder, /#1 "Login fix: merge it" \(for #2 "Login work: ship it"\)/)
+    // The question under it is answered: nothing is left under Waiting, nor in the turn reminder.
+    const answers = createAnswerer({ file: s.file, origin: COORD, env: { ...s.env, JOB_BOARD_DELIVERY: "channel" }, agents: () => null })
+    await answers.press({ type: "send", id: 1, label: "Merge it", key: "#1" })
+    w = where()
+    assert.deepEqual([w.waiting, w.doing], [[], [1, 2]])
+    assert.equal(w.reminder, "")
+    // A parent with its own question shows under Waiting until it is answered too.
+    s.ok(["move", "2", "waiting", "--desc", "The login fix and its docs.\nNow: the fix is merging; the docs wait", "--ask", "Ship the docs today?", "--option", "Ship them today", "--option", "Keep them for tomorrow", "--suggest", "Ship them today"])
+    assert.deepEqual(where().waiting, [2])
+    await answers.press({ type: "send", id: 2, label: "Ship them today", key: "#2" })
+    assert.deepEqual(where().waiting, [])
+    // A Waiting card with no question but a step of yours (as ship.mjs leaves one, with a card
+    // under it to do) still shows under Waiting: only a press or an answer takes a card off it.
+    s.ok(["add", "waiting", "Restart: your step", "--desc", "You do: restart the service."])
+    s.ok(["add", "todo", "Follow-up: tidy the logs", "--desc", "Low findings.", "--parent", "3"])
+    assert.deepEqual(where().waiting, [3])
+  } finally {
+    s.done()
   }
-  // The parent waits with no question of its own; its child was pressed (now in Doing): the parent is in Doing too.
-  let w = where([card(1, "waiting"), card(2, "doing", { parent: 1, ...answered })])
-  assert.deepEqual([w.waiting, w.doing.sort()], [[], [1, 2]])
-  assert.equal(w.reminder, "", "the turn reminder agrees: nothing waits on the user")
-  assert.equal(waitsOnUser({ items: [card(1, "waiting"), card(2, "doing", { parent: 1 })] }, card(1, "waiting")), false)
-  // Its child asks something: the parent shows under Waiting, the child under it.
-  w = where([card(1, "waiting"), card(2, "waiting", { parent: 1, ...ask })])
-  assert.deepEqual(w.waiting.sort(), [1, 2])
-  assert.match(w.reminder, /#1 "Card 1: do it"; ↳ #2/)
-  // A grandchild's question counts; so does a blocked job under it (live state).
-  assert.deepEqual(where([card(1, "waiting"), card(2, "doing", { parent: 1 }), card(3, "waiting", { parent: 2, ...ask })]).waiting.sort(), [1, 3])
-  const items = [card(1, "waiting"), card(2, "doing", { parent: 1, job: "fix-x" })]
-  assert.deepEqual(buildView({ version: 1, items, panes: {} }, [{ name: "fix-x", agent_status: "blocked", workspace_id: "w1", pane_id: "w1:p2" }], { workspace: "w1" }).waiting.map((e) => e.id).sort(), [1, 2])
-  // A parent with its own question stays, whatever its cards do; so does a Waiting card with nothing under it.
-  assert.deepEqual(where([card(1, "waiting", ask), card(2, "doing", { parent: 1 })]).waiting, [1])
-  assert.deepEqual(where([card(1, "waiting", { ask: "Run the restart yourself" })]).waiting, [1])
-  assert.deepEqual(where([card(1, "waiting")]).waiting, [1])
-  // Its cards all done: nothing open under it, so it is an ordinary Waiting card again.
-  assert.deepEqual(where([card(1, "waiting"), card(2, "done", { parent: 1 })]).waiting, [1])
+})
+
+test("a job's report applied again after a press doesn't bring its question back", () => {
+  const s = setup()
+  try {
+    const report = join(s.base, "report.json")
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Built the export.", needs_user: ["Ship the export to everyone today?"], tested: "read-only" }))
+    s.ok(["job-start", "export-csv", "--title", "Export to CSV: build", "--desc", "A CSV export of the list.", "--report", report])
+    s.ok(["job-report", "export-csv"])
+    const id = readBoard(s.file).items.find((i) => i.job === "export-csv").id
+    assert.equal(s.card(id).column, "waiting")
+    s.ok(["answered", String(id), "yes, ship it today"])
+    assert.equal(s.card(id).column, "doing")
+    // The same report read again (a watcher firing twice, a tab closed later): nothing changes.
+    s.ok(["job-report", "export-csv", "--if-final"])
+    assert.deepEqual([s.card(id).column, s.card(id).answered.label], ["doing", "yes, ship it today"])
+  } finally {
+    s.done()
+  }
 })
 
 test("a parent that was pressed shows its press, not the line built from the cards under it", async () => {

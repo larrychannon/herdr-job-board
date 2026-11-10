@@ -429,10 +429,10 @@ button itself. A click on the question never sends.
   coordinator's) does the same for a Waiting card you answered in the chat instead: Doing, `your
   answer "<your words>": being carried out` (cut to fit; the card keeps them whole, 300
   characters at most), nothing sent. Workers can't.
-- **A parent under Waiting** (0.19.0): a card in Waiting with no question of its own, whose
-  cards under it ask nothing (they were answered), waits on them, not on you: it shows in Doing,
-  and the turn reminder leaves it out. While a card under it asks something (a Waiting card with
-  a question or buttons, or a blocked job), it shows under Waiting as before.
+- **A parent and its cards**: the board never puts a parent under Waiting because a card under
+  it waits; each card shows in its own column. A card under it that you answered leaves Waiting
+  with its press, so nothing under Waiting is left over from it. The turn reminder also says
+  to use `answered <id> "<their words>"` for an answer typed in the chat.
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
   sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
   then press again), or Herdr can't prompt it (next point).

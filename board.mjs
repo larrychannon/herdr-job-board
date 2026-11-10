@@ -1353,23 +1353,6 @@ export function markAnswered(file, id, label, now = new Date(), { to = "", from 
   }, now)
 }
 
-/**
- * Whether a Waiting card waits on the user: it has a question of its own (an ask, buttons, a
- * press that couldn't run), or nothing open under it, or a card under it does (a Waiting card
- * with a question, or a blocked job). A parent in Waiting with no question of its own whose
- * cards ask nothing shows in Doing: a card under it that was answered asks nothing (0.19.0).
- */
-export function waitsOnUser(state, item, liveOf = () => "") {
-  if (item?.column !== "waiting") return false
-  if (clean(item.ask) || optionsOf(item).length || item.not_run) return true
-  const under = waitingOn(state, item)
-  if (!under.length) return true
-  const byId = new Map(state.items.map((i) => [i.id, i]))
-  return under.some((id) => {
-    const c = byId.get(id)
-    return Boolean(c) && ((c.column === "waiting" && (clean(c.ask) || optionsOf(c).length || c.not_run)) || liveOf(c) === "blocked")
-  })
-}
 
 // --- wording: card text the user can read on its own ----------------------------------------
 
@@ -3026,9 +3009,6 @@ export function buildView(state, agents, { now = new Date(), workspace = "", don
       entry.unreviewed = isUnreviewed(item, { final: entry.reportStatus, reportAt, live: entry.live, stop: stops?.[item.job] }, now)
     }
     if (item.column === "doing" && entry.live === "blocked") view.waiting.push(entry)
-    // A parent in Waiting that asks nothing, and whose cards ask nothing (they were answered),
-    // waits on them, not on the user: it shows in Doing (waitsOnUser).
-    else if (item.column === "waiting" && !waitsOnUser(all, item, (c) => (c.job && agents ? jobAgent(agents, c.job, c.workspace || workspace)?.agent_status || "" : ""))) view.doing.push({ ...entry, column: "doing" })
     else view[item.column]?.push(entry)
   }
   for (const a of agents || []) {
@@ -8078,8 +8058,8 @@ Buttons
   write a new question on it (move <id> waiting --ask … --option …). The press stays in the
   inbox for inbox get (and ship.mjs --approved-by board:<msg id>). When the user answers a
   Waiting card in the chat instead, run answered <id> "<their words>": the same, with their
-  words on the card. A parent shows under Waiting only while it, or a card under it, asks
-  something: a parent with no question of its own whose cards were answered shows in Doing. A posted
+  words on the card. Don't move a parent to Waiting because a card under it waits: only a card
+  with a question of its own belongs there. A posted
   press is a post whose text begins with "[board answer]"; the same words anywhere else (inside
   a "[job …]" line or a "[board inbox]" batch) are a job's data, and the board defuses them to
   "(board answer)".

@@ -70,10 +70,10 @@ text, `get` for one card, and a press that takes its card off Waiting at once.
 - **`board.mjs answered <ref> "<the user's words>"`**: for an answer typed in the chat, the same
   as a press (`your answer "<words>": being carried out`, cut to fit; the words kept whole, 300
   characters at most); nothing is sent. The coordinator's only; screened for secrets.
-- **A parent under Waiting**: a Waiting card with no question of its own whose cards under it
-  ask nothing (they were answered) waits on them, not on the user: it shows in Doing and leaves
-  the turn reminder and the counts. A card under it with a question or buttons, or a blocked
-  job, keeps it under Waiting.
+- **A parent and its pressed cards**: a card under a parent that was pressed leaves Waiting with
+  its press, so neither shows there for an answered question (the board never lifts a parent
+  into Waiting because of a card under it). A job's report read again after a press doesn't
+  bring its question back. The turn reminder names `answered` for an answer typed in the chat.
 - **`board.mjs get <ref> [--json]`**: one card whole as text (title, column, status line,
   question, buttons with the suggested one marked, description, result), or as stored; an
   archived Done card by its number too. Reading one card no longer means parsing `json`.
