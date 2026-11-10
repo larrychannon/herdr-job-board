@@ -1229,6 +1229,16 @@ function dropOptions(item) {
   delete item.not_run
 }
 
+/**
+ * job-report writes the card's question: a new one ends the answer taken before, as editItem's
+ * --ask does, so get and not-run don't name an old press for it. Not in dropOptions: every move
+ * out of Waiting calls that, and not-run needs the press on record.
+ */
+function setAsk(item, ask) {
+  item.ask = ask
+  if (clean(ask)) delete item.answered
+}
+
 // --- a press that couldn't run (not-run) --------------------------------------------------------
 
 // A press reaches the coordinator, which may not be allowed to do what it asks (a settings
@@ -9769,7 +9779,7 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
               if (reopen) {
                 moveItem(s, found, "waiting", now, woke)
                 dropOptions(found)
-                found.ask = shownAsk
+                setAsk(found, shownAsk)
               }
               found.report = path
               found.updated = now.toISOString()
@@ -9788,11 +9798,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           // A worker's report puts answer buttons on the card only as its own question that
           // passes the wording check (reportQuestion); else none, and the coordinator writes them.
           dropOptions(it)
-          it.ask = held ? "" : shownAsk
+          setAsk(it, held ? "" : shownAsk)
           if (question && !held) {
             asked = questionFor(it, question)
             if (asked.options) {
-              it.ask = asked.ask
+              setAsk(it, asked.ask)
               it.options = asked.options
             }
           }

@@ -60,7 +60,8 @@ text, `get` for one card, and a press that takes its card off Waiting at once.
   asking for something already answered. Once a press is delivered (the pane's button, or
   `answer`), the card goes to Doing with the status line `your press "<label>": being carried
   out`, its question and buttons gone; it comes back to Waiting only when a new question is
-  written on it. The card keeps what was answered (`answered`: { via, label, at, to, ask,
+  written on it (`--ask`, `--option` or a job's report), and the kept answer then goes, so `get`
+  and `not-run` never name the old press for the new question. The card keeps what was answered (`answered`: { via, label, at, to, ask,
   options }): `get` shows `Answered: …` and the question, the details a "Your answer" section.
   The press stays in the inbox as before, for the coordinator and `inbox get` (ship.mjs's
   `--approved-by board:<id>` lookup). `not-run` after such a press finds it: the press on record

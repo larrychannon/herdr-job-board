@@ -14,7 +14,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { answeredLine, buildView, createAnswerer, NOT_RUN, readBoard, unacked, updateBoard } from "../board.mjs"
+import { answeredLine, buildView, createAnswerer, NO_PRESS, NOT_RUN, readBoard, unacked, updateBoard } from "../board.mjs"
 import { reminder } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -257,6 +257,44 @@ test("a job's report applied again after a press doesn't bring its question back
     // The same report read again (a watcher firing twice, a tab closed later): nothing changes.
     s.ok(["job-report", "export-csv", "--if-final"])
     assert.deepEqual([s.card(id).column, s.card(id).answered.label], ["doing", "yes, ship it today"])
+  } finally {
+    s.done()
+  }
+})
+
+test("a job's report with a new question on a card a press answered: the old answer goes, so get and not-run don't name the old press", async () => {
+  const s = setup()
+  try {
+    s.ok(["edit", "1", "--job", "login-fix"])
+    const answers = createAnswerer({ file: s.file, origin: COORD, env: { ...s.env, JOB_BOARD_DELIVERY: "channel" }, agents: () => null })
+    await answers.press({ type: "send", id: 1, label: "Merge it", key: "#1" })
+    assert.equal(s.card().answered.label, "Merge it")
+    // The coordinator took the press and ran the job; the press is out of the inbox.
+    for (const m of unacked(s.file)) s.ok(["inbox", "ack", m.id])
+    const report = join(s.base, "report.json")
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Merged the login fix.", needs_user: [{ ask: "Deploy to staging or production first?", options: ["Staging first", "Production now"], suggest: "Staging first" }], tested: "read-only" }))
+    s.ok(["job-report", "login-fix", report])
+    const c = s.card()
+    assert.deepEqual([c.column, c.ask, c.options.map((o) => o.label)], ["waiting", "Deploy to staging or production first?", ["Staging first", "Production now"]])
+    assert.equal(c.answered, undefined, "the press answered the old question")
+    assert.doesNotMatch(s.ok(["get", "1"]), /Answered:|Merge the login fix/)
+    // A bare not-run names no press: nothing was pressed for this question.
+    s.ok(["not-run", "1", "--type", "deploy it to staging"])
+    assert.equal(s.card().ask, `${NO_PRESS}type "deploy it to staging" in the coordinator's chat`)
+
+    // The same for a closed job's late blocked report: the card reopens with the reason, no old answer.
+    s.ok(["add", "waiting", "Export: ship it", "--desc", "The export is built.", "--ask", "Ship the export to everyone?", "--option", "Ship the export", "--option", "Hold the export", "--suggest", "Ship the export"])
+    s.ok(["edit", "2", "--job", "export-csv"])
+    await answers.press({ type: "send", id: 2, label: "Ship the export", key: "#2" })
+    assert.deepEqual([s.card(2).column, s.card(2).answered.label], ["doing", "Ship the export"])
+    s.ok(["edit", "2", "--job", ""])
+    const late = join(s.base, "late.json")
+    writeFileSync(late, JSON.stringify({ status: "blocked", summary: "The export host is down", needs_user: ["Decide whether to wait for the host"] }))
+    s.ok(["job-report", "export-csv", late])
+    const c2 = s.card(2)
+    assert.equal(c2.column, "waiting")
+    assert.match(c2.ask, /export host is down|wait for the host/)
+    assert.equal(c2.answered, undefined)
   } finally {
     s.done()
   }
