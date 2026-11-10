@@ -208,7 +208,7 @@ test("a new question written while a press is on its way stays on the card: the 
   }
 })
 
-test("a parent shows under Waiting only for an unanswered question: a pressed card under it leaves Waiting, and nothing lifts the parent there", async () => {
+test("a parent shows under Waiting only while a part asks: a pressed card under it leaves Waiting, and the parent with it", async () => {
   const s = setup()
   try {
     // Card 2 (Doing) is the parent of card 1, which asks a question.
@@ -220,7 +220,9 @@ test("a parent shows under Waiting only for an unanswered question: a pressed ca
       return { waiting: view.waiting.map((e) => e.id).sort(), doing: view.doing.map((e) => e.id).sort(), reminder: reminder(state) }
     }
     let w = where()
-    assert.deepEqual([w.waiting, w.doing], [[1], [2]])
+    // Its part asks the user: the parent shows in Waiting with it (0.20.0), worked out, not written.
+    assert.deepEqual([w.waiting, w.doing], [[1, 2], []])
+    assert.equal(readBoard(s.file).items.find((i) => i.id === 2).column, "doing")
     assert.match(w.reminder, /#1 "Login fix: merge it" \(for #2 "Login work: ship it"\)/)
     // The question under it is answered: nothing is left under Waiting, nor in the turn reminder.
     const answers = createAnswerer({ file: s.file, origin: COORD, env: { ...s.env, JOB_BOARD_DELIVERY: "channel" }, agents: () => null })
@@ -300,7 +302,7 @@ test("a job's report with a new question on a card a press answered: the old ans
   }
 })
 
-test("a parent that was pressed shows its press, not the line built from the cards under it", async () => {
+test("a parent that was pressed shows its press in Doing; once its line is written over, nothing runs and it shows To do with its part", async () => {
   const s = setup()
   try {
     s.ok(["add", "todo", "Login fix: docs", "--desc", "The docs half.", "--parent", "1"])
@@ -308,9 +310,10 @@ test("a parent that was pressed shows its press, not the line built from the car
     await answers.press({ type: "send", id: 1, label: "Merge it", key: "#1" })
     const entry = buildView(readBoard(s.file), null).doing.find((e) => e.id === 1)
     assert.equal(entry.now.text, 'your press "Merge it": being carried out')
-    // Once the coordinator writes its own line, the built line is back as before.
+    // Its own line stays its own (no line built from the cards under it, 0.20.0); with no job, no
+    // run and no press going on, its To do part is the work left: it shows in To do.
     s.ok(["now", "1", "merging the login fix", "--only"])
-    assert.match(buildView(readBoard(s.file), null).doing.find((e) => e.id === 1).now.text, /#2 to do/)
+    assert.equal(buildView(readBoard(s.file), null).todo.find((e) => e.id === 1).now.text, "merging the login fix")
   } finally {
     s.done()
   }

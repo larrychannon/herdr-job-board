@@ -15,7 +15,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { COMMAND_FLAGS, builtStatus, buildView, commandHelp, detailLines, readBoard, render } from "../board.mjs"
+import { COMMAND_FLAGS, buildView, commandHelp, detailLines, readBoard, render, shownColumn } from "../board.mjs"
 import { asksUser, blockReason, handle, questionOf, staleReminder, telegramReplies } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -165,65 +165,72 @@ function family(t) {
   t.ok(T, "add", "todo", "Export to CSV", "--desc", "Another thing.")
 }
 
-test("a parent with no job or question of its own shows a line built from its cards, never out of date", () => {
+test("a parent shows where its most urgent open part is: Waiting, Doing, To do, or Done with only follow-ups left; its stored column stays", () => {
   const t = setup()
   try {
     family(t)
     const now = new Date("2026-11-02T10:05:00Z")
-    // No line written yet: the parent keeps its "Waiting on: …" list alone.
-    assert.equal(builtStatus(readBoard(t.file), t.item(1)), "")
-    // A line written on a card under it goes up to it (now writes the lineage) …
-    t.ok("2026-11-02T10:01:00Z", "now", "2", "the check is running")
-    assert.equal(t.item(1).now.text, "the check is running")
-    // … and the parent shows the line built from its cards instead.
     let state = readBoard(t.file)
-    assert.equal(builtStatus(state, t.item(1)), "#2 doing · #3 doing · #4 to do")
+    // Two parts in Doing: the parent shows in Doing.
+    assert.equal(shownColumn(state, t.item(1)), "doing")
+    // A part's job blocked on a question: that part asks the user, so the parent shows in Waiting
+    // too, drawn over it; "need you" counts the one question, not the parent.
     const agents = [{ name: "login-check", agent_status: "working", workspace_id: "", pane_id: "w1:p2" }, { name: "login-redirect", agent_status: "blocked", workspace_id: "", pane_id: "w1:p3" }]
     let view = buildView(state, agents, { now })
-    let one = view.doing.find((e) => e.id === 1)
-    assert.equal(one.now.text, "#2 working · #3 waiting on you · #4 to do")
-    assert.equal(one.stale, false)
-    const details = detailLines(one, 100, { now }).lines.map((l) => l.map((s) => s.t ?? "").join("")).join("\n")
-    assert.match(details, /Now: #2 working · #3 waiting on you · #4 to do/)
-
-    // An event under it (a card done) would put a written line out of date: not this one.
-    t.ok("2026-11-02T10:02:00Z", "done", "4")
+    assert.deepEqual(view.waiting.map((e) => e.id).sort(), [1, 3])
+    assert.equal(view.counts.need, 1)
+    assert.equal(view.waiting.find((e) => e.id === 1).shown, "waiting")
+    const details = detailLines(view.waiting.find((e) => e.id === 1), 100, { now }).lines.map((l) => l.map((s) => s.t ?? "").join("")).join("\n")
+    assert.match(details, /Shows in Waiting on you: #3 asks you \(its own column: Doing\)/)
+    // Both parts done, the docs part left: real work waits, so To do.
+    t.ok("2026-11-02T10:02:00Z", "done", "2")
+    t.ok("2026-11-02T10:02:00Z", "done", "3")
     state = readBoard(t.file)
-    assert.equal(builtStatus(state, t.item(1)), "#2 doing · #3 doing · 1 done")
+    assert.equal(shownColumn(state, t.item(1)), "todo")
     view = buildView(state, null, { now })
-    one = view.doing.find((e) => e.id === 1)
-    assert.equal(one.stale, false)
-    assert.doesNotMatch(render(view, { width: 130, height: 30, color: false, now }), /status out of date|Now \(out of date/)
-    // Its stored line is out of date by the old rule, but the built parent is never listed.
-    assert.equal(t.item(1).now.text, "the check is running")
-    assert.doesNotMatch(staleReminder(state), /#1 /)
-
-    // `now` on the parent itself says its line is built, and keeps what was written.
-    const r = t.ok("2026-11-02T10:03:00Z", "now", "1", "waiting for the check", "--only")
-    assert.match(r.stderr, /#1 has no job or question of its own, so it shows the line built from the cards under it \("#2 doing · #3 doing · 1 done"\)/)
-    assert.equal(t.item(1).now.text, "waiting for the check")
-
-    // A parent with a job of its own writes its line as before.
-    t.ok("2026-11-02T10:04:00Z", "edit", "1", "--job", "login-release")
-    assert.equal(builtStatus(readBoard(t.file), t.item(1)), "")
-    // Every card under it done: nothing to build from (the parent is ready to resume).
-    t.ok("2026-11-02T10:04:00Z", "edit", "1", "--job", "")
-    for (const id of ["2", "3"]) t.ok("2026-11-02T10:04:30Z", "done", id)
-    assert.equal(builtStatus(readBoard(t.file), t.item(1)), "")
+    assert.deepEqual(view.todo.map((e) => e.id).sort(), [1, 4, 5])
+    // Only a follow-up left: the parent is Done (today, so in Done), its follow-up a plain To do
+    // card that says whose it was.
+    t.ok("2026-11-02T10:03:00Z", "edit", "4", "--title", "Follow-up: write the login help page")
+    state = readBoard(t.file)
+    assert.equal(shownColumn(state, t.item(1)), "done")
+    view = buildView(state, null, { now })
+    assert.ok(view.doneToday.some((e) => e.id === 1))
+    assert.deepEqual(view.todo.map((e) => e.id).sort(), [4, 5])
+    assert.match(render(view, { width: 100, height: 30, color: false, now, scroll: { todoOpen: true } }), /for #1 Login fix \(done\)/)
+    // Worked out, never written: the card is still stored in Doing, and json says where it shows.
+    assert.equal(t.item(1).column, "doing")
+    const json = JSON.parse(t.ok("2026-11-02T10:04:00Z", "json", "--project", "all").stdout)
+    assert.equal(json.items.find((i) => i.id === 1).shown_column, "done")
+    assert.equal(json.items.find((i) => i.id === 1).column, "doing")
+    // --follow-up marks a card so whatever its title.
+    t.ok("2026-11-02T10:04:00Z", "edit", "4", "--title", "Login help page: write", "--follow-up")
+    assert.equal(t.item(4).follow_up, true)
+    assert.equal(shownColumn(readBoard(t.file), t.item(1)), "done")
   } finally {
     t.done()
   }
 })
 
-test("a built line fits the status line's length: the first cards, then '+N more'", () => {
-  const items = [{ id: 1, title: "Big: release", column: "doing", now: { text: "x", at: T } }]
-  for (let id = 2; id < 60; id++) items.push({ id, title: `Part ${id}: do`, column: "todo", parent: 1 })
-  const line = builtStatus({ items }, items[0])
-  assert.ok(line.length <= 200, line)
-  assert.match(line, /^#2 to do · #3 to do · .* · \+\d+ more$/)
+test("a card with no parts shows in its stored column; a Done card stays Done with To do work under it", () => {
+  const items = [
+    { id: 1, title: "A: plan", column: "doing" },
+    { id: 2, title: "B: release", column: "done", since: T },
+    { id: 3, title: "B part: later", column: "todo", parent: 2 },
+    { id: 4, title: "C: build", column: "done", since: T },
+    { id: 5, title: "C check: answer", column: "waiting", parent: 4, ask: "Merge?" },
+    { id: 6, title: "D: not started", column: "todo" },
+    { id: 7, title: "D part: build", column: "doing", parent: 6 },
+  ]
+  const state = { items }
+  assert.equal(shownColumn(state, items[0]), "doing")
+  assert.equal(shownColumn(state, items[1]), "done")
+  // A Done card with a part that asks shows in Waiting until it is answered.
+  assert.equal(shownColumn(state, items[3]), "waiting")
+  assert.equal(shownColumn(state, items[5]), "doing")
 })
 
-test("Stop and the turn reminder skip a parent whose line is built; a parent with a job is still asked", () => {
+test("Stop no longer blocks on an out-of-date status line; the turn reminder still lists it", () => {
   const t = setup()
   try {
     family(t)
@@ -233,17 +240,9 @@ test("Stop and the turn reminder skip a parent whose line is built; a parent wit
     const prompt = { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: t.base, prompt: "hi" }
     const stop = { hook_event_name: "Stop", session_id: "s1", cwd: t.base, stop_hook_active: false, last_assistant_message: "Done. Tests pass." }
     handle(prompt, env)
-    // The docs card done: an event on #1 (built: skipped) and on #1's lineage only, not #2 (a sibling).
     t.ok("2026-11-02T10:02:00Z", "done", "4")
-    assert.equal(staleReminder(readBoard(t.file)), "")
-    assert.equal(handle(stop, env).stdout, "", "nothing to ask: the parent's line is built")
-    // With a job of its own the same parent is asked again.
-    t.ok("2026-11-02T10:03:00Z", "edit", "1", "--job", "login-release")
-    t.own(1)
-    t.ok("2026-11-02T10:04:00Z", "done", "3")
-    const r = JSON.parse(handle({ ...stop, session_id: "s2" }, env).stdout)
-    assert.equal(r.decision, "block")
-    assert.match(r.reason, /#1 "Login fix: release"/)
+    assert.match(staleReminder(readBoard(t.file)), /#1 "Login fix: release"/)
+    assert.equal(handle(stop, env).stdout, "")
   } finally {
     t.done()
   }

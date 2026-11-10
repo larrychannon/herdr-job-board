@@ -16,7 +16,7 @@ selecting text: m gives the mouse and the columns back · ↑↓ card · Space o
 
 DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                                                                                                          working, report done  25 min
- 4   Docs: fix links                                                                                                                            no agent  24 min
+ 4   Docs: fix links                                                                                                           in Doing, nothing running  24 min
 
 QUEUE · 0 ▸
 
@@ -60,7 +60,7 @@ selecting text: m gives the mouse and the columns back · ↑↓ card · Space o
 
 DOING (2) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                                                                                                                                                  working, report done  25 min
- 4   Docs: fix links                                                                                                                                                                    no agent  24 min
+ 4   Docs: fix links                                                                                                                                                   in Doing, nothing running  24 min
 
 QUEUE · 0 ▸
 

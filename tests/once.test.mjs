@@ -51,9 +51,11 @@ test("compact: a sub-task in its parent's section is one row, straight under the
   const rows = doing.map((l) => l.replace(/\s+$/, ""))
   // Parent first, then its sub-tasks in Doing's order (279 before 282), each with its state, then
   // the next top card (280).
-  assert.match(rows[0], /^.231   Node health: goes live[^\n]* waiting on 3 +\d/)
+  assert.match(rows[0], /^.231   Node health: goes live[^\n]* +\d/)
+  assert.doesNotMatch(rows[0], /waiting on/)
   assert.match(rows[1], /^ 279 {5}↳ Node health fixes[^\n]* working +\d/)
-  assert.match(rows[2], /^ 282 {5}↳ Badge tweaks +\[doing\] +\d/)
+  // 282 (no job, nothing on it for over an hour): the amber flag, in fewer words in a narrow row.
+  assert.match(rows[2], /^ 282 {5}↳ Badge tweaks +nothing running +\d/)
   assert.match(rows[3], /^ 280   Blank error page/)
   assert.equal(rows.length, 4)
   // Each drawn once, its number in the id column; the ↳ sits two cells right of where the
@@ -74,12 +76,12 @@ test("wide: a sub-task's card follows its parent's, its id in the id column and 
   const d = renderBoard(buildView(board(), agents, { now: NOW, workspace: "w9" }), { width: 120, now: NOW, layout: "wide", scroll: { todoOpen: true, doneOpen: true } })
   const text = plain(d.text)
   assert.match(text, /\n231 Node health: goes live after its {5}/)
-  assert.match(text, /\n279 {3}↳ Node health fixes: built — in\n {8}independent review  1 h 19 min\n {8}working\n/)
+  assert.match(text, /\n279 {3}↳ Node health fixes: built — in[^\n]*\n {8}independent review  1 h 19 min\n {8}working\n/)
   assert.match(text, /\n282 {3}↳ Badge tweaks/)
-  // Its "Waiting on:" names only the card not drawn under it (274, in To do): 279 and 282 show
-  // their own state.
-  assert.match(text, /\n {4}Waiting on: {30}[^\n]*\n {6}Phone alerts move \[to do\] [^\n]*\n {4}Card 231\./)
-  assert.match(text, /\n {8}\[doing\]\n/)
+  // No "Waiting on:" list (0.20.0): 279 and 282 show their own state; 274 says whose it is.
+  assert.doesNotMatch(text, /Waiting on:/)
+  // 282 (no job, untouched for over an hour): the amber flag where its state goes (0.20.0).
+  assert.match(text, /\n {8}in Doing, nothing running\n/)
   // 274's card in To do: its title, then "for #231 …" under it, at its title's column.
   const lines = text.split("\n")
   const row = lines.findIndex((l) => l.includes("274 Phone alerts move: merged — goes"))

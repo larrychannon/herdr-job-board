@@ -18,7 +18,7 @@ function state() {
   const items = [
     { id: 8, title: "Build servers: keep them updated", column: "doing", project: P, since: at(156) },
     { id: 10, title: "Shop: checkout rework: build", column: "doing", project: P, since: at(720) },
-    // A status line on a card with no job of its own: built from the cards under it ("#12 working").
+    // A status line on a card with no job of its own: its own (0.20.0: no line built from the cards under it).
     { id: 11, title: "Checkout: last follow-up fixes before the release", column: "doing", project: P, parent: 10, since: at(0), now: { text: "a line", at: at(0) }, desc: DESC },
     { id: 12, title: "Checkout follow-up fixes: check before the release", column: "doing", project: P, parent: 11, job: "checkout-fixes-check", since: at(0) },
     { id: 13, title: "Checkout: store its shipping rule set: fix", column: "doing", project: P, parent: 10, job: "checkout-shipping", since: at(157) },
@@ -53,54 +53,55 @@ for (const width of [100, 160]) {
     assert.equal(family[2].indexOf("↳"), title + 4, "12, under 11, one step further")
     assert.equal(family[2].indexOf("Checkout follow-up"), family[1].indexOf("Checkout: last") + 2)
     assert.doesNotMatch(d.text, /· check \(12\)/, "under its own parent: its number")
-    // The open card: no "Now: #12 working", no "Waiting on: Checkout follow-up fixes [working]".
+    // The open card: its own line, no "Waiting on: Checkout follow-up fixes [working]".
     const open = lines.slice(lines.indexOf(family[1]) + 1, lines.indexOf(family[2])).join("\n")
-    assert.doesNotMatch(open, /Now:|Waiting on:/)
+    assert.match(open, /Now: a line/)
+    assert.doesNotMatch(open, /Waiting on:/)
     assert.match(open, /All four checkout fixes are built/)
     // 10 names nothing either: both cards under it are drawn under it.
     assert.doesNotMatch(d.text, /Waiting on:/)
     // The row's tag names the project: no full name before the description.
     assert.doesNotMatch(d.text, /shop-app ·/)
     // The description wraps at the title's column, whole words, within the pane.
-    const body = open.split("\n").filter((l) => l.trim() && !/^\s*\[doing\]$/.test(l))
+    const body = open.split("\n").filter((l) => l.trim() && !/^\s*\[doing\]$/.test(l) && !/^\s*Now:/.test(l))
     for (const l of body) assert.equal(l.search(/\S/), family[1].indexOf("Checkout: last"), `under its title: ${l}`)
   })
 }
 
-test("the details (Enter) still give the status line and name every card under it", () => {
+test("the details (Enter) give the card's own status line; no 'Waiting on:' list", () => {
   const panel = (key) => {
     const text = renderBoard(buildView(state(), agents, { now: NOW, workspace: "w9" }), { width: 100, height: 40, interactive: true, now: NOW, scroll: { selected: "doing", card: key, anchors: {}, detail: { key } } }).text
     return text.slice(text.indexOf(`── card ${key.slice(1)} `))
   }
-  assert.match(panel("#11"), /Now: #12 working/)
-  assert.match(panel("#11"), /Waiting on: Checkout follow-up fixes \[working\]/)
-  assert.match(panel("#10"), /Waiting on: Checkout \[doing\] · Checkout \[idle\]/)
+  assert.match(panel("#11"), /Now: a line/)
+  assert.doesNotMatch(panel("#11"), /Waiting on:/)
+  assert.doesNotMatch(panel("#10"), /Waiting on:/)
 })
 
-test("a parent's built status line stays when it names a card not drawn under it", () => {
+test("a part moved back to To do: its parent, with no job of its own, shows in To do with it", () => {
   const s = state()
   s.items.find((i) => i.id === 12).column = "todo"
-  const text = renderBoard(buildView(s, agents, { now: NOW, workspace: "w9" }), { width: 100, height: 40, interactive: true, now: NOW, scroll: { selected: "doing", card: "#11", anchors: {} } }).text
-  assert.match(text, /Now: #12 to do/)
-  assert.match(text, /Waiting on: Checkout follow-up fixes \[to do\]/)
+  const view = buildView(s, agents, { now: NOW, workspace: "w9" })
+  assert.deepEqual(view.todo.map((e) => e.id).filter((id) => id !== 20).sort(), [11, 12])
+  assert.equal(view.todo.find((e) => e.id === 11).shown, "todo")
+  // 10 still has 13 in Doing.
+  assert.ok(view.doing.some((e) => e.id === 10))
 })
 
-// 11 done: its check (12) is drawn under the grandparent, 10. It keeps its own number in the id
-// column (its "for #11 … (done)" line names the parent), not "11 · check (12)", which would push
-// its tag and ↳ out of line with its sibling 13.
+// 11 done while its check (12) still runs: 11 shows in Doing for it (0.20.0), drawn under 10 as
+// before, and 12 under it, every number in line.
 for (const width of [100, 160]) {
-  test(`${width} columns: a check whose parent is done, drawn under the grandparent, keeps its number in line`, () => {
+  test(`${width} columns: a Done card whose check still runs shows in Doing, its check under it, numbers in line`, () => {
     const s = state()
     s.items.find((i) => i.id === 11).column = "done"
     const lines = renderBoard(buildView(s, agents, { now: NOW, workspace: "w9" }), { width, height: 40, interactive: true, now: NOW, frame: 0, scroll: { selected: "doing", card: "#12", anchors: {} } }).text.split("\n")
     for (const l of lines) assert.ok(textWidth(l) <= width, `fits ${width}: ${l}`)
     assert.ok(!lines.some((l) => /· check \(12\)/.test(l)), "its number, not its sub-card name")
     const row = (id) => lines.find((l) => new RegExp(`^[▸ ]? *${id}[ ▸]`).test(l))
-    const family = [10, 12, 13, 9].map(row)
-    for (const [i, l] of family.entries()) assert.ok(l, `${[10, 12, 13, 9][i]} drawn`)
+    const family = [10, 11, 12, 13, 9].map(row)
+    for (const [i, l] of family.entries()) assert.ok(l, `${[10, 11, 12, 13, 9][i]} drawn`)
     const ends = family.map((l) => l.search(/\d(?!\d)/))
     assert.equal(new Set(ends).size, 1, `ids line up: ${family.join("\n")}`)
-    assert.equal(family[1].indexOf("shop"), family[2].indexOf("shop"), "tag in its sibling's column")
-    assert.equal(family[1].indexOf("↳"), family[2].indexOf("↳"), "↳ on its sibling's step")
+    assert.equal(family[2].indexOf("↳"), family[1].indexOf("↳") + 2, "12 one step under 11")
   })
 }

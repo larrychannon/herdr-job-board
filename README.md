@@ -92,56 +92,66 @@ itself out again at once.
   Waiting, a **blocked** job shows first, since it is stuck until you answer it. Done is newest
   first. A board from before 0.6.0 starts newest first (the highest id on top) in each section.
 - **Came from** (0.7.0): a card made because of another (doing A, you find you need B first, and
-  doing B you find C) has a **parent**: `add … --parent <A>`. The parent says `waiting on 2`
-  where its state goes (bold) and so never looks finished, and the cards under it are drawn
-  **straight under it** when they are in its section, in every layout (0.7.3): its number in the
-  id column with every other card's, then its title two cells further in than its parent's per
-  level, after a `↳`, with its state as a tag (`[to do]`). **The section a card
-  shows in says what it needs from you** (0.7.5): a card in another section than its parent's
-  keeps its own row (or card) there, with its own state, buttons, age and order, counted there,
-  and one line under its title, `for #1 Node health` (with the parent's project when it is
-  another's; `(done)` when the parent is done). A blocked job's card counts as Waiting on you. On
-  the parent's card, its open row and its details, `Waiting on:` names every open card under it
-  that isn't drawn under it there (its details: every one), with its state as a tag in its
-  section's colour; a status line built from the cards under it (`Now: #12 working`) isn't
-  drawn when they all are: `Waiting on: Phone alerts [waiting on you] ·
-  Badge and chart fixes [doing] · Phone alerts move [to do]`, amber, blue (Doing's) and grey
-  (plain text with `NO_COLOR`); a closed row says `waiting on 3` where its state goes. A
-  section's header counts the cards drawn in it, sub-tasks under a parent included; `N need you`
-  and the sidebar count every Waiting card. Shift+↑ ↓ moves a sub-task drawn under its parent
-  among that parent's sub-tasks, any other card among its section's top cards. The coordinator's
-  turn-start reminder lists a Waiting card after its parent when that waits too (`↳ #286 …`),
-  else with its link (`#290 … (for #231 …)`). One level: a card's own cards are drawn under that
-  card. When the last of them is done, the parent says **ready to resume** (amber, bold) with
-  what it waited on, goes on top of its section, and the coordinator's turn-start reminder names
-  it. Moving, editing, ordering or starting the parent clears the mark. **Under a deploy**
-  (0.14.0): when the parent's title says deploy in its action (after its last `: `, as in
-  `Release Notes Manager: deploy the three merged changes`), the cards under it wait for that
-  deploy, so the words turn round: a card under it says `waits for the deploy on #417 Release
-  Notes Manager` (`deployed with #417 … (done)` once it is done), and the deploy card says
-  `deploys 2` where its state goes and `Deploys: PDF file names [waiting on you] · Forum posts
-  [to do]`; `add --parent` prints `#417 deploys #410, #415`, not `#417 now waits on #410`. In
-  a 60-column pane:
+  doing B you find C) has a **parent**: `add … --parent <A>`. The cards under a card are its
+  **parts**. **A card shows where its most urgent open part is** (0.20.0), worked out each time
+  the board draws, never stored: a part asking you puts it in **Waiting on you**; else a part in
+  Doing, or a job, a run or a press of its own going on, in **Doing**; else a card not started
+  yet (To do, the Queue) or a Done one stays where it is; else it is **To do** while real work is
+  left under it; else, its only open parts being **follow-ups** (cards titled `Follow-up: …`, or
+  added with `--follow-up`: what a merge or a check files for later), it is **Done**, and the
+  follow-ups show as plain To do cards. A card with no open parts shows in its own column. Its
+  parts are drawn **straight under it** when they show in its section, in every layout (0.7.3):
+  their numbers in the id column with every other card's, their titles two cells further in per
+  level, after a `↳`, with their state as a tag (`[to do]`). A part in another section keeps its
+  own row (or card) there, with its own state, buttons, age and order, counted there, and one
+  line under its title, `for #1 Node health` (with the parent's project when it is another's;
+  `(done)` when the parent shows Done). A blocked job's card counts as Waiting on you. A
+  section's header counts the cards drawn in it; `N need you` and the sidebar count the cards
+  that ask (a parent shown in Waiting for its part is not one more question). The details and
+  `get` say why a card shows elsewhere: `Shows in Waiting on you: #4 asks you (its own column:
+  Doing)`; `json` gives it as `shown_column`. Shift+↑ ↓ moves a sub-task drawn under its parent
+  among that parent's sub-tasks, any other card among its section's top cards. The
+  coordinator's turn-start reminder lists a Waiting card after its parent when that waits too
+  (`↳ #286 …`), else with its link (`#290 … (for #231 …)`). **Under a deploy** (0.14.0): when
+  the parent's title says deploy in its action (after its last `: `, as in `Release Notes
+  Manager: deploy the three merged changes`), a card under it says `waits for the deploy on #417
+  Release Notes Manager` (`deployed with #417 … (done)` once it is done). In a 60-column pane:
 
   ```
-  WAITING ON YOU (1) ─────────────────────────────────────────
-   4 ! Phone alerts: go live tonight?                 just now
+  WAITING ON YOU (2) ─────────────────────────────────────────
+   1 ! Node health: goes live after its fixes         just now
+   4 !   ↳ Phone alerts: go live t… [waiting on you]  just now
+           Question: Tonight?
+           [ Go live tonight ✓ ]  [ Wait for tomorrow ]
+  DOING (1) ──────────────────────────────────────────────────
+   3   Badge and chart fixes before going live        just now
        for #1 Node health
-       Needs you: Tonight?
-  DOING (2) ──────────────────────────────────────────────────
-   1   Node health: goes live after it… waiting on 3  just now
-   3     ↳ Badge and chart fixes before goi… [doing]  just now
   TO DO (1) ──────────────────────────────────────────────────
    2   Phone alerts move: then merge it               just now
        for #1 Node health
   ```
 
-  and after `done 2`, `done 3` and `done 4`:
+  After `done 3` and `done 4` the only work left is To do, so card 1 shows there with it; with
+  card 2 a follow-up (`edit 2 --follow-up`), card 1 is Done:
 
   ```
-  DOING (1) ──────────────────────────────────────────────────
-   1   Node health: goes live after… ready to resume  just now
+  TO DO (2) ──────────────────────────────────────────────────
+   1   Node health: goes live after its fixes         just now
+   2     ↳ Phone alerts move: then merge it  [to do]  just now
+
+  TO DO (1) ──────────────────────────────────────────────────
+   2   Phone alerts move: then merge it               just now
+       for #1 Node health (done)
   ```
+- **Two amber flags** (0.20.0), where a card's state goes and in the coordinator's turn-start
+  reminder ("Cards that look stuck"): `pressed 12 min ago, nothing started` (a press 5 minutes
+  ago that nothing started since) and `in Doing, nothing running` (no agent working, no run and
+  no running mark on it or a part in Doing, 10 minutes after its last change; only when Herdr's
+  agent list could be read). A narrow row says `pressed, not started` and `nothing running`.
+- **Rounds** (0.20.0): a check of a change, and the fix after it, run as rounds on the change's
+  own card (`job-start <slug> --id <card> --round check|fix`), not as cards of their own. The
+  card shows them on one line, `check 1: 2 problems · fix: done · check 2: running`, and its
+  details list each with its job.
 - **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
   and its kind, its own number beside it: `500 · check (511)`, the second review under 500
   `500 · review2 (515)`, where the number goes (the plain number when drawn under a card,
@@ -429,10 +439,36 @@ button itself. A click on the question never sends.
   coordinator's) does the same for a Waiting card you answered in the chat instead: Doing, `your
   answer "<your words>": being carried out` (cut to fit; the card keeps them whole, 300
   characters at most), nothing sent. Workers can't.
-- **A parent and its cards**: the board never puts a parent under Waiting because a card under
-  it waits; each card shows in its own column. A card under it that you answered leaves Waiting
-  with its press, so nothing under Waiting is left over from it. The turn reminder also says
-  to use `answered <id> "<their words>"` for an answer typed in the chat.
+- **A press runs the work** (0.20.0): a merge question's button can carry what it runs. The
+  coordinator writes it with the buttons: `--option "Merge and install it" --option "Hold the
+  merge" --suggest "Merge and install it" --action "Merge and install it=merge+install"` (the
+  stage merge, release, deploy, install or verify, or several joined by `+`); the board stores
+  `{ stage, repo, card }` on that button, the repo being the card's project folder. Only a
+  coordinator writes an action (a job's pane is refused, and a job's own buttons never carry
+  one); `import` and `restore` drop them; a new set of buttons drops them unless given again. A
+  press of such a button (in the pane, or `answer`, which a Telegram reply becomes) is not sent
+  to the coordinator as words: the board puts the press in the inbox as an answer, acked at once
+  (the board carries it out, so no coordinator acts on it a second time), takes the card to
+  Doing with `your press "Merge and install it": starting merge+install`, and starts
+  `board.mjs run-press <card> <message id>` in the background, detached, so closing or
+  restarting the pane doesn't stop it. The runner checks again that the action is this card's,
+  asks the merge script whether it can run a press (`node ship.mjs contract` prints JSON whose
+  `stages` lists `run`; the script is `JOB_BOARD_SHIP`, else the job skill's
+  `~/.claude/skills/job/scripts/ship.mjs`), then runs `ship.mjs <repo> <card> run --approved-by
+  board:<message id> --stages merge,install` in the repo. Its output goes to the store's
+  `runs/<card>-<message id>.log`; the card shows the run where a job's state goes (`merge+install
+  · 3 min`), the log's last line in its details, and the merge script writes the card's status
+  line at each stage. At the end the coordinator gets one message, `[board run] card 12 (sfc ·
+  Login fix: merge and install): the "Merge and install it" press ran merge+install: done —
+  <the last line>` (or `failed (exit 1)`, and the card's line says so). One run per card at a
+  time. **Until the merge script has a run stage, nothing runs**: the card says `the press is
+  recorded; run not available yet`, and the coordinator's message says to carry the press out as
+  before, with `--approved-by board:<message id>`. Exact button words stay accepted when the user
+  types them in the chat; other buttons (choices, plans) still go to the coordinator.
+- **A parent and its cards**: a parent shows in Waiting while a card under it asks (0.20.0, see
+  Came from); a card under it that you answered leaves Waiting with its press, and the parent
+  with it. The turn reminder also says to use `answered <id> "<their words>"` for an answer typed
+  in the chat.
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
   sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
   then press again), or Herdr can't prompt it (next point).
@@ -688,22 +724,23 @@ and the flags it takes.
 
 | Command | What it does |
 |---|---|
-| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
-| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
+| `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--action L=S]… [--project P] [--parent ID] [--follow-up]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one, `--action "<label>=<stage>"` (the coordinator's only, 0.20.0) makes that button run the work on a press (see Answer buttons). `--parent`: the open card it is made for, a part of it (see Came from); it may be another project's. `--follow-up` (0.20.0): a card filed for later, which never holds the card it is for. |
+| `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L] [--action L=S]…` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
 | `answered <ref> "<the user's words>"` | The user answered a Waiting card in the chat (0.19.0): it goes to Doing as after a press, with `your answer "<words>": being carried out`, the words kept on the card (`get` shows them; 300 characters at most). Nothing is sent. Not for workers; exit 2 for a card not in Waiting. |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question, status line or result: a restart deletes it, so the card would point nowhere (it says when the file is gone already); and on a result's line of prose over about three lines (never its numbers or code lines). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, result, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
-| `done <ref>` | Same as `move <ref> done`. When it was the last open card under its parent, the parent is ready to resume and goes on top of its section (`rm` does the same). Done on a parent with open cards is allowed, with a warning; they keep their link, shown as `for #<id> <its short name> (done)`. |
+| `done <ref>` | Same as `move <ref> done`. Done on a parent with open cards is allowed, with a warning: they keep their link, and the parent shows where the most urgent of them is until they are done (0.20.0). |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |
 | | `move`, `edit`, `done`, `rm`, `order` and `retag` change another project's card only with `--project <its project>`, unless your pane owns it (exit 2 otherwise): ids are global, and a remembered id may be another project's. |
-| `answer <id> <text> [--from telegram] [--front]` | What a button press does (see Answer buttons). |
+| `answer <id> <text> [--from telegram] [--front]` | What a button press does (see Answer buttons): a button with an action runs on the board (0.20.0). |
+| `run-press <card> <message id>` | The board's own runner, started in the background by a press of a button with an action (0.20.0); not for people or workers. |
 | `tell "<line>"` | From a job's pane: put `[job note] <its slug> — <line>` in its coordinator's inbox (see Job messages). Its own job only (the slug is the pane's Herdr agent name); not for a coordinator. |
-| `inbox wait [--timeout S]` | A coordinator's: wait until its inbox has messages not acked yet (at once when it has some), print them one a line, `[job finished] <slug> — <status> — <summary> #<id>`, and exit 0; exit 124 after S seconds. Run it in the background (see Job messages). |
+| `inbox wait [--timeout S]` | A coordinator's: wait until its inbox has messages not acked yet (at once when it has some), print them one a line, `[job finished] <slug> — <status> — <summary> #<id>`, and exit 0; exit 124 after S seconds. Not needed with the inbox socket (see Job messages). |
 | `inbox ls [--all]` | This coordinator's messages not acked yet (`--all`: the acked ones too, marked `(acked)`). |
 | `inbox ls --stray` | The messages not acked in a workspace where no coordinator ever wrote to the board (a job's own workspace, say), with their workspace. The turn-start reminder counts them. Handle any that is yours, then `inbox ack <id>…`. |
 | `inbox ack <id>… \| --all` | Mark messages handled (`#` before an id is fine). They stay in the inbox until acked. |
@@ -713,11 +750,11 @@ and the flags it takes.
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`, `answered` ({ via: press or chat, label, at, to, ask, options }) after a press or `answered` (0.19.0), and `result` (a string) and `result_at` (when it was written) while it has a result (0.19.0). |
-| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. |
-| `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). It never makes a card (0.15.0): with no card for the job, the coordinator gets a `[job note]`. |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent` when set, `waiting_on` (the open ids under it) when it has any, `shown_column` when it shows in another column than its own (0.20.0; from the stored cards: the pane and `ls` also put a blocked job's card in Waiting), `rounds` and `run` when it has them (0.20.0), and `not_run` ({ label, at, type or run }) after `not-run`, `answered` ({ via: press or chat, label, at, to, ask, options }) after a press or `answered` (0.19.0), and `result` (a string) and `result_at` (when it was written) while it has a result (0.19.0). |
+| `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. `--round check\|fix` (with `--id`, 0.20.0): a check or a fix as a round on the change's own card, any job's (see Rounds); no `--parent`. |
+| `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). It never makes a card (0.15.0): with no card for the job, the coordinator gets a `[job note]` (from the job's own pane, its `[job finished]` says so instead, 0.20.0). |
 | `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's lineage too (the cards above it and every open card under it, not its siblings) unless `--only`. `--event merge\|deploy\|…` notes that event on the lineage first. Words checked as for a card. See Status lines below. |
-| `running <ref> "<label>"` / `running <ref> --clear` | Marks the card as running a stage from a pane that is not its job (0.19.0): a merge, a release, a deploy. Its row shows `deploying the GUI · 4 min` where a job's state goes, in the working colour with the working bar, and its details say `running: …`; a job agent that is working or blocked wins. While it holds, the card is busy: not "job finished — not reviewed yet" and not in the turn reminder. The same label again keeps its time, another starts it over. After 2 h it reads `deploying the GUI · stuck? 2 h` in amber (the stage probably died without clearing it) and no longer counts as busy. `--clear` and `done` remove it; an unknown card exits 1. |
+| `running <ref> "<label>"` / `running <ref> --clear` | Marks the card as running a stage from a pane that is not its job (0.19.0): a merge, a release, a deploy. Its row shows `deploying the GUI · 4 min` where a job's state goes, in the working colour with the working bar, and its details say `running: …`; a job agent that is working or blocked wins. While it holds, the card is busy: not "job finished — not reviewed yet", not "in Doing, nothing running", and not in the turn reminder. The same label again keeps its time, another starts it over. After 2 h it reads `deploying the GUI · stuck? 2 h` in amber (the stage probably died without clearing it) and no longer counts as busy. `--clear` and `done` remove it; an unknown card exits 1. |
 | `result <ref> "<text>"` / `result <ref> --file <path>` / `result <ref> -` / `result <ref> --clear` | The card's result (0.19.0): an answer, a draft or figures the user asked for, kept with the card, so it is still on the board after the chat compacts or restarts. Shown under the description: its first 6 lines on the card (`+8 more lines: Enter shows all · c copies it`), whole in the details (a **Result** section after What it is), on every card `ls` draws open (a Done card, or a closed row in its narrower layouts, stays one line, as without a result), in `get` and while selecting text (`m`); `c` in the pane copies it first. Kept as written, up to 8000 characters (what `c` copies whole): indentation and the spaces between figures stay, a tab becomes spaces, control characters go. `-` reads it from stdin and `--file` from a file, both as they are; in `"<text>"` a literal `\n` is a line break, as in `--desc`. Numbers and code are fine (it is the answer itself); text that looks like a secret is refused, from a file or stdin too (exit 2). `lint` warns on a line of prose over about three lines and on a file in a temporary folder, never on numbers or code lines. Set again, the new text replaces it; `--clear` removes it (the card then has no `result` field). |
 | `get <ref> [--json]` | One card, whole (0.19.0): `card 12 · waiting on you · project sfc`, then `Title:`, `Job:`, `For:` (its parent), `Now:`, `Question:`, `Buttons:` (the suggested one marked), `Description:` and `Result (written 14:02):`, each left out when the card has none. An archived Done card by its number too. `--json`: the card as stored, as `json`'s `items` show it (with `waiting_on`). Read-only; an unknown card exits 1. |
 | `import [--dry-run] [--keep-stale] [--retag ID=PROJECT,…] [<file>…]` | Bring 0.4 boards in (see Upgrading from 0.4). |
@@ -764,23 +801,13 @@ DOING (1)
   writes the line (`now --event …`), so the line above it is current, not flagged at once.
 - `inbox get <id>` prints one inbox message as JSON (acked or not): what `ship.mjs` reads to
   check that a board press it is given is a real answer on the card it ships.
-- **The coordinator hears of it**: its turn reminder lists its cards with a line out of date,
-  and its Stop hook blocks once per card and event while a card its pane owns has one (after
-  the Waiting-card check). Cards with no line, and Done cards, are never out of date. A line
-  that `job-start` made old (0.19.0: a check or a next round started under the card with
-  `--parent`, or a Done card started again, as `job-open` and `job-round` do) is still listed
-  in the reminder and on the card but doesn't block the Stop (`job-open` and `job-round` are to
-  write the parent's line themselves). A line that was out of date before the start still blocks.
-- **A parent with no job or question of its own builds its line** (0.16.0) from the open cards
-  under it, instead of showing the line written on it (or copied up from a card under it):
-  `Now: #437 working · #438 waiting on you · #439 to do · 2 done`. Each card's word is its
-  section (`to do`, `queued`, `doing`, `waiting on you`), or its job's agent status when live
-  (`working`, `idle`; a blocked job is `waiting on you`). Too many cards for one line: the first
-  ones, then `+N more`. Such a line is never out of date, so the turn reminder and the Stop hook
-  don't ask about it. `now` on such a parent keeps what it writes (and says so), for when the
-  parent gets a job or a question; a parent that never had a line keeps its `Waiting on: …`
-  list alone. Once every card under it is done it shows its stored line again (and is ready
-  to resume).
+- **The coordinator hears of it**: its turn reminder lists its cards with a line out of date.
+  Cards with no line, and Done cards, are never out of date. (0.13.0 to 0.19.0 also blocked the
+  coordinator's Stop once per card and event; since 0.20.0 the column a card shows in is worked
+  out from its parts, and the Stop hook no longer blocks for a status line.)
+- **A parent's line is its own** (0.20.0): a parent shows the line written on it, as any card
+  does (0.16.0 to 0.19.0 built one from the cards under it, `Now: #437 working · #438 waiting on
+  you`); its parts show their own state where they are drawn.
 - **One Now per card** (0.17.0): a line that starts `Now:` in `--desc` (`add`, `edit`,
   `move`, `job-start`) is the card's status line: it is stored as its `now` (this card only,
   not its lineage), taken out of the description, and the latest one replaces the line before.
@@ -791,8 +818,7 @@ DOING (1)
   at all, the old one stays at the end of the description as `Earlier: …`; a line that `now`
   or a script wrote stays, as it isn't the description's); a `Now:` line over
   200 characters, a second one, or one ending in `:` stays in the description, whole, with a
-  warning; a Done card keeps its `Now:` line in its description (where it shows); a parent
-  with a built line shows its `--desc` line in its description as `Own line: …`. `now` cuts a line over 200
+  warning; a Done card keeps its `Now:` line in its description (where it shows). `now` cuts a line over 200
   characters with a warning, never silently. A card from before 0.17.0 with its `Now:` line still in its description and no
   status line shows that line as its status line, and keeps it stored in its description
   until a `--desc` rewrites the card; a card with both keeps both until a `--desc` settles it,
@@ -810,8 +836,8 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    is `board.mjs` in it. If the plugin is not installed, skip the board and carry on.
 2. **Work for later**: `add todo "<title>" --desc "<what and why>"`.
    Work found while doing another card (you need B before A can go on): add B with
-   `--parent <A's id>` (`job-start` takes it too), so A waits on B and comes back as ready to
-   resume when B is done.
+   `--parent <A's id>` (`job-start` takes it too). B is a part of A, and A shows where its most
+   urgent open part is (see Came from).
 3. **You need the user** (a question, an approval, a merge):
    `add waiting "<title>: <action>" --desc "<what and why>" --ask "<one plain question>"` with
    2 to 4 buttons, the suggested one first:
@@ -841,10 +867,13 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
      fix", "Wait for the review"], "suggest": "Merge the login fix" }` goes on the card as its
      question and buttons when the report is `done` and they pass the wording check (2 to 4
      labels, all text, each a verb plus the thing in 24 characters at most, one suggested, no
-     numbers, no `[board …]` or `[job …]` markers); you get no note to rewrite it. When it fails,
-     the card gets its words without buttons, and the `[job note]` says why. A `blocked` or
-     `failed` report never puts its own buttons on the card: its reason stays first and you get
-     the note, so one press can't approve a failed job's work.
+     numbers, no `[board …]` or `[job …]` markers). When it fails, the card gets its words
+     without buttons, and job-report's output says why. A `blocked` or `failed` report never puts
+     its own buttons on the card: its reason stays first, so one press can't approve a failed
+     job's work.
+   - **Numbers taken out** (0.20.0): PR, build and commit numbers in the report's words are taken
+     out when they go on the card, silently (`Merge PR #83?` → `Merge the PR?`); nobody is asked
+     to rewrite the card.
    - `blocked` or `failed` → Waiting, with `<status>: <summary>` as the reason.
    - `running` is a progress note; the board is left alone (exit 1).
    - **Test proof** (0.18.0): a job that changed files says which test or build it ran after its
@@ -862,15 +891,20 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
      several runs, verified when all passed; a `command` may be a list of words. A card applied
      before 0.18.0 shows nothing either, on its row and in its details, and its report doesn't
      apply again. A new round (`job-start`) clears it until its report.
-   - A card with open cards under it (`--parent`: its checks, its sub-tasks) is never closed or
-     made a question by a report: it stays in Doing with the report stored on it, and you get a
-     `[job note]` naming the report's status and the open cards. Move or edit it once they are done.
+   - A card with open cards under it is no different (0.20.0; 0.12.0 to 0.19.0 held the report
+     in Doing): the report applies, and the card shows where its most urgent open part is.
+   - **A round's report** (0.20.0, `job-start --round`): the verdict of that check or fix round on
+     the change's card (its `verdict`, its `findings` counted). A `done` one leaves the card in
+     Doing, `check 1 finished: 2 problems` (the next step, a fix or the merge question, is the
+     coordinator's); one that needs you, or is `blocked` or `failed`, goes to Waiting as any
+     report does. A late report of an earlier round only records its verdict.
 
-   A script that waits for the report can do this for you: call
-   `job-report <slug> <report> --if-final` whenever the report file changes. It does nothing
+   The job's own Stop hook does this for you (the job skill's `job-board.mjs hook --jobs`): it
+   calls `job-report <slug> <report> --if-final` from the job's pane, which sends no note of its
+   own then: the job's `[job finished]` line is the one message for that stop. It does nothing
    until the report is final. Calling it again with the same report changes nothing: no second
-   card, no new `updated` time, and edits you made to the card since stay, also when the report
-   was held on a card whose open cards have closed since. A report rewritten with a different
+   card, no new `updated` time, and edits you made to the card since stay (also for a report
+   held before 0.20.0). A report rewritten with a different
    outcome or summary moves the same card again (a partial `done` the job later finishes is not
    lost), and you get a `[job note]` with its new summary, even when the card stays Done. A follow-up report (the job briefed again
    without `job-start`, after its card was done, or read by a restarted coordinator) uses the
@@ -888,13 +922,14 @@ people. Any coordinator can use the board; it only needs a shell inside Herdr.
    you get a `[job note]` with its status, summary and path, and add a card yourself if it needs
    one.
 6. **It stops**: you hear at once (see Job messages below). A job's Stop hook writes one line
-   to your inbox, and the `board.mjs inbox wait` you keep running in the background returns with
-   it: `[job finished] search-ui — done — <the report's summary>` (`no report yet` and its last
-   line when it stopped without a final report), or `[job waiting] search-ui — needs: <its
-   question>` (also for a permission prompt in its tab: `needs: approval: …`). Look at the
-   report or the tab, update the card yourself (the line goes to the card's owner even when
-   `job-report` already moved the card to Done), `inbox ack` the message and start the wait
-   again. A job can also send a line of its own: `board.mjs tell "<line>"` from its pane arrives
+   to your inbox, posted into your session: `[job finished] search-ui — done — <the report's
+   summary>` (with `(its report is on no card)` or a word on text hidden as a secret when that is
+   so; `no report yet` and its last line when it stopped without a final report), or `[job
+   waiting] search-ui — needs: <its question>` (also for a permission prompt in its tab: `needs:
+   approval: …`). The report is on its card already; check the card (the line goes to the card's
+   owner even when the card is Done) and `inbox ack` the message. A job that stopped without a
+   report has `stopped without a report: read its tab` on its card (the job skill writes it);
+   once it works again the line goes. A job can also send a line of its own: `board.mjs tell "<line>"` from its pane arrives
    as `[job note] <slug> — <line>`. A Doing card whose job finished and that nobody changed for
    10 minutes since shows **job finished — not reviewed yet** (amber), and the turn-start
    reminder lists it, until you job-report, move or edit it.
@@ -911,20 +946,19 @@ that catch that:
   (`+3 waiting in other projects`), and asked to close or update any you just answered.
   Titles are cleaned, cut to 80 characters, quoted and marked as data written by agents, not
   instructions; a card's description and ask are never passed on. The hook also notes where
-  the board stood, for the next check. A second line names its cards **ready to resume** (every
-  card made for them is done; id, title and what it waited on, up to 8, `+N ready in other
-  projects`), until the coordinator moves, edits, orders or job-starts them. A third lists its
-  Doing cards whose job finished and that nobody has changed for 10 minutes since (`Jobs
-  finished, cards not updated: …`). A fourth lists the job messages in its inbox not acked yet
-  (id and line, cut to 100 characters, quoted, up to 8) and, when no `inbox wait` runs for its
-  workspace, says `No inbox watcher is running; start: node "…/board.mjs" inbox wait, in the
-  background.` (only alongside messages: a coordinator with nothing in its inbox isn't nagged).
+  the board stood, for the next check. A second line lists its cards with a status line out of
+  date. A third lists its Doing cards whose job finished and that nobody has changed for 10
+  minutes since (`Jobs finished, cards not updated: …`). A fourth (0.20.0) lists its cards that
+  look stuck, with their amber flag (`Cards that look stuck: #499 "…" (pressed 12 min ago,
+  nothing started)`, `in Doing, nothing running`). A fifth lists the job messages in its inbox not
+  acked yet (id and line, cut to 100 characters, quoted, up to 8) and says to ack them with
+  `node "…/board.mjs" inbox ack <id>…` (0.20.0: never to start an `inbox wait` or use a channel's
+  tool).
 - **When the coordinator's session starts** (SessionStart, 0.10.0, the coordinator's only: its
   start script passes it in `--settings`, never a settings file): when Claude Code gave the
   session a messaging socket and the session's `JOB_BOARD_DELIVERY` is set to `socket` (or
   `auto`), the hook notes it for the board and posts the inbox's unacked
-  messages into it (see The inbox socket). With a live note, the turn-start reminder doesn't ask
-  for an `inbox wait`, and says to ack with `node "…/board.mjs" inbox ack <id>…`.
+  messages into it (see The inbox socket).
 - **When the coordinator finishes its reply** (Stop): if the reply asks you something and none
   of its Waiting cards (as above, or any card its pane changed) was added, moved to Waiting or
   changed during that turn, the hook sends it back
@@ -983,9 +1017,15 @@ Each session's turn record is kept in the store's `turns/` folder and removed af
 agent name, the job's slug), the same hooks tell its coordinator when it stops:
 
 - **Stop**: one line, `[job finished] <slug> — <report status, or no report yet> — <the report's
-  summary, else the last line it wrote>`; or, when it has no final report and its reply asks
-  something, `[job waiting] <slug> — needs: <the question>`.
+  summary, else the last line it wrote>` (0.20.0: `(its report is on no card)` when no card
+  carries the job, its report read from the job skill's record; a word when text in the report
+  looked like a secret); or, when it has no final report and its reply asks something, `[job
+  waiting] <slug> — needs: <the question>`. One message per stop: `job-report`, run from the
+  job's pane before it, sends no note of its own.
 - **Notification** (`permission_prompt`): `[job waiting] <slug> — needs: approval: <what it asks>`.
+- **UserPromptSubmit** (0.20.0): the job works again, so the `stopped without a report: read its
+  tab` (or `stopped on an error`) line its last stop left on its card is cleared; while its
+  agent works, the board doesn't show that line anyway.
 
 The line goes to the coordinator's inbox (see Job messages), written by a background process so
 the hook returns at once. It waits a moment (`JOB_BOARD_NOTIFY_DELAY_MS`, 3 s) and writes nothing
@@ -1000,11 +1040,12 @@ job's pane).
 Since 0.8.0 a job never types into its coordinator's pane. (0.7.2 to 0.7.5 did, with
 `herdr agent prompt`: the line broke into whatever you were typing there, and was cut at 300
 characters.) Its hooks and `tell` append one JSON line per message to `inbox.jsonl` in the
-board's folder, and the coordinator reads them:
+board's folder. They are posted into the coordinator's session (see The inbox socket), and the
+job's own stop has put its report on its card already:
 
 ```sh
-node "$BOARD" inbox wait          # in the background; returns with the messages, exit 0
-node "$BOARD" inbox ack --all     # after reading them and updating the cards; then wait again
+node "$BOARD" inbox ls            # the messages not acked yet
+node "$BOARD" inbox ack <id>…     # after checking the cards
 ```
 
 - **A message**: `{ id, at, slug, kind, card, project, workspace, owner, pane, key, text }`.
@@ -1018,7 +1059,7 @@ node "$BOARD" inbox ack --all     # after reading them and updating the cards; t
   every message.
 - **Nothing is lost**: a message stays until acked (at least once: a coordinator that restarts
   before acking sees it again), and the acks are lines in the same file, so they survive
-  restarts. `inbox wait` returns at once when there are messages not acked yet.
+  restarts.
 - **The write**: under the inbox's own lock (`inbox.jsonl.lock`, as the board's; never the
   board's lock, so a busy board doesn't hold a job up), once per message id. A write that fails
   (the lock busy, an I/O error) is tried again with a growing pause for up to 60 s
@@ -1026,60 +1067,21 @@ node "$BOARD" inbox ack --all     # after reading them and updating the cards; t
   `jobs/<slug>.json` as `pending`, and the job's next hook run (any Stop or Notification, or its
   next `tell`) writes it first. A hook never blocks the job: the writing is in the background,
   and the hook always exits 0.
-- **The watcher**: `inbox wait` notes itself in `inbox-watch/<pid>.json` (pid, host, start time,
-  pane, workspace) while it runs, and removes the note when it returns or is stopped; a note
-  whose process is gone is stale. It watches the board's folder, and looks again every 5 s
-  (`JOB_BOARD_INBOX_POLL_MS`) in case a change is missed. The coordinator's turn-start reminder
-  lists the messages not acked yet, and says when no watcher runs for its workspace.
+- **The reminder**: the coordinator's turn-start reminder lists the messages not acked yet. (`inbox
+  wait` still returns with them for a script that wants it; the reminder no longer asks for one,
+  0.20.0.)
 - **The file**: acked messages older than 7 days are dropped once it grows past 256 KB.
 
-Without the inbox socket or the channel below, button presses are not job messages: a press
-reaches the coordinator with `herdr agent prompt` (you pressed it on purpose).
+Without the inbox socket, button presses are not job messages: a press reaches the coordinator
+with `herdr agent prompt` (you pressed it on purpose).
 
-### The channel: messages and answers pushed into the coordinator's session (0.9.0)
+### The channel (0.9.0)
 
-`channel/` is a Claude Code channel plugin (channels are a research preview of Claude Code): a
-small Go program (one static binary, no dependencies; about 4 MB of memory idle, under 9 MB
-after hundreds of messages, against about 60 MB for a Node `inbox wait`) that Claude Code
-starts with the coordinator's session and stops with it. Nothing has to be kept running.
-
-- **What it does**: it pushes every inbox message for its Herdr workspace that isn't acked yet
-  into the session, as `<channel source="plugin:job-board:job-board" id="…" kind="…" slug="…"
-  card="…">text</channel>`: the ones written while the coordinator was down as soon as it starts, then each new one within
-  a second. The session acks one with the channel's `ack` tool (`ids`, or `all: true`), which
-  writes the same ack line as `inbox ack`; its `inbox` tool lists the unacked ones. A message
-  still unacked 10 minutes after it was pushed is pushed again (twice at most), and every
-  unacked one again at the next start: at least once.
-- **Button answers too**: while it runs it keeps a note, `channels/<pid>.json` (pid, host, pane,
-  workspace, renewed every 30 s). A press (or `answer`) for a pane with a live note goes into
-  the inbox as `{ kind: "answer", card, label, to: <pane>, text: "Board card <id> (…): <label>" }`
-  and the channel delivers it, so nothing is typed into the coordinator's input box. Without a
-  live note (no channel, an older coordinator, a note not renewed for 90 s) the board types it
-  in with `herdr agent prompt`, as before. An answer goes to the pane it was sent to; if that
-  coordinator is gone, the next one in the workspace gets it. The turn-start reminder doesn't
-  ask for an `inbox wait` while a channel runs.
-- **Loading it**: Claude Code loads a channel only when the session is started with it. A
-  home-made one isn't on the approved list, so it needs the development flag, and Claude Code
-  asks to confirm at every start:
-
-  ```sh
-  claude --plugin-dir "$BOARD_DIR/channel" \
-    --dangerously-load-development-channels plugin:job-board@inline
-  ```
-
-  ai-config's `scripts/claude-coordinator.sh` does this next to Telegram, finding the board
-  through `herdr plugin list`. Enabling it in settings is not enough, and it is never for a
-  job's session.
-- **Building it**: `channel/run.sh` (what the plugin's `.mcp.json` runs) builds
-  `channel/bin/job-board-channel` with Go 1.22 or later when it is missing or older than its
-  sources, then runs it; `sh channel/run.sh --build` only builds. Install or update the board
-  and the next coordinator start builds it (a second or two). Without Go the coordinator starts
-  without the channel.
-- **Writes**, like the CLI's: only the installed copy (in Herdr's plugins folder, or Claude
-  Code's plugin cache) writes a board under your home; a development build reads it but acks
-  nothing (a trial: `JOB_BOARD_HOME` on a scratch folder, `JOB_BOARD_DEV=1` under your home).
-  The lock is the board's (`inbox.jsonl.lock`, the same owner file), so the two never write at
-  once.
+`channel/` is a Claude Code channel plugin (a research preview) that pushed inbox messages and
+button answers into a coordinator's session started with it. The inbox socket below does the
+same without a development flag, and is what coordinators use; the channel stays for sessions
+that still start with it (`JOB_BOARD_DELIVERY=channel`), and its tests still run with Go
+installed. The board no longer suggests it.
 
 ### The inbox socket: messages and answers posted into the coordinator's session (0.10.0)
 
@@ -1269,14 +1271,12 @@ what the user needs, `--allow-wording` writes it; the card remembers what was al
 (`wording_ok`), so a later edit of something else and `lint` leave it alone while it is
 there.
 
-`job-report` never refuses (a wait script runs it, and nobody sees its output). A
-`needs_user` or `summary` that names numbers stays off the ask: the card asks "The job needs a
-decision from you: its coordinator is writing the question in plain words." The details panel
-shows such a summary or need only under More…. Every card it puts in Waiting with the job's own
-words and no buttons, and every report that names numbers, is also a `[job note]` in the
-coordinator's inbox, naming the card and the one `edit` that fixes it. A job's own question
-with buttons (`needs_user: [{ "ask", "options", "suggest" }]`) that passes the check goes on the
-card as it is, with no note (0.14.0).
+`job-report` never refuses (a job's Stop hook runs it, and nobody sees its output). Since
+0.20.0 it takes the numbers out of the report's words when they go on the card (`Review and
+merge PR #83` → `Review and merge the PR`), silently: no note asks the coordinator to rewrite
+the card. The details panel shows a summary or need with numbers only under More…. A job's own
+question with buttons (`needs_user: [{ "ask", "options", "suggest" }]`) that passes the check
+goes on the card as it is (0.14.0).
 
 `lint` lists the open cards that fail, for cards written before the check.
 
@@ -1300,9 +1300,9 @@ passphrase), a file path, AWS's documented example key, or a word ("token: expir
 1Password: Service-Accounts-Vault", "Deploy token: 1Password (Dev vault)").
 `job-report` never refuses: a `summary`, `needs_user` entry or note that holds one is shown as
 "(hidden: looked like a secret)" on the card, in its details and in the notes (the report file
-is left as it is), and the coordinator gets a `[job note]` naming the fields. The Stop hook's
-`[job finished]` / `[job waiting]` line hides one the same way, also after it tidies the
-markdown away.
+is left as it is), and the coordinator gets a `[job note]` naming the fields (from the job's own
+pane, its `[job finished]` line says so instead, 0.20.0). The Stop hook's `[job finished]` /
+`[job waiting]` line hides one the same way, also after it tidies the markdown away.
 
 ## The store
 
@@ -1325,6 +1325,7 @@ jobs/<slug>.json      each job's last stop (finished or waiting, when, whether i
 inbox.jsonl           job messages and their acks (see Job messages); inbox.jsonl.lock/ its lock
 inbox-watch/<pid>.json  each running `inbox wait`
 channels/<pid>.json   each running job-board channel (0.9.0)
+runs/<card>-<id>.log  each press run's output (0.20.0): the merge script's run stage, started by a press
 coordinators/<workspace>.json  each workspace's coordinator session and its socket (0.10.0)
 inbox-posts.json      when each message was last posted into a session, and how often again
 tokens.json           the sidebar text last reported for each workspace

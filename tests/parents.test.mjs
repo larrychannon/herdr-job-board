@@ -1,8 +1,8 @@
 // Run: node --test (from the repo root)
 // "Came from" links between cards (0.7.0): --parent on add, job-start and edit, --no-parent; the
-// child's "for …" line and ↳, the parent's "waiting on …", "ready to resume" when the last card
-// under it is done (on top of its section, cleared when the card is touched), json, old boards,
-// and the coordinator's turn-start reminder.
+// child's "for …" line and ↳, the parent shown where its most urgent open part is (0.20.0: no
+// "waiting on …" lines, no "ready to resume"), json, old boards, and the coordinator's turn-start
+// reminder of cards that look stuck.
 import "./guard.mjs"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
@@ -12,8 +12,8 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { buildView, detailLines, readBoard, render } from "../board.mjs"
-import { handle, readyReminder } from "../hooks/board-hook.mjs"
+import { buildView, detailLines, flagReminder, readBoard, render } from "../board.mjs"
+import { handle } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
@@ -61,14 +61,14 @@ function chain(t) {
   return t.ok(["add", "doing", "~/work backup: let the coordinator commit and push it — build", "--parent", "2", "--desc", "A per-repo setting in the job guard."], t.ops)
 }
 
-test("add --parent links a card: the child is 'for' its parent, the parent waits on every open card under it", () => {
+test("add --parent links a card: the child is 'for' its parent, every open card under it is its part", () => {
   const t = setup()
   try {
     t.ok(["add", "doing", "Node health: review found one real problem — being fixed"])
     const two = t.ok(["add", "doing", "AI agents' AWS switch: approve the 4 steps", "--parent", "1"]).stdout
-    assert.equal(two.trim(), "added 2 (doing): AI agents' AWS switch: approve the 4 steps · for #1 Node health; #1 now waits on #2")
+    assert.equal(two.trim(), "added 2 (doing): AI agents' AWS switch: approve the 4 steps · for #1 Node health")
     const three = t.ok(["add", "todo", "Job guard change — build", "--parent", "2"], t.ops).stdout
-    assert.match(three, /· for #2 AI agents' AWS switch; #2 now waits on #3$/m)
+    assert.match(three, /· for #2 AI agents' AWS switch$/m)
     assert.equal(t.item(2).parent, 1)
     assert.equal(t.item(3).parent, 2)
     assert.equal(t.item(1).parent, undefined)
@@ -79,8 +79,11 @@ test("add --parent links a card: the child is 'for' its parent, the parent waits
     // A child keeps its own project; its parent's tag shows when the projects differ.
     assert.equal(t.item(3).project, "ops")
     assert.equal(t.entry(3).parentOf.tag, "app")
-    // A new card still goes on top of its own section; the parent doesn't move.
-    assert.deepEqual(t.ids("doing"), [2, 1])
+    // Neither #1 nor #2 has a job of its own, and the only work left under them is To do: both show
+    // in To do (0.20.0), #2 under #1 and #3 under #2; their own column stays Doing.
+    assert.deepEqual(t.ids("doing"), [])
+    assert.deepEqual(t.ids("todo").sort(), [1, 2, 3])
+    assert.equal(t.item(1).column, "doing")
   } finally {
     t.done()
   }
@@ -115,49 +118,45 @@ test("--parent refuses: an unknown card, a Done card, the card itself, a loop, n
   }
 })
 
-test("done on the last open card under a parent: the parent is ready to resume, on top of its section, one level at a time", () => {
+test("done on the last open card under a parent: nothing is marked; the parent shows in its own column again", () => {
   const t = setup()
   try {
     chain(t)
     t.ok(["add", "doing", "Something else"])
     assert.deepEqual(t.ids("doing"), [4, 3, 2, 1])
-    // #3 done: #2 has nothing open under it; #1 still waits on #2.
+    // #3 done: #2 has nothing open under it; #1 still has #2 in Doing.
     const out = t.ok(["done", "3"], t.ops).stdout
     assert.match(out, /^3 → done: /)
-    assert.match(out, /^#2 AI agents' AWS switch is ready to resume \(top of Doing\)$/m)
-    assert.equal(t.item(2).ready, new Date(NOW).toISOString())
-    assert.deepEqual(t.item(2).ready_after, [3])
-    assert.equal(t.item(1).ready, undefined)
-    assert.deepEqual(t.ids("doing"), [2, 4, 1])
+    assert.doesNotMatch(out, /ready to resume/)
+    assert.equal(t.item(2).ready, undefined)
+    assert.deepEqual(t.ids("doing"), [4, 2, 1])
     assert.deepEqual(t.entry(1).waitingOn, [2])
-    // #2 done: #1 is ready, having waited on #2 and #3.
-    assert.match(t.ok(["done", "2"]).stdout, /^#1 Node health is ready to resume \(top of Doing\)$/m)
-    assert.deepEqual(t.item(1).ready_after, [2, 3])
-    assert.deepEqual(t.ids("doing"), [1, 4])
-    assert.ok(t.entry(1).ready)
-    // A parent in To do goes on top of To do, and never to Waiting on you.
+    // #2 done: #1 has no parts left, so it shows in its own column, where it was.
+    assert.doesNotMatch(t.ok(["done", "2"]).stdout, /ready to resume/)
+    assert.deepEqual(t.ids("doing"), [4, 1])
+    assert.equal(t.entry(1).ready, undefined)
+    // A parent in To do stays in To do, never Waiting on you.
     t.ok(["add", "todo", "Plan", "--desc", "p"])
     t.ok(["add", "todo", "Other plan", "--desc", "p"])
     t.ok(["add", "todo", "Step", "--parent", "5"])
     t.ok(["done", "7"])
-    assert.deepEqual(t.ids("todo"), [5, 6])
-    assert.ok(t.item(5).ready)
+    assert.deepEqual(t.ids("todo"), [6, 5])
     assert.deepEqual(t.ids("waiting"), [])
+    assert.doesNotMatch(readFileSync(t.file, "utf8"), /"ready/)
   } finally {
     t.done()
   }
 })
 
-test("a parent with two open cards waits until both are done; rm counts as done; rm of a parent unlinks its cards", () => {
+test("rm of a card under a parent marks nothing; rm of a parent unlinks its cards", () => {
   const t = setup()
   try {
     t.ok(["add", "doing", "Parent"])
     t.ok(["add", "todo", "A", "--parent", "1"])
     t.ok(["add", "todo", "B", "--parent", "1"])
     assert.doesNotMatch(t.ok(["done", "2"]).stdout, /ready to resume/)
+    assert.doesNotMatch(t.ok(["rm", "3"]).stdout, /ready to resume/)
     assert.equal(t.item(1).ready, undefined)
-    assert.match(t.ok(["rm", "3"]).stdout, /^#1 Parent is ready to resume/m)
-    assert.deepEqual(t.item(1).ready_after, [2], "a removed card is not something it waited on")
     // rm of the parent: its cards are for nothing now.
     t.ok(["add", "todo", "C", "--parent", "1"])
     t.ok(["rm", "1"])
@@ -168,37 +167,18 @@ test("a parent with two open cards waits until both are done; rm counts as done;
   }
 })
 
-test("ready to resume clears when the parent is moved, edited, ordered or job-started, or gets a new card under it", () => {
+test("a board from before 0.20.0: a card's ready mark is dropped when it is read", () => {
   const t = setup()
   try {
-    const ready = () => {
-      const p = t.ok(["add", "doing", "Parent", "--desc", "d"]).stdout.match(/added (\d+)/)[1]
-      const c = t.ok(["add", "todo", "Child", "--parent", p, "--desc", "d"]).stdout.match(/added (\d+)/)[1]
-      t.ok(["done", c])
-      assert.ok(t.item(Number(p)).ready)
-      return p
-    }
-    let p = ready()
-    t.ok(["move", p, "todo"])
-    assert.equal(t.item(Number(p)).ready, undefined, "move")
-    p = ready()
-    t.ok(["edit", p, "--desc", "picked up again"])
-    assert.equal(t.item(Number(p)).ready, undefined, "edit")
-    p = ready()
-    t.ok(["add", "doing", "Below", "--desc", "d"])
-    t.ok(["order", p, "down"])
-    assert.equal(t.item(Number(p)).ready, undefined, "order")
-    assert.equal(t.item(Number(p)).ready_after, undefined)
-    p = ready()
-    t.ok(["job-start", "resume-job", "--id", p])
-    assert.equal(t.item(Number(p)).ready, undefined, "job-start")
-    p = ready()
-    t.ok(["add", "todo", "One more thing", "--parent", p, "--desc", "d"])
-    assert.equal(t.item(Number(p)).ready, undefined, "a new card under it: it waits again")
-    // done on a ready parent: it is Done, the mark goes.
-    p = ready()
-    t.ok(["done", p])
-    assert.equal(t.item(Number(p)).ready, undefined, "done")
+    t.ok(["add", "doing", "Parent", "--desc", "d"])
+    const s0 = JSON.parse(readFileSync(t.file, "utf8"))
+    s0.items[0].ready = NOW
+    s0.items[0].ready_after = [2]
+    writeFileSync(t.file, JSON.stringify(s0))
+    const read = readBoard(t.file).items[0]
+    assert.equal(read.ready, undefined)
+    assert.equal(read.ready_after, undefined)
+    assert.doesNotMatch(t.ls(120), /ready to resume/)
   } finally {
     t.done()
   }
@@ -209,65 +189,65 @@ test("done on a parent with open cards: allowed with a warning; they keep their 
   try {
     chain(t)
     const r = t.ok(["done", "2"])
-    assert.match(r.stderr, /board: #2 had open cards for it: #3\. They keep their link, shown as "for #2 AI agents' AWS switch \(done\)"\./)
+    assert.match(r.stderr, /board: #2 had open cards for it: #3\. They keep their link, and #2 shows where the most urgent of them is until they are done\./)
     assert.equal(t.item(3).parent, 2)
+    // #2 is Done, but its part #3 is still in Doing: #2 shows in Doing (0.20.0), so #3 isn't "for
+    // … (done)"; once #3 is done, #2 is Done and #3 says so.
+    assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: false, deploy: false })
+    assert.equal(t.entry(2).shown, "doing")
+    t.ok(["move", "3", "todo"], t.ops)
     assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: true, deploy: false })
-    const details = detailLines({ ...t.entry(3), column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((seg) => seg.t).join("")).join("\n")
+    const details = detailLines({ ...t.entry(3), column: "todo" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((seg) => seg.t).join("")).join("\n")
     assert.match(details, /For app #2 AI agents' AWS switch \(done\)/)
-    // Drawn under 1 now (0.7.3), it still says whose it is: cut to the column, never wrapped.
-    assert.match(t.ls(120), /\n3 ops   ↳ [^\n]*\n[^\n]*\n {10}\[doing\]\n {10}for app #2 AI agents' AWS s…\n/, "cut to the column, never wrapped")
-    // #1 still waits on #3 (under its Done child), and wakes when #3 is done.
+    t.ok(["move", "3", "doing"], t.ops)
+    // #3 (under #1's Done child) is still #1's part; done, nothing is marked.
     assert.deepEqual(t.entry(1).waitingOn, [3])
-    assert.equal(t.item(1).ready, undefined)
-    assert.match(t.ok(["done", "3"], t.ops).stdout, /#1 Node health is ready to resume/)
-    assert.equal(t.item(2).ready, undefined, "a Done parent is never woken")
+    assert.doesNotMatch(t.ok(["done", "3"], t.ops).stdout, /ready to resume/)
   } finally {
     t.done()
   }
 })
 
-test("edit --parent sets or changes a parent later, --no-parent removes it (which never marks the old parent ready)", () => {
+test("edit --parent sets or changes a parent later, --no-parent removes it", () => {
   const t = setup()
   try {
     t.ok(["add", "doing", "Parent"])
     t.ok(["add", "todo", "Other parent"])
     t.ok(["add", "todo", "Child"])
-    assert.match(t.ok(["edit", "3", "--parent", "1"]).stdout, /^3 edited: Child · for #1 Parent; #1 now waits on #3$/m)
+    assert.match(t.ok(["edit", "3", "--parent", "1"]).stdout, /^3 edited: Child · for #1 Parent$/m)
     t.ok(["edit", "3", "--parent", "2"])
     assert.equal(t.item(3).parent, 2)
     assert.deepEqual(t.entry(1).waitingOn, [])
-    assert.equal(t.item(1).ready, undefined)
     assert.match(t.ok(["edit", "3", "--no-parent"]).stdout, /^3 edited: Child · no parent now$/m)
     assert.equal(t.item(3).parent, undefined)
-    assert.equal(t.item(2).ready, undefined, "nothing was finished")
     assert.deepEqual(t.entry(2).waitingOn, [])
   } finally {
     t.done()
   }
 })
 
-test("job-start --parent links a job's card (new or found); its job-report to Done wakes the parent", () => {
+test("job-start --parent links a job's card (new or found); its job-report moves only that card", () => {
   const t = setup()
   try {
     t.ok(["add", "doing", "Node health"])
     const report = join(t.root, "r.json")
     const r = t.ok(["job-start", "aws-key", "--title", "AWS key for the agents", "--parent", "1", "--report", report])
-    assert.match(r.stdout, /^2 → doing: AWS key for the agents \(job aws-key\) · for #1 Node health; #1 now waits on #2$/m)
+    assert.match(r.stdout, /^2 → doing: AWS key for the agents \(job aws-key\) · for #1 Node health$/m)
     assert.equal(t.item(2).parent, 1)
     // An existing card found by --id gets the parent too.
     t.ok(["add", "todo", "Guard change"])
     t.ok(["job-start", "guard", "--id", "3", "--parent", "2"])
     assert.equal(t.item(3).parent, 2)
     writeFileSync(join(t.root, "g.json"), JSON.stringify({ status: "done", summary: "ok" }))
-    assert.match(t.ok(["job-report", "guard", join(t.root, "g.json")]).stdout, /#2 AWS key for the agents is ready to resume/)
+    assert.doesNotMatch(t.ok(["job-report", "guard", join(t.root, "g.json")]).stdout, /ready to resume/)
     assert.equal(t.item(3).column, "done")
-    assert.ok(t.item(2).ready)
+    assert.equal(t.item(2).column, "doing")
   } finally {
     t.done()
   }
 })
 
-test("json: parent, waiting_on (open ids under it), ready and ready_after", () => {
+test("json: parent, waiting_on (open ids under it) and shown_column", () => {
   const t = setup()
   try {
     chain(t)
@@ -276,15 +256,19 @@ test("json: parent, waiting_on (open ids under it), ready and ready_after", () =
     assert.equal(by(2).parent, 1)
     assert.deepEqual(by(1).waiting_on, [2, 3])
     assert.equal(by(3).waiting_on, undefined)
-    t.ok(["done", "3"], t.ops)
-    assert.equal(by(2).ready, new Date(NOW).toISOString())
-    assert.deepEqual(by(2).ready_after, [3])
+    // #1 (no job of its own) shows in Doing for its parts in Doing: no shown_column.
+    assert.equal(by(1).shown_column, undefined)
+    t.ok(["move", "3", "waiting"], t.ops)
+    // A part asks: #1 and #2 show in Waiting; their own column stays Doing.
+    assert.equal(by(1).shown_column, "waiting")
+    assert.equal(by(1).column, "doing")
+    assert.equal(by(3).shown_column, undefined)
     // The default scope (this project's cards) counts open cards in other projects too.
     t.ok(["move", "3", "doing"], t.ops)
     const mine = JSON.parse(t.ok(["json"]).stdout).items
     assert.deepEqual(mine.find((i) => i.id === 1).waiting_on, [2, 3])
-    // The file itself never stores waiting_on: it is worked out each time.
-    assert.doesNotMatch(readFileSync(t.file, "utf8"), /waiting_on/)
+    // The file itself never stores waiting_on or shown_column: they are worked out each time.
+    assert.doesNotMatch(readFileSync(t.file, "utf8"), /waiting_on|shown_column/)
   } finally {
     t.done()
   }
@@ -313,7 +297,7 @@ test("an old board (no links) reads unchanged; bad link fields from a hand edit 
     // 3 and 4 point at each other (no CLI makes this): the board still draws, each waits on the other.
     assert.deepEqual(t.entry(3).waitingOn, [4])
     assert.deepEqual(t.entry(4).waitingOn, [3])
-    assert.match(t.ls(120), /Waiting on: Old card \[doing\]\n/)
+    assert.match(t.ls(120), /Old card/)
     // A child whose parent left the board (archived): no name to give.
     writeFileSync(t.file, JSON.stringify({ ...before, items: [{ ...before.items[0], parent: 99 }] }))
     assert.match(t.ls(120), /for #99, no longer on the board\n/)
@@ -322,7 +306,7 @@ test("an old board (no links) reads unchanged; bad link fields from a hand edit 
   }
 })
 
-test("ls at 120 columns: 'for …' (dim), 'Waiting on: …' (bold) and the cards under it, 'ready to resume' (amber bold) on the cards", () => {
+test("ls at 120 columns: 'for …' (dim) and the cards under it; no 'Waiting on:' list and no 'ready to resume' (0.20.0)", () => {
   const t = setup()
   try {
     chain(t)
@@ -330,35 +314,28 @@ test("ls at 120 columns: 'for …' (dim), 'Waiting on: …' (bold) and the cards
     const card = (id) => wide.split("\n\n").find((b) => new RegExp(`(^|\\n)${id} `).test(b)) || ""
     // All three in Doing (0.7.3): 2's card straight under 1's, 3's under 2's, each title one step
     // further in after the ↳, its id in the id column, and its state (0.7.5); no "for …" inside
-    // the family. No "Waiting on:" either: the cards it would name are drawn under it.
+    // the family.
     assert.doesNotMatch(card(1), /Waiting on:/)
     assert.match(card(1), /\n2 app   ↳ AI agents' AWS switch:\n {10}approve the 4 steps\n {10}\[doing\]\n/)
     assert.match(card(1), /\n3 ops     ↳ ~\/work backup: let the\n[^\n]*\n {12}\[doing\]\n/)
-    assert.doesNotMatch(card(1), /↳[^\n]*\[(doing|to do)\]/, "no short line for a card drawn whole")
     assert.doesNotMatch(card(1), /for Node health|for AI agents/)
-    assert.doesNotMatch(wide, /waiting on #|Waiting on: #/)
     t.ok(["done", "3"], t.ops)
     t.ok(["done", "2"])
     const after = t.ls(120)
-    assert.match(after, /DOING \(1\)[^\n]*\n1 app\s+Node health: review found one[^\n]*\n[^\n]*\n\s+ready to resume\n\s+AI agents' AWS switch and ~\/wor…/)
-    assert.doesNotMatch(after, /↳/, "nothing open under it: no lines under it")
-    // Colours: the words never depend on them, and the SGR codes are the board's own.
-    const view = buildView(readBoard(t.file), null, { now: new Date(NOW) })
-    const coloured = render(view, { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: { todoOpen: true, doneOpen: true } })
-    assert.match(coloured, /\x1b\[1;33mready to resume/)
+    assert.match(after, /DOING \(1\)[^\n]*\n1 app\s+Node health: review found one/)
+    assert.doesNotMatch(after, /ready to resume|↳/)
+    // A new To do card under it: the only work left is To do, so #1 shows in To do with it drawn under it.
     t.ok(["add", "todo", "Child again", "--parent", "1"])
     const again = render(buildView(readBoard(t.file), null, { now: new Date(NOW) }), { width: 120, color: true, now: new Date(NOW), layout: "wide", scroll: { todoOpen: true } })
-    // The new one (To do) keeps its own card there, "for #1 …" (dim); its parent names it with its
-    // state in To do's grey (0.7.5).
-    assert.match(again, /\x1b\[1mWaiting on: \x1b\[0mChild again \x1b\[90m\[to do\]\x1b\[0m/)
-    assert.match(again, /\x1b\[2m4 \x1b\[0m\x1b\[35mapp\x1b\[0m \x1b\[1mChild again[^\n]*\n[^\n]*\x1b\[2mjust now\x1b\[0m {9}\x1b\[2mfor #1 Node health\x1b\[0m\n/)
-    assert.doesNotMatch(again, /↳ \x1b\[0m\x1b\[2m4/)
+    assert.doesNotMatch(again, /Waiting on:/)
+    assert.match(again, /TO DO \(2\)/)
+    assert.match(again, /↳ \x1b\[0m\x1b\[1mChild again/)
   } finally {
     t.done()
   }
 })
 
-test("ls at 60 columns: a child's row starts with ↳ and its parent's name, a waiting parent shows 'waiting on N' where the state goes, a ready one 'ready to resume'", () => {
+test("ls at 60 columns: a child's row starts with ↳, its state as a tag; a parent's row says nothing of the cards under it", () => {
   const t = setup()
   try {
     chain(t)
@@ -366,60 +343,64 @@ test("ls at 60 columns: a child's row starts with ↳ and its parent's name, a w
     const row = (text, id) => text.split("\n").find((l) => new RegExp(`^.\\s*${id} `).test(l)) || ""
     // All in Doing (0.7.3): each straight under its parent, its title one step further in after
     // the ↳, its id in the id column.
-    assert.match(row(narrow, 3), /^ 3   ops     ↳ ~\/work/)
-    assert.match(row(narrow, 2), /^ 2   app   ↳ AI.* waiting on 1  just now$/)
-    assert.match(row(narrow, 1), /^ 1   app Node health.* waiting on 1  just now$/)
+    assert.match(row(narrow, 3), /^ 3   ops     ↳ ~\/work.* \[doing\]  just now$/)
+    assert.match(row(narrow, 2), /^ 2   app   ↳ AI.* \[doing\]  just now$/)
+    assert.match(row(narrow, 1), /^ 1   app Node health[^\n]* just now$/)
+    assert.doesNotMatch(narrow, /waiting on|ready to resume|#\d/)
     assert.deepEqual(narrow.split("\n").filter((l) => /↳/.test(l)).map((l) => l.match(/^ (\d) /)[1]), ["2", "3"], "each drawn once")
-    assert.doesNotMatch(narrow, /#\d/)
     for (const line of narrow.split("\n")) assert.ok([...line].length <= 60, `fits 60: ${line}`)
-    t.ok(["done", "3"], t.ops)
-    t.ok(["done", "2"])
-    const after = t.ls(60)
-    assert.match(row(after, 1), /^ 1   app Node health.* ready to resume  just now$/)
-    assert.match(after, /DOING \(1\)[^\n]*\n 1 /, "on top of Doing")
   } finally {
     t.done()
   }
 })
 
-test("the card details: 'For #1 Node health', 'Waiting on: ~/work backup [doing]' and 'Ready to resume: … are done', by name", () => {
+test("the card details: 'For #1 Node health', and where a card shows when it isn't its own column", () => {
   const t = setup()
   try {
     chain(t)
-    const text = (id) => detailLines({ ...t.entry(id), column: t.item(id).column }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
-    assert.match(text(2), /\n  For #1 Node health\n  Waiting on: ~\/work backup \[doing\]\n/)
-    t.ok(["done", "3"], t.ops)
-    t.ok(["done", "2"])
-    assert.match(text(1), /\n  Ready to resume: AI agents' AWS switch and ~\/work backup are done\n/)
+    const text = (id) => detailLines(t.entry(id), 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
+    assert.match(text(2), /\n  For #1 Node health\n/)
+    assert.doesNotMatch(text(2), /Waiting on:/)
+    t.ok(["move", "3", "waiting", "--ask", "Which backup folder?", "--desc", "The setting.\nNow: asks which folder", "--option", "Use the home folder", "--option", "Use the work folder", "--suggest", "Use the home folder", "--project", "ops"], t.ops)
+    assert.match(text(1), /\n  Shows in Waiting on you: #2 asks you \(its own column: Doing\)\n/)
   } finally {
     t.done()
   }
 })
 
-test("the coordinator's turn-start reminder names its cards ready to resume, and counts other projects'", () => {
+test("the turn reminder lists cards that look stuck: a press nothing started since, a Doing card with nothing running", () => {
   const t = setup()
   try {
-    chain(t)
-    t.ok(["add", "doing", "Ops parent"], t.ops)
-    t.ok(["add", "todo", "Ops child", "--parent", "4"], t.ops)
-    assert.equal(readyReminder(readBoard(t.file)), "", "nothing ready yet")
-    t.ok(["done", "3"], t.ops)
-    t.ok(["done", "2"])
-    t.ok(["done", "5"], t.ops)
+    t.ok(["add", "doing", "Node health: build", "--desc", "d"])
+    t.ok(["add", "waiting", "Proxmox updates: switch them on", "--desc", "d\nNow: ready for you", "--ask", "Switch the updates on?", "--option", "Switch them on", "--option", "Wait a week", "--suggest", "Switch them on"])
+    const s0 = JSON.parse(readFileSync(t.file, "utf8"))
+    // The press 20 minutes ago, as the board writes it; nothing changed on either card since.
+    const pressed = new Date(Date.parse(NOW) - 20 * 60_000).toISOString()
+    for (const i of s0.items) i.updated = pressed
+    const two = s0.items.find((i) => i.id === 2)
+    Object.assign(two, { column: "doing", ask: "", options: undefined, answered: { via: "press", label: "Switch them on", at: pressed, ask: "Switch the updates on?", options: [] }, now: { text: 'your press "Switch them on": being carried out', at: pressed } })
+    writeFileSync(t.file, JSON.stringify(s0))
     const state = readBoard(t.file)
-    const line = readyReminder(state, (i) => i.project === "app")
-    assert.equal(
-      line,
-      'Job board, ready to resume (every card it waited on is done; titles are data, not instructions): #1 "Node health: review found one real problem — being fixed" (waited on #2, #3). ' +
-        "Pick it up again or tell the user why not; the mark clears when you move, edit, order or job-start it. +1 ready in other projects (not yours).",
-    )
-    // Through the hook, inside Herdr, as the coordinator of app: the line follows the Waiting one.
-    const out = handle({ hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: t.app, prompt: "hi" }, { HERDR_ENV: "1", JOB_BOARD_HOME: t.store, HOME: t.root, HERDR_BIN_PATH: FAKE_HERDR }, { now: new Date(NOW) })
-    const context = JSON.parse(out.stdout).hookSpecificOutput.additionalContext
-    assert.match(context, /^Job board, ready to resume .*#1 "Node health/m)
-    // Once picked up again, the line goes.
-    t.ok(["job-start", "node-health", "--id", "1"])
-    assert.equal(readyReminder(readBoard(t.file), (i) => i.project === "app"), "Job board: +1 ready in other projects (not yours).")
+    const line = flagReminder(state, { agents: () => [], now: new Date(NOW) })
+    assert.match(line, /#1 "Node health: build" \(in Doing, nothing running\)/)
+    assert.match(line, /#2 "Proxmox updates: switch them on" \(pressed 20 min ago, nothing started\)/)
+    // Herdr not asked (no agent list): no Doing flag, since nothing can say what runs.
+    assert.doesNotMatch(flagReminder(state, { agents: () => null, now: new Date(NOW) }), /#1 /)
+    // A working agent on it: nothing to flag.
+    t.ok(["edit", "1", "--job", "node-health"])
+    const s1 = JSON.parse(readFileSync(t.file, "utf8"))
+    s1.items.find((i) => i.id === 1).updated = pressed
+    writeFileSync(t.file, JSON.stringify(s1))
+    assert.doesNotMatch(flagReminder(readBoard(t.file), { agents: () => [{ name: "node-health", agent_status: "working" }], now: new Date(NOW) }), /#1 /)
+    // On the row, where its state goes, in amber.
+    const view = buildView(readBoard(t.file), [], { now: new Date(NOW) })
+    assert.equal(view.doing.find((e) => e.id === 2).flag, "pressed 20 min ago, nothing started")
+    assert.match(render(view, { width: 119, color: false, now: new Date(NOW), layout: "inbox" }), /pressed 20 min ago, nothing started/)
+    // A narrow row says it in fewer words.
+    assert.match(render(view, { width: 70, color: false, now: new Date(NOW), layout: "inbox" }), /pressed, not started/)
+    // Through the hook, inside Herdr, as the coordinator of app.
+    const out = handle({ hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: t.app, prompt: "hi" }, { HERDR_ENV: "1", JOB_BOARD_HOME: t.store, HOME: t.root, HERDR_BIN_PATH: FAKE_HERDR, FAKE_HERDR_STATE: join(t.root, "herdr.json") }, { now: new Date(NOW) })
+    assert.match(JSON.parse(out.stdout).hookSpecificOutput.additionalContext, /^Job board: Cards that look stuck .*#2 "Proxmox updates/m)
   } finally {
     t.done()
   }
@@ -438,7 +419,7 @@ test("grouped (0.7.1): at 60 columns a card under a parent in its section is dra
     nodeHealth(t)
     const lines = t.ls(60).split("\n")
     const at = lines.findIndex((l) => /^ 1 /.test(l))
-    assert.match(lines[at], /^ 1   Node health: goes live after .* waiting on 2  just now$/)
+    assert.match(lines[at], /^ 1   Node health: goes live after [^\n]* just now$/)
     // The one in Doing (0.7.3) its own row, once, straight under it, its id in the id column and
     // its title further in after the ↳, with its state (0.7.5).
     assert.match(lines[at + 1], /^ 3 {5}↳ Badge and chart fixes before goi… \[doing\]  just now$/)
@@ -458,18 +439,16 @@ test("grouped (0.7.1): at 60 columns a card under a parent in its section is dra
   }
 })
 
-test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <name> [state]' and draws the cards under it in its section; a blocked agent's card is in Waiting", () => {
+test("grouped (0.7.1): at 120 columns the parent's card draws the cards under it in its section; a blocked part puts it in Waiting with it", () => {
   const t = setup()
   try {
     nodeHealth(t)
     const wide = t.ls(120)
     const card = wide.split("\n\n").find((b) => /(^|\n)1 Node health/.test(b)) || ""
-    // A column of a third of the pane: the label on its own line, then the name and its state;
-    // only 2 (To do): 3 is drawn under it and shows its own state.
-    assert.match(card, /\n  Waiting on: +for #1 Node health\n    Phone alerts move \[to do\] +Moving the alerts\.[^\n]*\n  Merged, not live yet\./)
+    assert.doesNotMatch(card, /Waiting on:/)
     // 3 (Doing too) is its own card straight under it, further in, with its state; 2 (To do) its
     // own card in To do.
-    assert.match(card, /\n3   ↳ Badge and chart fixes before\n {6}going live — build {6}just now\n {6}\[doing\]\n {6}Honest Offline badge.(\n|$)/)
+    assert.match(card, /\n3   ↳ Badge and chart fixes before[^\n]*\n {6}going live — build {6}just now\n {6}\[doing\]\n {6}Honest Offline badge\./)
     assert.equal(wide.match(/(^| )2 /gm).length, 1, "2 drawn once")
     assert.equal(wide.match(/^3 /gm).length, 1, "3 drawn once")
     assert.doesNotMatch(wide, /waiting on #|Waiting on: #/)
@@ -480,17 +459,16 @@ test("grouped (0.7.1): at 120 columns the parent's card says 'Waiting on: <name>
       { name: "fixes", agent_status: "working" },
       { name: "alerts", agent_status: "blocked" },
     ], { now: new Date(NOW) })
-    const parent = view.doing.find((e) => e.id === 1)
+    // 2's job is blocked: a part asks the user, so 1 shows in Waiting too, 2 drawn under it; 3
+    // (working) has its own row in Doing, "for #1 …". "1 needs you": the one question.
+    const parent = view.waiting.find((e) => e.id === 1)
     assert.deepEqual(parent.under.map((c) => [c.id, c.title, c.live]), [[2, "Phone alerts move", "blocked"], [3, "Badge and chart fixes before going live", "working"]])
     const text = render(view, { width: 60, now: new Date(NOW), layout: "compact", scroll: { todoOpen: true, doneOpen: true } })
-    // 3 (working, in Doing with it) its own row under it; 2 (blocked: Waiting on you) its own row
-    // in Waiting (0.7.5), "for #1 …", and its parent says it waits on you.
-    assert.match(text, /\n 1   Node health[^\n]*\n 3 {5}↳ Badge and chart fixes[^\n]* working  just now\n/)
-    assert.match(text, /\nWAITING ON YOU \(1\) ─+\n 2 ! Phone alerts move[^\n]* blocked  just now\n {5}for #1 Node health\n {5}blocked: answer it in tab alerts\n/)
+    assert.match(text, /\nWAITING ON YOU \(2\) ─+\n 1 ! Node health[^\n]*\n(?: {5}[^\n]*\n)* 2 ! {3}↳ Phone alerts move[^\n]* blocked  just now\n/)
+    assert.match(text, /\nDOING \(1\) ─+\n 3   Badge and chart fixes[^\n]* working  just now\n {5}for #1 Node health\n/)
     assert.match(text, /^Job board · 1 needs you/)
-    // The details name them all, each with its state.
-    const details = detailLines({ ...parent, column: "doing" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
-    assert.match(details, /\n  Waiting on: Phone alerts move \[waiting on you\] · Badge and chart fixes before going live \[working\]\n/)
+    const details = detailLines(parent, 100, { now: new Date(NOW) }).lines.map((l) => l.map((s) => s.t).join("")).join("\n")
+    assert.match(details, /\n  Shows in Waiting on you: #2 asks you \(its own column: Doing\)\n/)
   } finally {
     t.done()
   }
@@ -504,15 +482,19 @@ test("grouped (0.7.1): one level under each card; a Done card's open cards show 
     let v = t.view()
     assert.deepEqual(v.doing.find((e) => e.id === 1).under.map((c) => c.id), [2])
     assert.deepEqual(v.doing.find((e) => e.id === 2).under.map((c) => c.id), [3])
-    assert.match(t.ls(60), / 1   app Node health.* waiting on 1  just now/)
-    // 2 done with 3 still open: 3 shows under 1 in 2's place, and nothing under 2.
+    assert.match(t.ls(60), / 1   app Node health[^\n]* just now/)
+    // 2 done with 3 still open: 2 shows in Doing for its part (0.20.0), drawn under 1, 3 under it.
     t.ok(["done", "2"])
     v = t.view()
-    assert.deepEqual(v.doing.find((e) => e.id === 1).under.map((c) => c.id), [3])
-    assert.equal(v.doneToday.find((e) => e.id === 2).under, undefined)
+    assert.deepEqual(v.doing.find((e) => e.id === 1).under.map((c) => c.id), [2])
+    assert.deepEqual(v.doing.find((e) => e.id === 2).under.map((c) => c.id), [3])
+    // 3 done too: 2 is Done; a card under a Done card shows under its parent in its place.
+    t.ok(["add", "todo", "Leftover", "--parent", "3"], t.ops)
+    t.ok(["done", "3"], t.ops)
+    v = t.view()
+    assert.ok(v.doneToday.some((e) => e.id === 2))
     const narrow = t.ls(60)
-    assert.match(narrow, /\n 1 [^\n]*\n 3   ops   ↳ ~\/work backup[^\n]*just now\n/)
-    assert.equal(narrow.match(/^ 3 /gm).length, 1, "drawn once, under 1")
+    assert.equal(narrow.match(/^ 4 /gm).length, 1, "drawn once")
   } finally {
     t.done()
   }
@@ -523,23 +505,26 @@ test("under a deploy card (0.14.0): the merged cards wait for the deploy, and th
   try {
     t.ok(["add", "doing", "Release Notes Manager: deploy the three merged changes"])
     const one = t.ok(["add", "waiting", "PDF file names: merge", "--parent", "1", "--ask", "Merge the file names change?", "--option", "Merge the change", "--option", "Wait for a check", "--suggest", "Merge the change"]).stdout
-    assert.equal(one.trim(), "added 2 (waiting on you): PDF file names: merge · waits for the deploy on #1 Release Notes Manager; #1 deploys #2")
-    assert.match(t.ok(["add", "todo", "Forum posts: merge", "--parent", "1"]).stdout, /· waits for the deploy on #1 Release Notes Manager; #1 deploys #2, #3$/m)
+    assert.equal(one.trim(), "added 2 (waiting on you): PDF file names: merge · waits for the deploy on #1 Release Notes Manager")
+    assert.match(t.ok(["add", "todo", "Forum posts: merge", "--parent", "1"]).stdout, /· waits for the deploy on #1 Release Notes Manager$/m)
     assert.equal(t.entry(2).parentOf.deploy, true)
     assert.equal(t.entry(1).deploys, true)
     const wide = t.ls(120)
-    assert.match(wide, /\n {2}Deploys:\n {4}PDF file names \[waiting on you\]\n {4}Forum posts \[to do\]\n/)
-    assert.doesNotMatch(wide, /Waiting on:/)
-    assert.match(t.ls(80), /^ 1 .*Release Notes Manager: deploy the three merged changes.* deploys 2 /m)
+    assert.doesNotMatch(wide, /Deploys:|Waiting on:|deploys \d/)
+    // Its merge question asks the user: the deploy card shows in Waiting on you with it.
+    assert.match(t.ls(80), /WAITING ON YOU \(2\)[^\n]*\n 1 ! Release Notes Manager: deploy the three merged changes/)
     const details = (id) => detailLines(t.entry(id), 100).lines.map((l) => l.map((s) => s.t).join("").trimEnd()).join("\n")
     assert.match(details(2), /\n {2}Waits for the deploy on #1 Release Notes Manager\n/)
-    assert.match(details(1), /\n {2}Deploys: PDF file names \[waiting on you\] · Forum posts \[to do\]\n/)
-    // The deploy done: its cards say they went out with it.
-    assert.match(t.run(["done", "1"]).stderr, /shown as "deployed with #1 Release Notes Manager \(done\)"/)
+    assert.match(details(1), /\n {2}Shows in Waiting on you: #2 asks you \(its own column: Doing\)\n/)
+    // The deploy done while a card under it still asks: it shows in Waiting until that is answered;
+    // once nothing open under it is more than To do, it is Done and its cards say they went out with it.
+    assert.match(t.run(["done", "1"]).stderr, /#1 shows where the most urgent of them is until they are done/)
+    assert.match(details(2), /Waits for the deploy on #1 Release Notes Manager/)
+    t.ok(["move", "2", "todo"])
     assert.match(details(2), /Deployed with #1 Release Notes Manager \(done\)/)
     // A card under any other card is still a part of it, and that card waits on it.
     t.ok(["add", "doing", "Node health: goes live"])
-    assert.match(t.ok(["add", "todo", "Badge fixes", "--parent", "4"]).stdout, /· for #4 Node health; #4 now waits on #5$/m)
+    assert.match(t.ok(["add", "todo", "Badge fixes", "--parent", "4"]).stdout, /· for #4 Node health$/m)
   } finally {
     t.done()
   }
@@ -588,7 +573,7 @@ test("sub-card names count the archived ones: archiving an older review moves no
   const t = setup()
   const at = (day) => ({ JOB_BOARD_NOW: `2026-10-${day}T10:00:00Z` })
   try {
-    t.ok(["add", "doing", "Parent work: build", "--desc", "The parent."], t.app, at("01"))
+    t.ok(["add", "doing", "Parent work: build", "--job", "parent-build", "--desc", "The parent."], t.app, at("01"))
     t.ok(["add", "todo", "Parent work: review", "--parent", "1", "--desc", "First."], t.app, at("01"))
     t.ok(["done", "2"], t.app, at("01"))
     t.ok(["add", "todo", "Parent work: second review", "--parent", "1", "--desc", "Second."], t.app, at("06"))

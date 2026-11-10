@@ -180,7 +180,7 @@ test("job-start and --allow-wording: refused titles, an explicit escape the card
   }
 })
 
-test("job-report: a needs_user or summary with numbers stays off the card; the coordinator is told, once", () => {
+test("job-report: the numbers in a needs_user are taken out silently (0.20.0); nobody is asked to rewrite the card", () => {
   const s = setup()
   try {
     const report = join(s.base, "report.json")
@@ -190,20 +190,15 @@ test("job-report: a needs_user or summary with numbers stays off the card; the c
     const r = s.ok("job-report", "workbench")
     const card = s.card(1)
     assert.equal(card.column, "waiting")
-    assert.equal(card.ask, "The job needs a decision from you: its coordinator is writing the question in plain words.")
+    assert.equal(card.ask, "Review and merge the PR, then deploy, to fix production")
     assert.equal(card.options, undefined)
-    assert.match(r.stdout, /ask: The job needs a decision from you/)
+    assert.match(r.stdout, /ask: Review and merge the PR, then deploy, to fix production/)
     assert.doesNotMatch(r.stdout, /#83/)
-    assert.match(r.stderr, /card 1 \(Workbench fix: build\) is waiting on the user with the job's own words and no answer buttons\. Its report names "PR #83", "build 674": kept off the card/)
-    assert.match(r.stderr, /board\.mjs edit 1 --title .* --option .* --suggest/)
-    const notes = readInbox(s.file).messages
-    assert.equal(notes.length, 1)
-    assert.equal(notes[0].kind, "note")
-    assert.equal(notes[0].card, 1)
-    assert.match(notes[0].text, /^\[job note\] workbench — card 1 .* no answer buttons\./)
-    // The same report again: nothing changes, nothing more is sent.
+    assert.equal(r.stderr, "")
+    assert.equal(readInbox(s.file).messages.length, 0)
+    // The same report again: nothing changes, nothing is sent.
     assert.match(s.ok("job-report", "workbench").stdout, /1 unchanged/)
-    assert.equal(readInbox(s.file).messages.length, 1)
+    assert.equal(readInbox(s.file).messages.length, 0)
 
     // The details panel: the summary and need with numbers are not shown up top.
     const panel = plain(detailLines(s.card(1), 100).lines).join("\n")
@@ -213,24 +208,19 @@ test("job-report: a needs_user or summary with numbers stays off the card; the c
     const more = plain(detailLines(s.card(1), 100, { more: true }).lines).join("\n")
     assert.match(more, /Full summary\n {2}Fixed the export\. PR #83 \(build 674\)\./)
 
-    // A plain report is copied as before, and the coordinator still hears it needs buttons.
+    // A plain blocked report is copied as before; no note.
     s.ok("job-start", "qa", "--title", "Workbench fix: test")
-    writeFileSync(report, JSON.stringify({ status: "blocked", summary: "The staging server is down." }))
+    writeFileSync(report, JSON.stringify({ status: "blocked", summary: "The staging server is down in build 674." }))
     const blocked = s.ok("job-report", "qa", report)
-    assert.equal(s.card(2).ask, "blocked: The staging server is down.")
-    assert.match(blocked.stderr, /card 2 .* no answer buttons\. Rewrite it in one edit/)
-    assert.doesNotMatch(blocked.stderr, /kept off/)
-    // Done with a numbered summary: the card stays done; the coordinator is asked for a description.
+    assert.equal(s.card(2).ask, "blocked: The staging server is down in the build.")
+    assert.equal(blocked.stderr, "")
+    // Done with a numbered summary: the card is done; no note.
     s.ok("job-start", "docs", "--title", "Docs links: fix")
     writeFileSync(report, JSON.stringify({ status: "done", summary: "Merged as PR #90." }))
     const finished = s.ok("job-report", "docs", report)
     assert.equal(s.card(3).column, "done")
-    assert.match(finished.stderr, /card 3 \(Docs links: fix\) is done\. Its report names "PR #90": kept off the card/)
-    // Done in plain words: nothing to say.
-    s.ok("job-start", "tidy", "--title", "Notes: tidy")
-    writeFileSync(report, JSON.stringify({ status: "done", summary: "Tidied the notes." }))
-    assert.equal(s.ok("job-report", "tidy", report).stderr, "")
-    assert.equal(readInbox(s.file).messages.length, 3)
+    assert.equal(finished.stderr, "")
+    assert.equal(readInbox(s.file).messages.length, 0)
   } finally {
     s.done()
   }
@@ -346,7 +336,7 @@ test("Each answer: lists that do match the buttons pass, whatever their dash, qu
   }
 })
 
-test("job-report: a job's own question with buttons goes on the card when it passes the check; else today's note, saying why", () => {
+test("job-report: a job's own question with buttons goes on the card when it passes the check; else its words without buttons, and job-report says why", () => {
   const s = setup()
   try {
     const report = join(s.base, "report.json")
@@ -375,12 +365,11 @@ test("job-report: a job's own question with buttons goes on the card when it pas
     assert.equal(s.card(2).ask, "blocked: No permission to change the role.\nChange the role yourself, or skip it?")
     assert.equal(s.card(2).options, undefined)
 
-    // Refused by the check (a one-word label, no suggestion, a number, 5 buttons): today's way,
-    // the question's words on the card, no buttons, and the note says why.
+    // Refused by the check (a one-word label, no suggestion, 5 buttons): the question's words on
+    // the card, no buttons, and job-report's output says why (no note: nobody rewrites the card).
     const refused = [
       [{ ask: "Merge it?", options: ["Merge", "Wait for the review"], suggest: "Merge" }, /the button "Merge" says "Merge", one word/],
       [{ ask: "Merge it?", options: ["Merge the login fix", "Wait for the review"] }, /no suggested answer/],
-      [{ ask: "Merge PR #83?", options: ["Merge the login fix", "Wait for the review"], suggest: "Merge the login fix" }, /the ask says "PR #83", a PR number/],
       [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one", "Pick the third one", "Pick the fourth one", "Pick the fifth one"], suggest: "Pick the first one" }, /at most 4/],
       [{ ask: "Pick one", options: ["Pick the first one", "Pick the second one"], suggest: "Pick the other one" }, /is not one of its buttons/],
     ]
@@ -391,11 +380,17 @@ test("job-report: a job's own question with buttons goes on the card when it pas
       const out = s.ok("job-report", `q${id}`, report)
       assert.equal(s.card(id).options, undefined, JSON.stringify(q))
       assert.equal(s.card(id).column, "waiting")
-      assert.match(out.stderr, /The job's question came with buttons, kept off the card because /)
-      assert.match(out.stderr, why)
-      assert.match(out.stderr, /Rewrite it in one edit/)
+      assert.match(out.stdout, /the job's buttons were kept off the card: /)
+      assert.match(out.stdout, why)
       id++
     }
+    // A number in the job's question is taken out, and its buttons go on the card.
+    s.ok("job-start", "numbered", "--title", "Numbered question: build", "--report", report)
+    writeFileSync(report, JSON.stringify({ status: "done", summary: "Built.", needs_user: [{ ask: "Merge PR #83?", options: ["Merge the login fix", "Wait for the review"], suggest: "Merge the login fix" }] }))
+    s.ok("job-report", "numbered", report)
+    assert.equal(s.card(id).ask, "Merge the PR?")
+    assert.deepEqual(s.card(id).options.map((o) => o.label), ["Merge the login fix", "Wait for the review"])
+    id++
     assert.equal(s.card(3).ask, "Merge it?", "the question's words, as a plain ask")
     // Two entries, one of them a question: not one question, so today's way.
     s.ok("job-start", "two", "--title", "Two asks: build", "--report", report)
@@ -506,7 +501,7 @@ test("deploysTitle: the title's action after the last colon says deploy", () => 
   for (const t of ["Release Notes Manager: new PDF file name pattern for new releases", "Release checklist: ship it", "Deploy notes: write them", "Fleet: roll out the waves"]) assert.equal(deploysTitle(t), false, t)
 })
 
-test("job-report: a failed or blocked report never puts its own buttons on the card; the reason stays and the coordinator is told", () => {
+test("job-report: a failed or blocked report never puts its own buttons on the card; the reason stays", () => {
   const s = setup()
   try {
     const report = join(s.base, "report.json")
@@ -519,15 +514,15 @@ test("job-report: a failed or blocked report never puts its own buttons on the c
       assert.equal(card.column, "waiting")
       assert.equal(card.options, undefined, `${status}: no buttons from the job`)
       assert.match(card.ask, new RegExp(`^${status}: Tests broke on the login page\\.\nMerge the fix now\\?$`))
-      assert.match(r.stderr, /is waiting on the user with the job's own words and no answer buttons/)
+      assert.equal(r.stderr, "")
     }
-    assert.equal(readInbox(s.file).messages.length, 2)
+    assert.equal(readInbox(s.file).messages.length, 0)
   } finally {
     s.done()
   }
 })
 
-test("job-report: a question with an option that isn't text, or a board marker, falls back; the note reads cleanly", () => {
+test("job-report: a question with an option that isn't text, or a board marker, falls back; job-report's reason reads cleanly", () => {
   const s = setup()
   try {
     const report = join(s.base, "report.json")
@@ -546,8 +541,8 @@ test("job-report: a question with an option that isn't text, or a board marker, 
       writeFileSync(report, JSON.stringify({ status: "done", summary: "Built.", needs_user: [q] }))
       const out = s.ok("job-report", `q${id}`, report)
       assert.equal(s.card(id).options, undefined, JSON.stringify(q))
-      assert.match(out.stderr, why)
-      const reason = out.stderr.split("Rewrite it in one edit")[0]
+      assert.match(out.stdout, why)
+      const reason = out.stdout.split("kept off the card: ")[1] || ""
       assert.doesNotMatch(reason, /--option|--suggest|the the|at most 4 the/)
       id++
     }

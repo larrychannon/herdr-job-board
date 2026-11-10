@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.20.0 · unreleased
+
+A card's column is worked out from its parts, checks and fixes are rounds on one card, and a
+press of a merge button runs the work itself.
+
+- **Why**: cards showed the wrong column for days. A card with parts stayed in Doing while
+  anything under it was open, even a To do follow-up (8 days for one card), or while its next
+  step was the user's on a card under it. A press was only a message to the coordinator: half
+  the time the next step started within a minute and a half, one time in ten after more than two
+  hours. Every check and every fix was a card of its own (71 of 210 new cards in a week), and the
+  coordinator was woken to rewrite cards whose report named a PR number (88 times in 8 days).
+- **Columns worked out** (`shownColumn`): a card with open parts (cards under it) shows where
+  its most urgent one is: a part asking the user → Waiting on you; else a part in Doing, or a
+  job, a run or a press of its own going on → Doing; else a card not started (To do, Queue) or a
+  Done one stays there; else To do while real work is left under it; else Done, its only open
+  parts being follow-ups (`Follow-up: …` titles, or `add`/`edit --follow-up`), which show as
+  plain To do cards. A card with no open parts shows in its stored column. Never stored: `json`
+  adds `shown_column` where it differs, `get` and the details say why ("Shows in Waiting on you:
+  #544 asks you (its own column: Doing)"). "N need you" and the sidebar count only the cards that
+  ask.
+- **Two amber flags**, where the card's state goes and in the coordinator's turn reminder ("Cards
+  that look stuck"): `pressed 12 min ago, nothing started` (a press, 5 minutes on, with nothing
+  started since) and `in Doing, nothing running` (no agent working, no run, no running mark, 10
+  minutes since its last change; only when Herdr's agent list could be read). A narrow row says
+  `pressed, not started` and `nothing running`.
+- **Gone**: held reports (a report on a card with open cards under it now applies as on any card;
+  the held keys still count, so a report held before never applies again), "ready to resume" (an
+  old board's marks are dropped when it is read), the parent's `Waiting on: …` list and `waiting
+  on N` / `deploys N` where its state goes, `#N now waits on …` in what `add`/`edit`/`job-start`
+  print, status lines built from the cards under a parent, and the Stop hook's block for an
+  out-of-date status line (the turn reminder still lists those).
+- **Rounds on a card**: `job-start <slug> --id <card> --round check|fix --report <path>` runs a
+  check or a fix on the change's own card. The card keeps each round (`rounds`: kind, number,
+  job, report, status, verdict, findings count) and shows them on one line: `check 1: 2 problems
+  · fix: done · check 2: running`; the details and `get` list each with its job. While a round
+  runs, the card's job is the round's (the one before it goes to `former_jobs`). The round's
+  report is its verdict: a done one keeps the card in Doing with `check 1 finished: 2 problems`
+  (the next step is the coordinator's); one that needs the user, or is blocked or failed, goes to
+  Waiting as any report does. A late report of an earlier round only records its verdict. Old
+  check cards under a card (`500-check`) keep working.
+- **A press runs the work**: `--action "<label>=<stage>"` (add, move, edit; the coordinator's
+  only) stores `{ stage, repo, card }` on a merge question's button, the repo being the card's
+  project folder; the stage is merge, release, deploy, install or verify, or several joined by
+  `+`. A press of it (the pane, or `answer`, which a Telegram reply becomes) puts the press in
+  the inbox as an answer, acked (the board carries it out, so no coordinator acts on it twice),
+  takes the card to Doing with its `run`, and starts `board.mjs run-press <card> <message id>`
+  detached. The runner asks the merge script (`JOB_BOARD_SHIP`, else
+  `~/.claude/skills/job/scripts/ship.mjs`) for its run stage (`node ship.mjs contract` prints
+  JSON whose `stages` lists `run`), then runs `ship.mjs <repo> <card> run --approved-by
+  board:<message id> --stages merge,install` in the repo, its output in the store's
+  `runs/<card>-<message id>.log`, the log's last line on the card, and the card shows the run like
+  a running mark. The coordinator gets one `[board run] card <id> …` message with the result.
+  Until the merge script has a run stage nothing runs: the card says `the press is recorded; run
+  not available yet` and the message says to carry the press out as before with `--approved-by
+  board:<message id>`. A button's action is checked again at the press (this card, its project's
+  folder); `import` and `restore` drop actions, and a job's own buttons never carry one.
+- **One message per job stop**: `job-report` run from a job's own pane (its Stop hook) sends no
+  `[job note]`; the job's `[job finished]` line says when its report is on no card, and when text
+  in it looked like a secret. PR, build and commit numbers in a report's words are taken out
+  when they go on a card ("Merge PR #83?" → "Merge the PR?"), with no rewrite-the-card note.
+- **A stopped job working again**: a job's `stopped without a report` (or `stopped on an error`)
+  line is hidden while its agent works, and cleared when its pane gets a new prompt.
+- **No fallback text**: the turn reminder no longer asks for an `inbox wait` or the channel's ack
+  tool; it says to ack with the CLI.
+- **Interface for the job skill**: `contract` lists `shown_column`, `rounds` and `press_run`
+  (the action syntax, the probe and the run command).
+
 ## 0.19.0 · unreleased
 
 Board search, a press that reaches a coordinator after a restart, sub-card names, quieter Stop

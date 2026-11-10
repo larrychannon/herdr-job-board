@@ -172,8 +172,8 @@ test("reportProof: tested, unverified (missing with a commit or PR, a failed run
   const hidden = reportProof(done({ tested: { ...ok, command: `GH_TOKEN=${FAKE.github} npm test` } }))
   assert.equal(hidden.text, "tested (the command hidden: it looked like a secret, exit 0)")
   // The status lines.
-  assert.equal(reportStatusLine("done", "done", false, { ok: true, text: "tested (npm test, exit 0)" }), "the job finished, tested (npm test, exit 0): its report is ready to check")
-  assert.equal(reportStatusLine("done", "waiting", false, { ok: false, text: "unverified: no test run after the last edit" }), "the job finished, unverified: no test run after the last edit, and needs your answer")
+  assert.equal(reportStatusLine("done", "done", { ok: true, text: "tested (npm test, exit 0)" }), "the job finished, tested (npm test, exit 0): its report is ready to check")
+  assert.equal(reportStatusLine("done", "waiting", { ok: false, text: "unverified: no test run after the last edit" }), "the job finished, unverified: no test run after the last edit, and needs your answer")
   assert.equal(reportStatusLine("done", "done"), "the job finished: its report is ready to check")
 })
 

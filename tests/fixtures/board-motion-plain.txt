@@ -16,14 +16,14 @@ DOING (4)
   The filter panel from the approved mockup.
 
 4 Docs: fix links                                                                                                 24 min
-  idle
+  in Doing, nothing running
 
 7 API client: regenerate                                                                                          20 min
   working [=   ]
   From the new OpenAPI file.
 
 8 Release notes: draft                                                                                            18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -57,14 +57,14 @@ DOING (4)                                                    TO DO (1) ▾
   The filter panel from the approved mockup.
 
 4 Docs: fix links                                   24 min
-  idle
+  in Doing, nothing running
 
 7 API client: regenerate                            20 min
   working [=   ]
   From the new OpenAPI file.
 
 8 Release notes: draft                              18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -99,14 +99,14 @@ DOING (4)                                TO DO (1) ▾                          
   mockup.
 
 4 Docs: fix links               24 min
-  idle
+  in Doing, nothing running
 
 7 API client: regenerate        20 min
   working [   =]
   From the new OpenAPI file.
 
 8 Release notes: draft          18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -132,9 +132,9 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
- 4   Docs: fix links                                                        idle  24 min
+ 4   Docs: fix links                                   in Doing, nothing running  24 min
  7   API client: regenerate                                       working [=   ]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 
@@ -173,9 +173,9 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [=   ]  25 min
- 4   Docs: fix links                                                        idle  24 min
+ 4   Docs: fix links                                   in Doing, nothing running  24 min
  7   API client: regenerate                                       working [=   ]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 
@@ -214,9 +214,9 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 DOING (4) ──────────────────────────────────────────────────────────────────────────────
  3   Search filters: build                           working, report done [   =]  25 min
- 4   Docs: fix links                                                        idle  24 min
+ 4   Docs: fix links                                   in Doing, nothing running  24 min
  7   API client: regenerate                                       working [   =]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 

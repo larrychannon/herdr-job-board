@@ -140,17 +140,18 @@ test("answerMessage: what goes into the inbox for a channel", () => {
   assert.equal(m.text, "Board card 7 (p · Ship it?): Go (from Telegram)")
 })
 
-test("the turn-start reminder: with a live channel, no 'start inbox wait', and ack with its tool", () => {
+test("the turn-start reminder: with a channel or without, no 'start inbox wait' and no channel tool (0.20.0); ack with the CLI", () => {
   const s = setup()
   try {
     s.note()
     assert.equal(s.board(s.otherEnv, "answer", String(s.id), "1").status, 0)
     rmSync(join(s.store, "channels"), { recursive: true, force: true })
-    assert.match(inboxReminder(s.file, { workspace: "w1" }), /No inbox watcher is running/)
-    s.note()
-    const text = inboxReminder(s.file, { workspace: "w1" })
-    assert.doesNotMatch(text, /No inbox watcher/)
-    assert.match(text, /the job-board channel's ack tool/)
+    for (const live of [false, true]) {
+      if (live) s.note()
+      const text = inboxReminder(s.file, { workspace: "w1" })
+      assert.doesNotMatch(text, /inbox watcher|inbox wait|channel's ack tool/)
+      assert.match(text, /inbox ack <id>/)
+    }
   } finally {
     s.done()
   }
