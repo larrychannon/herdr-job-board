@@ -128,6 +128,7 @@ import {
   unacked,
   unreviewedReminder,
   updateStop,
+  waitsOnUser,
 } from "../board.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -339,7 +340,8 @@ export function titleAsData(title) {
  * one count of the others: another coordinator's cards are not this one's to close.
  */
 export function reminder(state, cli = BOARD_CLI, mine = null) {
-  const all = state.items.filter((i) => i.column === "waiting").sort((a, b) => a.id - b.id)
+  // As on the board: a parent whose cards were answered, with no question of its own, waits on them, not on the user.
+  const all = state.items.filter((i) => i.column === "waiting" && waitsOnUser(state, i)).sort((a, b) => a.id - b.id)
   const waiting = mine ? all.filter(mine) : all
   const others = all.length - waiting.length
   const otherLine = others ? `+${others} waiting in other projects (not yours; the board shows them).` : ""

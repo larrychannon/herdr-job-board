@@ -10,7 +10,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { animates, animationTimer, asText, barTick, buildView, copyLinks, copyPayload, copyPlace, detailLines, handleInput, markSent, nextCopy, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES, writeStop } from "../board.mjs"
+import { animates, animationTimer, asText, barTick, buildView, copyLinks, copyPayload, copyPlace, detailLines, handleInput, nextCopy, updateBoard, parseInput, renderBoard, reportCacheStats, reportFacts, screenDiff, TICK_MS, WORKING_FRAMES, writeStop } from "../board.mjs"
 import { findUrls, MAX_COPY, osc52, osc8 } from "../links.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -505,7 +505,7 @@ test("details open with no button chosen: a button chosen on the card, then a do
   }
 })
 
-test("a press in the panel: argv only, to the origin pane, once; again asks first; o focuses the origin pane", () => {
+test("a press in the panel: argv only, to the origin pane, once; the card leaves Waiting; o focuses the origin pane", () => {
   const t = setup({ agents: detailAgents, tabs: detailTabs })
   try {
     seedDetails(t)
@@ -513,10 +513,13 @@ test("a press in the panel: argv only, to the origin pane, once; again asks firs
     const first = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r")
     assert.equal(first.status, 0, first.stderr)
     assert.deepEqual(prompts(), [["agent", "prompt", "w9:p1", "Board card 1 (my · Checkout redesign mockup: approve): OK all suggestions"]])
-    assert.equal(JSON.parse(readFileSync(t.file, "utf8")).items[0].sent.label, "OK all suggestions")
-    const again = t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r").stdout
-    assert.match(again.split(/── card 1/)[1], /send again\? "OK all suggestions" was sent already/, "the note shows in the panel")
-    assert.equal(prompts().length, 1, "no second send without a second press")
+    const card = JSON.parse(readFileSync(t.file, "utf8")).items[0]
+    assert.deepEqual([card.column, card.answered.label, card.now.text], ["doing", "OK all suggestions", 'your press "OK all suggestions": being carried out'])
+    // The same keys again reach the next Waiting card, never card 1 a second time.
+    t.pane(["--width", "120", "--height", "60"], "\r\x1b[C\r")
+    assert.ok(prompts().slice(1).every((p) => !p[3].startsWith("Board card 1 ")), "card 1 isn't sent again")
+    // A new question brings it back to Waiting; o there focuses the origin pane.
+    t.board("2026-10-13T10:31:00Z", "move", "1", "waiting", "--ask", "Approve the mockup now?", "--option", "OK all suggestions", "--option", "I'll comment", "--allow-wording")
     t.pane(["--width", "120", "--height", "60"], "\ro")
     assert.deepEqual(t.log().filter((a) => a[0] === "agent" && a[1] === "focus").at(-1), ["agent", "focus", "w9:p1"])
   } finally {
@@ -1269,7 +1272,10 @@ test("copy: a card whose job is blocked copies without its hidden buttons", () =
 /** A board like the one that misled the user: a long question over 3 buttons and Other…, sent once. */
 function seedQuestion(t) {
   t.board("2026-10-13T03:14:00Z", "add", "waiting", "Release v1.4: all reviewed, approve?", "--desc", "All PRs reviewed OK: #12 invoice rounding, #14 docs move, #15 search filters, #17 export to CSV (+ optional #16 dark mode).", "--ask", "Approve the whole release (merges, tag v1.4, deploy to production, then the data backfill)? Include #16 or keep it for later?", "--option", "Approve, include #16", "--option", "Approve, #16 later", "--option", "Not yet", "--suggest", "Approve, include #16", "--allow-wording")
-  markSent(t.file, 1, "Approve, include #16", new Date("2026-10-13T10:08:00Z"))
+  // A card from before 0.19.0, still in Waiting with a press on record (a press now takes it to Doing).
+  updateBoard(t.file, (s) => {
+    s.items.find((i) => i.id === 1).sent = { label: "Approve, include #16", at: "2026-10-13T10:08:00.000Z" }
+  })
   t.board("2026-10-13T10:00:00Z", "add", "waiting", "Pick a name", "--ask", "Which name?", "--option", "Alpha", "--option", "Beta", "--allow-wording")
   t.board("2026-10-13T10:10:00Z", "add", "waiting", "Docs move (PR #14): merge", "--ask", "Say merge (after #12)", "--allow-wording")
 }

@@ -44,7 +44,12 @@ function setup() {
     writeFileSync(join(store, "channels", `${n.pid}.json`), JSON.stringify(n))
     return n
   }
-  return { base, store, file, id, fake, coordEnv, otherEnv, board, prompts, note, done: () => rmSync(base, { recursive: true, force: true }) }
+  // A press takes the card off Waiting (0.19.0): a new question brings it back, for the next answer.
+  const ask = () => {
+    const r = board(coordEnv, "move", String(id), "waiting", "--ask", "Which now?", "--option", "Channel", "--option", "Fallback", "--allow-wording")
+    assert.equal(r.status, 0, r.stderr)
+  }
+  return { base, store, file, id, fake, coordEnv, otherEnv, board, prompts, note, ask, done: () => rmSync(base, { recursive: true, force: true }) }
 }
 
 test("channelNotes: a live note counts; a dead process's note goes; an old one doesn't count", () => {
@@ -88,9 +93,10 @@ test("answer: into the inbox for a pane with a live channel (nothing typed), typ
     const [m] = unacked(s.file)
     assert.deepEqual([m.kind, m.card, m.to, m.label, m.workspace], ["answer", s.id, COORD, "Channel", "w1"])
     assert.match(m.text, new RegExp(`^Board card ${s.id} \\(.*Card 304: pick a path\\): Channel$`))
-    assert.equal(readBoard(s.file).items[0].sent.label, "Channel")
+    assert.deepEqual([readBoard(s.file).items[0].column, readBoard(s.file).items[0].answered.label], ["doing", "Channel"])
     // No channel (its note gone): typed in, as before 0.9.0, and no new inbox message.
     rmSync(join(s.store, "channels"), { recursive: true, force: true })
+    s.ask()
     const again = s.board(s.otherEnv, "answer", String(s.id), "Fallback")
     assert.equal(again.status, 0, again.stderr)
     assert.equal(s.prompts().length, 1)
@@ -111,7 +117,7 @@ test("a button press: the pane's answerer sends through the channel when the pan
     assert.deepEqual(s.prompts(), [])
     const [m] = unacked(s.file)
     assert.deepEqual([m.kind, m.label, m.to], ["answer", "Fallback", COORD])
-    assert.equal(readBoard(s.file).items[0].sent.label, "Fallback")
+    assert.deepEqual([readBoard(s.file).items[0].column, readBoard(s.file).items[0].answered.label], ["doing", "Fallback"])
     assert.equal(answers.notes[`${s.id}:1`], undefined)
     // deliver itself: the channel when there is one, Herdr when not.
     const item = readBoard(s.file).items[0]
@@ -226,6 +232,7 @@ test("the Go channel: pushes what came while it was down, then each new message;
     assert.equal(first.meta.label, "Channel")
     assert.match(first.content, /: Channel$/)
     // A new message while it runs: pushed within a poll or two.
+    s.ask()
     const r = s.board(s.otherEnv, "answer", String(s.id), "Fallback")
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(s.prompts(), [])
