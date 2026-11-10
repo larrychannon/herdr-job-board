@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// job-guard v13
+// job-guard v15
 // Vendored into a repo's .claude/hooks/ by the `job` skill (`/job init`). Do not edit the copy in
 // a repo: change ~/.claude/skills/job/hooks/job-guard.mjs and re-run `/job init`, which replaces
 // it (`/job init --check` reports an old or edited copy).
@@ -67,6 +67,21 @@
 //     registry, <git common dir>/job-tabs.json (the skill's scripts/job-tabs.mjs writes it when
 //     it opens a job's tab), never its own tab ($HERDR_TAB_ID) and never a workspace. The id
 //     has to be written literally. The `here:` override doesn't lift this.
+//
+// Inline scripts (v15): in a job's pane (role worker or deployer, and its subagents; never the
+// coordinator) a heredoc or here-string fed to a shell or an interpreter, or a `bash -c` / `node
+// -e` / `python -c` / perl or ruby `-e` body over 3 lines, is refused with "write the script with
+// Write, then run it": such a command waits on a permission prompt that nobody in the job's tab
+// may see. A heredoc read as data (`cat > f`, `git commit -F -`, a script file) is fine.
+//
+// ship.mjs alone (v14): the coordinator, inside Herdr, runs a ship.mjs stage that acts on a press
+// (merge, release, deploy, install, approve) as a command of its own: nothing before or after it
+// (`;`, `&&`, `||`, `&`), no pipe, no redirect, no `cd`. ship acks the press and moves the card
+// itself, so nothing needs chaining, and the coordinator's settings allow only that exact form (a
+// chained one waited for a permission prompt the user never saw, or was refused). Read from the
+// shell words like the job scripts' rules: only a command that RUNS ship.mjs with one of those
+// stages counts; a grep, a heredoc, a quoted mention or its `plan` / `ask` / `verify` stages
+// don't. A line the reader can't follow is let through (this rule matches intent, not text).
 //
 // Accounts (v7): the coordinator, inside Herdr, starts jobs only on its own Claude account, the
 // CLAUDE_CONFIG_DIR it runs with (unset: ~/.claude). A coordinator folder's ./start sets that
@@ -161,7 +176,7 @@ import { homedir, tmpdir } from "node:os"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-export const VERSION = 13
+export const VERSION = 15
 export const DEFAULT_ROLE_ENV = "JOB_AGENT_ROLE"
 export const JOB_TABS_FILE = "job-tabs.json"
 const HOOK = ".claude/hooks/job-guard.mjs"
@@ -1531,6 +1546,96 @@ const WORKER_RULES = [
     String.raw`(?!\s+\S+\s+\d+\s+plan(?![\w-]))`,
   ),
 ]
+// ---- inline scripts in a job's pane (v15) ------------------------------------------------------
+// A script written inside a shell command (a heredoc piped into node, a long `python -c`) stops on
+// Claude Code's permission prompt, and a job's tab may have nobody watching: the job sat there
+// until someone looked. Refused at once instead, so the job writes the file and runs it.
+export const INLINE_MAX_LINES = 3
+export const INLINE_SCRIPT = "write the script with Write, then run it"
+
+/** The heredoc or here-string a command reads, its own or through a pipe (`cat <<EOF | bash`), or null. */
+function heredocIn(words) {
+  for (let w = words, n = 0; w && n < 32; w = w.stdinFrom, n++) if (w.heredoc != null) return w.heredoc
+  return null
+}
+const lineCount = (text) => String(text).replace(/\n+$/, "").split("\n").length
+
+/**
+ * What makes `command` an inline script, or "" (none, or a line the reader can't follow): a
+ * heredoc or here-string fed to a shell (`bash`, `sh -s`, `sudo -s`, `su`, `ssh host`) or an
+ * interpreter reading its code on stdin (`node`, `node -`, `python3 -`, perl, ruby), or a shell's
+ * `-c`, node's `-e` / `-p`, python's `-c` or perl / ruby's `-e` code over INLINE_MAX_LINES lines.
+ * A heredoc to a program that reads it as data (`cat > f`, `git commit -F -`, `gh … --body-file
+ * -`, `node script.mjs`, `bash ./script.sh`) and a short one-liner are fine.
+ */
+export function inlineScript(command) {
+  let cmds
+  try {
+    cmds = shellCommands(String(command))
+  } catch {
+    return ""
+  }
+  for (const words of cmds) {
+    if (!words.length) continue
+    const run = runOf(words)
+    if (!run) continue
+    if (run.script !== undefined) {
+      if (run.fromStdin && heredocIn(words) !== null) return "a heredoc or here-string fed to a shell"
+      if (!run.fromStdin && lineCount(run.script) > INLINE_MAX_LINES) return `a shell's -c script of ${lineCount(run.script)} lines`
+      continue
+    }
+    if (!run.words?.length || run.scriptFile) continue
+    const it = interpreterCode(run.words)
+    if (!it) continue
+    const name = lastPart(run.words[0].text)
+    const long = it.code.find((code) => lineCount(code) > INLINE_MAX_LINES)
+    if (long !== undefined) return `${name} code of ${lineCount(long)} lines on the command line`
+    if (it.stdin && heredocIn(words) !== null) return `a heredoc or here-string fed to ${name}`
+  }
+  return ""
+}
+
+// The ship.mjs stages that act on a press (v14): the coordinator runs them alone.
+const SHIP_PRESS_STAGES = new Set(["merge", "release", "deploy", "install", "approve"])
+// ship.mjs options that take a value, so a value isn't read as the repo, card or stage.
+const SHIP_VALUE_OPTIONS = /^--(?:pr|approved-by|what|brief|report|title|version|batch|stages|ask)$/
+export const SHIP_ALONE = "run ship.mjs alone; it acks the press and moves the card itself"
+
+/** The stage a ship.mjs run names (its third word past the options), or "". */
+function shipStage(args) {
+  const words = []
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i].text
+    if (SHIP_VALUE_OPTIONS.test(t)) i++
+    else if (!t.startsWith("--")) words.push(t)
+  }
+  return words.length >= 3 ? words[2] : ""
+}
+
+/**
+ * Null when `command` runs no ship.mjs stage that acts on a press, or runs one alone: one simple
+ * command, no pipe, no redirect, no other command, no `cd`. Else the block message.
+ */
+export function shipChained(command, env = process.env) {
+  let cmds
+  let runs
+  try {
+    cmds = shellCommands(String(command))
+    runs = programs(command, env)
+  } catch {
+    return null
+  }
+  const ship = runs.find((run) => {
+    const args = scriptArgs(run, "ship.mjs", env, CALLS_MAIN_CODE)
+    return args !== null && SHIP_PRESS_STAGES.has(shipStage(args))
+  })
+  if (!ship) return null
+  const only = cmds.filter((w) => w.length)
+  const one = only[0]
+  const alone = only.length === 1 && runs.length === 1 && !one.redirectOut && !one.writes?.length && !one.stdinFrom && one.heredoc == null && !one.stdinText
+  return alone ? null : SHIP_ALONE
+}
+
 // The job board's CLI (board.mjs, the skill's job-board.mjs, or a variable such as "$BOARD")
 // with --option / --suggest: answer buttons, which send text into the coordinator's chat; or
 // --allow-wording, which writes a card the board's wording check refused.
@@ -2172,6 +2277,17 @@ export function decide(input, env, deps = {}) {
   const config = deps.config ?? loadConfig(env)
   const { roleEnv, reserved } = compile(config, env)
   const role = String(env[roleEnv] ?? "").trim()
+  // v15: a job's pane (worker or deployer, and its subagents) doesn't write scripts inline.
+  if (role !== "" && role !== "coordinator" && input.tool_name === "Bash") {
+    const inline = inlineScript(String(input.tool_input?.command ?? ""))
+    if (inline) {
+      return (
+        `Blocked by ${HOOK}: ${inline}: ${INLINE_SCRIPT}. In a job's tab a script written inside a ` +
+        "shell command stops on a permission prompt that nobody may see. Put it in a file (Write, " +
+        "in your scratch dir or the worktree) and run that file as its own command (`node <file>`, `bash <file>`)."
+      )
+    }
+  }
   if (role === "deployer") return null
   const subagent = input.agent_type ? String(input.agent_type) : ""
   const coordinator = role === "" || role === "coordinator"
@@ -2182,6 +2298,9 @@ export function decide(input, env, deps = {}) {
       const command = String(input.tool_input?.command ?? "")
       const close = coordinatorCloseDecision(command, env, input, deps) ?? accountDecision(command, env, input, deps)
       if (close) return close
+      if (shipChained(command, env)) {
+        return `Blocked by ${HOOK}: ${SHIP_ALONE}. Run the ship.mjs command as a command of its own (nothing before or after it: no other command, pipe, redirect or cd), then do the rest in a separate call. On a block, retry the bare command once before asking the user.`
+      }
     }
     const message = coordinatorDecision(input, env, deps, config)
     if (message) return message
