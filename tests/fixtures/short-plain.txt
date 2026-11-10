@@ -12,11 +12,11 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 DOING (2)                                                    TO DO (3) ▾
 2 Search filters: build                             25 min   4 Export to CSV                                      1 min
-  The filter panel from the approved mockup, saved per         Let people download any table as CSV; three asked for
-  user.                                                        it.
-
-3 Docs site: fix links                              10 min   5 Dark mode                                          1 min
-  Check every link on the new docs site and fix the 404s.      Follow the system theme; the colour tokens are in place.
+  in Doing, nothing running                                    Let people download any table as CSV; three asked for
+  The filter panel from the approved mockup, saved per         it.
+  user.
+↓ 1 more                                                     5 Dark mode                                          1 min
+                                                               Follow the system theme; the colour tokens are in place.
                                                              ↓ 1 more
 
 QUEUE · 0 ▸
@@ -60,12 +60,12 @@ Tab section · ↑↓ card · Enter details · c copy · u queue · t to do · d
 
 DOING (2)                                    TO DO (3) ▾
 2 Search filters: build             25 min   4 Export to CSV                      1 min
-  The filter panel from the approved           Let people download any table as CSV;
-  mockup, saved per user.                      three asked for it.
-                                             ↓ 2 more
-3 Docs site: fix links              10 min
-  Check every link on the new docs site
-  and fix the 404s.
+  in Doing, nothing running                    Let people download any table as CSV;
+  The filter panel from the approved           three asked for it.
+  mockup, saved per user.                    ↓ 2 more
+↓ 1 more
+
+
 
 QUEUE · 0 ▸
 DONE · 0 today ▸

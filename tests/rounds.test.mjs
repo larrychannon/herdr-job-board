@@ -5,8 +5,8 @@
 //   workspace are counted in the coordinator's reminder;
 // - a new round of a job whose card waits on the user goes on that card (no duplicate);
 // - a final report rewritten with a new summary applies again; keys from before still count;
-// - a report never closes or questions a card with open cards under it, and an FYI (`notes`)
-//   never becomes the card's question.
+// - a report applies to a card with open cards under it as to any card (0.20.0: never held); the
+//   card shows where its most urgent open part is; an FYI (`notes`) never becomes its question.
 // Herdr is the fake (tests/fixtures/fake-herdr.mjs); the store is a scratch folder.
 import "./guard.mjs"
 import assert from "node:assert/strict"
@@ -18,7 +18,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { appendInbox, inboxMessage, jobCard, JOB_CARD_RECENT_MS, readInbox, reportOutcome, strayMessages, unacked } from "../board.mjs"
+import { appendInbox, inboxMessage, jobCard, JOB_CARD_RECENT_MS, readBoard, readInbox, reportOutcome, shownColumn, strayMessages, unacked } from "../board.mjs"
 import { handle } from "../hooks/board-hook.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
@@ -234,74 +234,51 @@ test("a card applied before 0.12.0 (its key without the summary) is still settle
   }
 })
 
-test("a card with open cards under it: a job's report keeps it in Doing, stores the report, and notes the coordinator once (the FYI, the Done and the blocked cases)", () => {
+test("a card with open cards under it: a job's report applies as on any card (never held), and the card shows where its most urgent part is", () => {
   const s = setup()
   try {
     const fix = s.report("fix3", { status: "running" })
     s.board(at(0), "job-start", "rnm-add-rows", "--title", "Release notes: add rows", "--report", fix)
     s.board(at(1), "job-start", "rnm-add-rows-check4", "--title", "Release notes rows: check", "--parent", "1", "--report", s.report("check4", { status: "running" }))
-    // The round ends done, its needs_user an FYI (as it was, before notes): never the card's question.
-    writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the sort order.", needs_user: ["FYI: a stray row is still in production; the check will look at it."] }))
+    writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the sort order.", notes: ["A stray row is still in production; the check will look at it."] }))
     const r = s.board(at(2), "job-report", "rnm-add-rows", "--if-final")
-    assert.match(r.stdout, /^1 stays in Doing: Release notes: add rows \(it waits on #2; the job's done report is stored on it, not applied\)/)
-    assert.deepEqual([s.card(1).column, s.card(1).ask, s.card(1).report], ["doing", "", fix])
+    assert.match(r.stdout, /^1 → done: Release notes: add rows/)
+    assert.deepEqual([s.card(1).column, s.card(1).ask, s.card(1).report], ["done", "", fix])
+    // Stored Done, it shows in Doing while its check (a part in Doing) runs.
+    assert.equal(shownColumn(readBoard(s.file), s.card(1)), "doing")
     const notes = () => unacked(s.file, { workspace: "w1" }).filter((m) => m.kind === "note")
-    assert.equal(notes().length, 1)
-    assert.match(notes()[0].text, /^\[job note\] rnm-add-rows — card 1 \(Release notes: add rows\): the job finished a round\. The card waits on #2, so it stays in Doing with the report stored .* Its report asks: FYI: a stray row/)
+    assert.equal(notes().length, 0, "nothing for the coordinator to rewrite")
     // The same report again: nothing new.
-    assert.match(s.board(at(3), "job-report", "rnm-add-rows").stdout, /^1 unchanged \(doing\)/)
-    assert.equal(notes().length, 1)
-    // done with nothing for the user (it used to close the card): still Doing.
-    writeFileSync(fix, JSON.stringify({ status: "done", summary: "Reworked the rows.", notes: ["The stray row is the check's to judge."] }))
-    s.board(at(4), "job-report", "rnm-add-rows")
-    assert.equal(s.card(1).column, "doing")
-    // blocked: still Doing, and the note leads with it.
+    assert.match(s.board(at(3), "job-report", "rnm-add-rows").stdout, /^1 unchanged \(done\)/)
+    // blocked: Waiting with the reason, whatever is open under it.
     writeFileSync(fix, JSON.stringify({ status: "blocked", summary: "The release is locked." }))
-    s.board(at(5), "job-report", "rnm-add-rows")
-    assert.deepEqual([s.card(1).column, s.card(1).ask], ["doing", ""])
-    assert.match(notes().at(-1).text, /the job is blocked: The release is locked\./)
-    // The check is done: the next report applies as usual.
-    s.board(at(6), "move", "2", "done")
-    writeFileSync(fix, JSON.stringify({ status: "done", summary: "All rows in, checked." }))
-    s.board(at(7), "job-report", "rnm-add-rows")
-    assert.equal(s.card(1).column, "done")
+    s.board(at(4), "job-report", "rnm-add-rows")
+    assert.equal(s.card(1).column, "waiting")
+    assert.match(s.card(1).ask, /The release is locked/)
+    // The check done: the card shows in its own column.
+    s.board(at(5), "move", "2", "done")
+    assert.equal(shownColumn(readBoard(s.file), s.card(1)), "waiting")
   } finally {
     s.done()
   }
 })
 
-test("a held report run again after the cards under it close is a no-op: never a Done card back to Waiting with the FYI as its question", () => {
-  for (const after of ["done", "doing"]) {
-    const s = setup()
-    try {
-      const fix = s.report("fix3", { status: "running" })
-      s.board(at(0), "job-start", "rnm-add-rows", "--title", "Release notes: add rows", "--report", fix)
-      s.board(at(1), "job-start", "rnm-add-rows-check4", "--title", "Release notes rows: check", "--parent", "1", "--report", s.report("check4", { status: "running" }))
-      s.board(at(2), "job-start", "rnm-add-rows-check5", "--title", "Release notes rows: fifth check", "--parent", "1", "--report", s.report("check5", { status: "running" }))
-      // The round's report lands while both checks are open, its needs_user an FYI: held in Doing.
-      writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the sort order.", needs_user: ["FYI: a stray empty test row is still in production."], notes: ["The check will look at it."] }))
-      assert.match(s.board(at(3), "job-report", "rnm-add-rows", "--if-final").stdout, /^1 stays in Doing: Release notes: add rows \(it waits on #2, #3;/)
-      assert.deepEqual([s.card(1).column, s.card(1).ask], ["doing", ""])
-      const notes = () => unacked(s.file, { workspace: "w1" }).filter((m) => m.kind === "note").length
-      assert.equal(notes(), 1)
-      // The checks close; the coordinator moves the card to Done (or leaves it in Doing).
-      s.board(at(4), "move", "2", "done")
-      s.board(at(5), "move", "3", "done")
-      if (after === "done") s.board(at(6), "move", "1", "done")
-      const settled = s.card(1)
-      // A restarted wait, a --once check or the follower runs the same report again.
-      assert.equal(s.board(at(7), "job-report", "rnm-add-rows", "--if-final").stdout, "", `${after}: quiet`)
-      assert.match(s.board(at(8), "job-report", "rnm-add-rows").stdout, new RegExp(`^1 unchanged \\(${after}\\): Release notes: add rows`))
-      assert.deepEqual(s.card(1), settled, `${after}: the card is as the coordinator left it`)
-      assert.equal(s.card(1).ask, "", `${after}: the FYI never becomes the question`)
-      assert.equal(notes(), 1, `${after}: no new note`)
-      // A rewritten report still applies (the round's real end).
-      writeFileSync(fix, JSON.stringify({ status: "done", summary: "Fixed the sort order; the stray row is gone." }))
-      s.board(at(9), "job-report", "rnm-add-rows")
-      assert.equal(s.card(1).column, "done")
-    } finally {
-      s.done()
-    }
+test("a report held before 0.20.0 (its key marked held) is still settled: run again, nothing changes", () => {
+  const s = setup()
+  try {
+    const fix = s.report("fix3", { status: "done", summary: "Fixed the sort order." })
+    s.board(at(0), "job-start", "rnm-add-rows", "--title", "Release notes: add rows", "--report", fix)
+    s.board(at(1), "add", "doing", "Release notes rows: check", "--parent", "1", "--desc", "A check.")
+    const state = JSON.parse(readFileSync(s.file, "utf8"))
+    const held = `r3-${createHash("sha256").update(JSON.stringify([fix, "done", "", "Fixed the sort order.", "held"])).digest("hex").slice(0, 16)}`
+    Object.assign(state.items[0], { column: "doing", reported: held, updated: at(2).toISOString() })
+    writeFileSync(s.file, JSON.stringify(state))
+    const settled = s.card(1)
+    assert.equal(s.board(at(3), "job-report", "rnm-add-rows", "--if-final").stdout, "")
+    assert.match(s.board(at(4), "job-report", "rnm-add-rows").stdout, /^1 unchanged \(doing\): Release notes: add rows/)
+    assert.deepEqual(s.card(1), settled)
+  } finally {
+    s.done()
   }
 })
 
@@ -329,7 +306,7 @@ test("a final report rewritten after it was applied tells the coordinator, even 
     writeFileSync(path, JSON.stringify({ status: "done", summary: "Fix first: the Inspector crashes.", needs_user: ["Fix the Inspector crash before release?"] }))
     s.board(at(21), "job-report", "review")
     assert.equal(notes().length, 2)
-    assert.match(notes()[1].text, /rewrote its final report .* the card is waiting on you on the new one\. .* is waiting on the user with the job's own words/)
+    assert.match(notes()[1].text, /rewrote its final report .* the card is waiting on you on the new one\./)
     // A new round on the card (job-start --id, a new report): its first report is no rewrite.
     s.board(at(22), "move", "1", "done")
     const r2 = s.report("review-2", { status: "running" })

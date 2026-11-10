@@ -103,7 +103,7 @@ test("colours: the 16-colour palette, by section, status, ask and age; off witho
     has("1", "TO DO (1)")
     has("2;32", "DONE · 1 today ▸") // folded
     has("32", "working")
-    has("90", "no agent")
+    has("1;33", "in Doing, nothing running") // a Doing card with nothing running (0.20.0), where "no agent" was
     // The question is text: a dim label, then the words with no style of their own; every
     // button is filled (the suggested one bold), so only the buttons look like something to click.
     has("2", "Needs you:")
@@ -1059,8 +1059,7 @@ test("board snapshots: To do and Done folded (default), To do open (t), both ope
       assert.match(first, / {2}working \[=   \]/)
       if (bars === 2) assert.match(first, / {2}working, report done \[=   \]/, "after the report too")
       else assert.match(first, / {2}working, report done(?! \[)/)
-      assert.match(first, / {2}idle(?! \[)/, "idle stands still")
-      assert.match(first, / {2}no agent(?! \[)/, "no agent stands still")
+      assert.match(first, / {2}in Doing, nothing running(?! \[)/, "a card with nothing running stands still")
     }
     {
       const state = JSON.parse(readFileSync(t.file, "utf8"))

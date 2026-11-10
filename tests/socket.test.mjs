@@ -591,26 +591,21 @@ test("re-post: unacked 10 minutes after the last post, twice at most per session
   }
 })
 
-test("the turn-start reminder: no inbox wait asked for while a coordinator note is live; ack with the CLI", async () => {
+test("the turn-start reminder: never asks for an inbox wait or the channel's tool (0.20.0); ack with the CLI", async () => {
   const s = setup()
   try {
     s.message("[job finished] fix-x — done — one")
     const here = { HERDR_ENV: "1", HERDR_PANE_ID: COORD }
-    let text = inboxReminder(s.file, { workspace: "w1", env: here })
-    assert.match(text, /No inbox watcher is running/)
+    const check = (text) => {
+      assert.doesNotMatch(text, /inbox watcher|inbox wait|channel's ack tool/)
+      assert.match(text, /board\.mjs" inbox ack <id>… \(or --all\)/)
+    }
+    check(inboxReminder(s.file, { workspace: "w1", env: here }))
     const live = await fakeSession(s.sock())
-    // Another pane's session noted in the workspace: not this coordinator's way.
-    s.note(live.path, { pane: "w1:p7" })
-    assert.match(inboxReminder(s.file, { workspace: "w1", env: here }), /No inbox watcher is running/)
     s.note()
-    text = inboxReminder(s.file, { workspace: "w1", env: here })
-    assert.doesNotMatch(text, /inbox watcher|inbox wait/)
-    assert.match(text, /board\.mjs" inbox ack <id>… \(or --all\)/)
-    // With a channel too: still the CLI (it acks the same inbox).
+    check(inboxReminder(s.file, { workspace: "w1", env: here }))
     s.channel()
-    assert.match(inboxReminder(s.file, { workspace: "w1", env: here }), /inbox ack <id>/)
-    // The coordinator set to channel: the note isn't its way; the channel's ack tool, as in 0.9.0.
-    assert.match(inboxReminder(s.file, { workspace: "w1", env: { ...here, JOB_BOARD_DELIVERY: "channel" } }), /the job-board channel's ack tool/)
+    check(inboxReminder(s.file, { workspace: "w1", env: { ...here, JOB_BOARD_DELIVERY: "channel" } }))
     await live.close()
   } finally {
     s.done()

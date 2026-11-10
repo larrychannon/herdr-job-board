@@ -23,7 +23,7 @@
   From the new OpenAPI file.
 
 [2m8 [0m[1mRelease notes: draft[0m                                                                                            [2m18 min[0m
-  [90mno agent[0m
+  [1;33min Doing, nothing running[0m
 
 
 
@@ -64,7 +64,7 @@
   From the new OpenAPI file.
 
 [2m8 [0m[1mRelease notes: draft[0m                              [2m18 min[0m
-  [90mno agent[0m
+  [1;33min Doing, nothing running[0m
 
 
 
@@ -106,7 +106,7 @@
   From the new OpenAPI file.
 
 [2m8 [0m[1mRelease notes: draft[0m          [2m18 min[0m
-  [90mno agent[0m
+  [1;33min Doing, nothing running[0m
 
 
 
@@ -134,7 +134,7 @@
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [=   ][0m  [2m25 min[0m
 [1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [=   ][0m  [2m20 min[0m
-[1m [0m[2m8[0m   Release notes: draft                                               [90mno agent[0m  [2m18 min[0m
+[1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 
 [1;36mQUEUE · 0 ▸[0m
 
@@ -175,7 +175,7 @@
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [=   ][0m  [2m25 min[0m
 [1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [=   ][0m  [2m20 min[0m
-[1m [0m[2m8[0m   Release notes: draft                                               [90mno agent[0m  [2m18 min[0m
+[1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 
 [1;36mQUEUE · 0 ▸[0m
 
@@ -216,7 +216,7 @@
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [   =][0m  [2m25 min[0m
 [1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [   =][0m  [2m20 min[0m
-[1m [0m[2m8[0m   Release notes: draft                                               [90mno agent[0m  [2m18 min[0m
+[1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 
 [1;36mQUEUE · 0 ▸[0m
 

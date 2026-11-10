@@ -23,7 +23,7 @@ DOING (4)
   From the new OpenAPI file.
 
 8 Release notes: draft                                                                                            18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -64,7 +64,7 @@ DOING (4)                                                    TO DO (1) ▾
   From the new OpenAPI file.
 
 8 Release notes: draft                              18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -106,7 +106,7 @@ DOING (4)                                TO DO (1) ▾                          
   From the new OpenAPI file.
 
 8 Release notes: draft          18 min
-  no agent
+  in Doing, nothing running
 
 
 
@@ -134,7 +134,7 @@ DOING (4) ───────────────────────�
  3   Search filters: build                           working, report done [=   ]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [=   ]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 
@@ -175,7 +175,7 @@ DOING (4) ───────────────────────�
  3   Search filters: build                           working, report done [=   ]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [=   ]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 
@@ -216,7 +216,7 @@ DOING (4) ───────────────────────�
  3   Search filters: build                           working, report done [   =]  25 min
  4   Docs: fix links                                                        idle  24 min
  7   API client: regenerate                                       working [   =]  20 min
- 8   Release notes: draft                                               no agent  18 min
+ 8   Release notes: draft                              in Doing, nothing running  18 min
 
 QUEUE · 0 ▸
 

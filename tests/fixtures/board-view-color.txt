@@ -15,7 +15,7 @@
   The filter panel from the approved mockup.
 
 [2m4 [0m[1mDocs: fix links[0m                                   [2m24 min[0m
-  [90mno agent[0m
+  [1;33min Doing, nothing running[0m
 
 
 

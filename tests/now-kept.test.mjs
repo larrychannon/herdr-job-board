@@ -221,14 +221,14 @@ test("a Now line given to a Done card stays in its description, where a Done car
 
 // --- hidden by a parent's built line ----------------------------------------------------------
 
-test("a parent's Now line from --desc, while its line is built from the cards under it, is still shown in its description", () => {
+test("a parent's Now line from --desc is its status line, with cards under it too (no line built from them, 0.20.0)", () => {
   const t = setup()
   try {
     t.ok(T, "add", "doing", "Login fix: release", "--desc", "Ship the login fix.\nNow: the fix waits on the check; then it ships with the release")
     t.ok(T, "add", "doing", "Login fix: check", "--parent", "1", "--desc", "A fresh check.")
     const card = t.shown(1)
-    assert.match(card, /Now: #2 /, card)
-    assert.ok(card.includes("the fix waits on the check; then it ships with the release"), card)
+    assert.doesNotMatch(card, /Now: #2 |Own line:/, card)
+    assert.match(card, /Now: the fix waits on the check; then it ships with the release/, card)
   } finally {
     t.done()
   }
@@ -376,22 +376,17 @@ test("a --desc with no Now line keeps a status line that now or a script wrote",
   }
 })
 
-test("a parent's own --desc Now line shows as 'Own line:', not 'Earlier:', under the line built from its cards", () => {
+test("a parent's own --desc Now line is its status line (0.20.0: no line built from its cards, no warning)", () => {
   const t = setup()
   try {
     t.ok(T, "add", "todo", "Parent: plan", "--desc", "The plan.\nNow: waiting for the vendor")
     t.ok(T, "add", "todo", "Child: build", "--parent", "1")
     const card = t.shown(1)
-    assert.match(card, /Own line: waiting for the vendor/)
-    assert.doesNotMatch(card, /Earlier:/)
-    // A --desc Now line on a parent that shows a built line says so.
+    assert.match(card, /^Now: waiting for the vendor/m)
+    assert.doesNotMatch(card, /Earlier:|Own line:/)
     const r = t.ok(LATER, "edit", "1", "--desc", "The plan.\nNow: the vendor answered")
-    assert.match(r.stderr, /built from the cards under it/)
-    assert.match(t.shown(1), /Own line: the vendor answered/)
-    // A job started on it in the same call gives it a job: it shows its own line, no warning.
-    const started = t.ok(LATER, "job-start", "plan-vendor", "--id", "1", "--desc", "The plan.\nNow: a job checks the vendor's answer")
-    assert.doesNotMatch(started.stderr, /built from the cards under it/)
-    assert.match(t.shown(1), /^Now: a job checks the vendor's answer/m)
+    assert.doesNotMatch(r.stderr, /built from the cards under it/)
+    assert.match(t.shown(1), /^Now: the vendor answered/m)
   } finally {
     t.done()
   }
