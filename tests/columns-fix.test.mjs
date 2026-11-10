@@ -65,7 +65,9 @@ test("a job's done report on a card with a To do part: the card shows in To do, 
     const path = s.report("build", { status: "done", summary: "Built it.", tested: "read-only" })
     s.board(at(0), "job-start", "gcp-build", "--title", "Create nodes on GCP: build", "--desc", "d", "--report", path)
     s.board(at(1), "add", "todo", "Node password: seen in a job's log", "--parent", "1")
-    s.board(at(2), "job-report", "gcp-build")
+    const reported = s.board(at(2), "job-report", "gcp-build")
+    assert.match(reported.stdout, /^1 → done: Create nodes on GCP: build$/m, "stdout as before")
+    assert.match(reported.stderr, /^board: #1 shows in To do until only follow-ups are left under it\.$/m, "says where it shows, as done does")
     assert.equal(s.card(1).column, "done", "stored Done, as the report says")
     assert.equal(s.shown(1), "todo", "real work is left under it")
     const view = buildView(readBoard(s.file), null, { now: at(3) })
@@ -169,9 +171,42 @@ test("a round never takes over another running job's card: refused with the job 
     s.board(at(3), "add", "doing", "Hand-linked: build", "--job", "hand-job")
     s.board(at(4), "job-start", "hand-check", "--id", "2", "--round", "check")
     assert.equal(s.card(2).job, "hand-check")
-    // A round on a card whose current job is one of its own rounds: allowed (its report still lands on its round).
-    s.board(at(5), "job-start", "login-build", "--id", "1", "--round", "fix", "--report", s.report("fix", { status: "running" }))
-    assert.equal(s.card(1).job, "login-build")
+    // A round on a card whose current job is another slug's running round: refused, the card unchanged.
+    const running = readFileSync(s.file, "utf8")
+    const fix = s.run(at(5), "job-start", "login-build", "--id", "1", "--round", "fix", "--report", s.report("fix", { status: "running" }))
+    assert.equal(fix.status, 2, fix.stderr)
+    assert.match(fix.stderr, /card 1 is job login-check's, which is still running/)
+    assert.equal(readFileSync(s.file, "utf8"), running, "the card is unchanged")
+  } finally {
+    s.done()
+  }
+})
+
+test("a round follows a finished round on the card, but never takes another slug's running round (a check typed onto the wrong card)", () => {
+  const s = setup()
+  try {
+    for (const [n, name] of [[0, "a"], [1, "b"]]) {
+      const build = s.report(`${name}-build`, { status: "done", summary: "Built.", tested: "read-only" })
+      s.board(at(n), "job-start", `${name}-build`, "--title", `Change ${name.toUpperCase()}: build`, "--desc", "d", "--report", build)
+      s.board(at(n), "job-report", `${name}-build`)
+    }
+    const ac = s.report("a-check", { status: "running" })
+    s.board(at(2), "job-start", "a-check", "--id", "1", "--round", "check", "--report", ac)
+    // B's check typed onto A's card while A's check runs: refused, naming the job and the card.
+    const before = readFileSync(s.file, "utf8")
+    const r = s.run(at(3), "job-start", "b-check", "--id", "1", "--round", "check", "--report", s.report("b-check", { status: "running" }))
+    assert.equal(r.status, 2, r.stderr)
+    assert.match(r.stderr, /card 1 is job a-check's, which is still running \(its report isn't final\): check the number/)
+    assert.equal(readFileSync(s.file, "utf8"), before, "the card is unchanged")
+    // On its own card it starts.
+    s.board(at(4), "job-start", "b-check", "--id", "2", "--round", "check", "--report", s.report("b-check", { status: "running" }))
+    assert.equal(s.card(2).job, "b-check")
+    // A's check finished: its fix round follows on card 1.
+    writeFileSync(ac, JSON.stringify({ status: "done", verdict: "fix-first", summary: "Two.", findings: [{ what: "a" }, { what: "b" }], tested: "read-only" }))
+    s.board(at(5), "job-report", "a-check")
+    s.board(at(6), "job-start", "a-build", "--id", "1", "--round", "fix", "--report", s.report("a-fix", { status: "running" }))
+    assert.equal(s.card(1).job, "a-build")
+    assert.equal(roundsLine(s.card(1)), "check 1: 2 problems · fix: running")
   } finally {
     s.done()
   }

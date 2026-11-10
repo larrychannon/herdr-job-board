@@ -10135,10 +10135,11 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
           const found = opts.id ? findItem(s, String(opts.id)) : mine.findLast((i) => i.column === "todo" || i.column === "queue" || i.column === "doing") || waiting.findLast(quiet)
           // A round on the change's card (0.20.0): --round check|fix with --id, the card of any job.
           if (round) {
-            // Never another job's card while that job runs (its report not final yet): a mistyped
-            // number took it over, and that job's report then reached no card. A card with --job
-            // and no report path, one whose job reported, and the card's own rounds stay open to it.
-            if (found?.job && found.job !== slug && clean(found.report) && !roundOf(found, found.job) && !reportFinal(found.report)) {
+            // Never another job's card while that job runs (its report not final yet), a build or
+            // a round: a mistyped number took it over, and that job's verdict then landed on the
+            // wrong card. A card with --job and no report path, one whose job reported, and the
+            // same slug (a new report file) stay open to it.
+            if (found?.job && found.job !== slug && clean(found.report) && !reportFinal(found.report)) {
               throw usage(`card ${found.id} is job ${found.job}'s, which is still running (its report isn't final): check the number, or start the round once ${found.job} has reported`)
             }
             const it = owned(s, found, null)
@@ -10418,6 +10419,12 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
         else if (item.stays) out(`${item.id} stays done: ${item.title} (job ${slug}'s follow-up report needs nothing from the user; no new card)`)
         else if (asked?.options) out(`${item.id} → ${label(item.column)}: ${item.title}\n  ask: ${asked.ask.replace(/\n/g, "\n  ask: ")}\n  buttons: ${asked.options.map((o) => `${o.label}${o.suggested ? " ✓" : ""}`).join(" · ")}${item.proof ? `\n  ${item.proof.text}` : ""}`)
         else out(`${item.id} → ${label(item.column)}: ${item.title}${round ? ` (${roundText(round)})` : ""}${item.ask ? `\n  ask: ${item.ask.replace(/\n/g, "\n  ask: ")}` : ""}${item.proof ? `\n  ${item.proof.text}` : ""}${asked?.problems?.length ? `\n  the job's buttons were kept off the card: ${asked.problems.slice(0, 3).join("; ")}` : ""}`)
+        // Done with real work still open under it: say where it shows, as `done` does (stderr: stdout stays as parsers read it).
+        if (!item.unchanged && !item.late && item.column === "done") {
+          const b = readBoard(file)
+          const shown = shownColumn(b, b.items.find((i) => i.id === item.id) || item)
+          if (shown !== "done") err(`board: #${item.id} shows in ${SHOWN_WORDS[shown] || label(shown)} until only follow-ups are left under it.`)
+        }
         // Text hidden as a secret (0.18.0) is always the coordinator's to hear about, unless nothing changed.
         const secretNote = hidden.length ? secretsNote(item, slug, hidden, path) : ""
         // What the coordinator must hear beyond the job's own "[job finished]": a report after the

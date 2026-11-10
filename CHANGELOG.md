@@ -46,7 +46,9 @@ press of a merge button runs the work itself.
   (the next step is the coordinator's); one that needs the user, or is blocked or failed, goes to
   Waiting as any report does. A late report of an earlier round only records its verdict, found
   by its job and report file (a slug reused for check 1 and check 2). A round on another job's
-  card while that job runs (its report not final) is refused, naming the job and the number. Old
+  card while that job runs (a build or a round, its report not final) is refused, naming the job
+  and the number; a round follows on the card once the last one's report is final. `job-report`'s
+  done line says where the card shows when real work is left under it, as `done` does. Old
   check cards under a card (`500-check`) keep working.
 - **A press runs the work**: `--action "<label>=<stage>"` (add, move, edit; the coordinator's
   only) stores `{ stage, repo, card }` on a merge question's button, the repo being the card's

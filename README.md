@@ -159,8 +159,8 @@ itself out again at once.
   own card (`job-start <slug> --id <card> --round check|fix`), not as cards of their own. The
   card shows them on one line, `check 1: 2 problems · fix: done · check 2: running`, and its
   details list each with its job. A round on a card whose job is another job, still running (a
-  report path whose report isn't final), is refused with that job's name and the number, as
-  `job-start --id` is: a mistyped number never takes over another job's card. Give each round its
+  build or a round whose report isn't final), is refused with that job's name and the number, as
+  `job-start --id` is: a mistyped number never takes over another running job's card. Give each round its
   own slug, or the same slug with a new report file: a round is found by its job and report file.
 - **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
   and its kind, its own number beside it: `500 · check (511)`, the second review under 500
