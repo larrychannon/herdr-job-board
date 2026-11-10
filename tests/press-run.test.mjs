@@ -14,7 +14,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { buildView, createAnswerer, optionsOf, pressAction, readBoard, readInbox, RUN_UNAVAILABLE_LINE, unacked } from "../board.mjs"
+import { buildView, cardFlag, createAnswerer, flagReminder, optionsOf, pressAction, readBoard, readInbox, RUN_NEVER_TEXT, RUN_UNAVAILABLE_LINE, runLines, shipPath, shipRuns, shortFlag, unacked } from "../board.mjs"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const BOARD = join(ROOT, "board.mjs")
@@ -268,6 +268,79 @@ test("a run whose process is gone (a crash, a reboot) is not running: the card i
     assert.equal(s.run(["run-press", "1", r.msg]).status, 1)
     assert.deepEqual(s.calls(), [])
     assert.equal(s.card().run.status, "failed")
+  } finally {
+    s.done()
+  }
+})
+
+test("an unavailable run names no log (none was written) and gives its own reason; a contract that hangs says so", () => {
+  const s = setup()
+  try {
+    s.question(["--action", "Merge and install it=merge+install"])
+    const r = pressAction(s.file, 1, "Merge and install it", { env: s.env, now: new Date(NOW), start: () => {} })
+    s.ok(["run-press", "1", r.msg], { JOB_BOARD_SHIP: s.ships.old })
+    const c = s.card()
+    assert.equal(c.run.status, "unavailable")
+    assert.equal(c.run.log, undefined, "no log is named for a run that never ran")
+    assert.equal(c.run.why, "the merge script has no run stage yet")
+    assert.doesNotMatch(unacked(s.file).find((m) => m.kind === "note").text, /\(log /)
+    assert.match(runLines(c, new Date(NOW))[0], /· not run: the merge script has no run stage yet$/)
+    // A contract that doesn't answer is stopped, and the reason says it timed out (not "no run stage").
+    const hang = join(s.base, "ship-hang.mjs")
+    writeFileSync(hang, "setInterval(() => {}, 1000)\n")
+    assert.deepEqual(shipRuns(hang, s.env, 300), { ok: false, why: "the merge script's contract didn't answer in 1 s" })
+    assert.match(shipRuns(hang, s.env, 1500).why, /^the merge script's contract didn't answer in 2 s$/)
+    assert.equal(shipRuns(s.ships.old, s.env).why, "the merge script has no run stage yet")
+  } finally {
+    s.done()
+  }
+})
+
+test("a run still starting a minute after the press never started: amber on the card and in the reminder, failed in the details, even with Herdr unknown", () => {
+  const s = setup()
+  try {
+    s.question(["--action", "Merge and install it=merge+install"])
+    // The runner never claims it (killed before it started, or refused).
+    pressAction(s.file, 1, "Merge and install it", { env: s.env, now: new Date(NOW), start: () => {} })
+    const state = readBoard(s.file)
+    const c = state.items[0]
+    assert.equal(c.run.status, "starting")
+    const soon = new Date(Date.parse(NOW) + 30_000)
+    const later = new Date(Date.parse(NOW) + 61_000)
+    assert.equal(cardFlag(state, c, "doing", { now: soon, agentsKnown: false }), "")
+    assert.equal(cardFlag(state, c, "doing", { now: later, agentsKnown: false }), RUN_NEVER_TEXT)
+    assert.equal(shortFlag(RUN_NEVER_TEXT), "run never started")
+    assert.equal(buildView(state, null, { now: later }).doing[0].flag, "the run never started")
+    assert.match(runLines(c, later)[0], /· failed: the run never started$/)
+    assert.match(runLines(c, soon)[0], /· starting/)
+    assert.match(flagReminder(state, { agents: () => null, now: later }), /#1 "Login fix: merge and install" \(the run never started\)/)
+  } finally {
+    s.done()
+  }
+})
+
+test("JOB_BOARD_SHIP names the merge script under the test harness only: a pressing pane's env never picks the script", () => {
+  const home = "/home/someone"
+  assert.equal(shipPath({ HOME: home, JOB_BOARD_SHIP: "/tmp/evil.mjs" }), join(home, ".claude", "skills", "job", "scripts", "ship.mjs"))
+  assert.equal(shipPath({ HOME: home, JOB_BOARD_SHIP: "/tmp/fake.mjs", JOB_BOARD_TEST_SANDBOX: "/tmp" }), "/tmp/fake.mjs")
+  assert.equal(shipPath({ HOME: home, JOB_BOARD_SHIP: "relative.mjs", JOB_BOARD_TEST_SANDBOX: "/tmp" }), join(home, ".claude", "skills", "job", "scripts", "ship.mjs"))
+})
+
+test("move --action: stored on the card's buttons, or refused when there is no such button; never dropped in silence", () => {
+  const s = setup()
+  try {
+    s.question()
+    s.ok(["move", "1", "waiting", "--action", "Merge and install it=merge+install"])
+    assert.deepEqual(optionsOf(s.card())[0].action, { stage: "merge+install", repo: s.base, card: 1 })
+    // Out of Waiting and back without --option: the buttons went with the question, so it is refused.
+    s.ok(["move", "1", "doing"])
+    const r = s.run(["move", "1", "waiting", "--ask", "Merge it?", "--desc", "d\nNow: checked", "--action", "Merge and install it=merge+install"])
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /--action "Merge and install it": no such button on card 1/)
+    assert.equal(s.card().column, "doing", "nothing written")
+    // A worker can't, as with add and edit.
+    const w = s.run(["move", "1", "waiting", "--action", "Merge and install it=merge+install"], { JOB_AGENT_ROLE: "worker" })
+    assert.equal(w.status, 2)
   } finally {
     s.done()
   }

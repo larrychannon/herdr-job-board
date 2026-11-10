@@ -96,11 +96,13 @@ itself out again at once.
   **parts**. **A card shows where its most urgent open part is** (0.20.0), worked out each time
   the board draws, never stored: a part asking you puts it in **Waiting on you**; else a part in
   Doing, or a job, a run or a press of its own going on, in **Doing**; else a card not started
-  yet (To do, the Queue) or a Done one stays where it is; else it is **To do** while real work is
-  left under it; else, its only open parts being **follow-ups** (cards titled `Follow-up: …`, or
+  yet (To do, the Queue) stays where it is; else (a Doing or a Done card) it is **To do** while
+  real work is left under it, even after its job reported done, and isn't archived until it shows
+  Done; else, its only open parts being **follow-ups** (cards titled `Follow-up: …`, or
   added with `--follow-up`: what a merge or a check files for later), it is **Done**, and the
-  follow-ups show as plain To do cards. A card with no open parts shows in its own column. Its
-  parts are drawn **straight under it** when they show in its section, in every layout (0.7.3):
+  follow-ups show as plain To do cards. A card with no open parts shows in its own column. A
+  Doing card shown Done only through its follow-ups is stored Done when the last of them is
+  done. Its parts are drawn **straight under it** when they show in its section, in every layout (0.7.3):
   their numbers in the id column with every other card's, their titles two cells further in per
   level, after a `↳`, with their state as a tag (`[to do]`). A part in another section keeps its
   own row (or card) there, with its own state, buttons, age and order, counted there, and one
@@ -147,11 +149,19 @@ itself out again at once.
   reminder ("Cards that look stuck"): `pressed 12 min ago, nothing started` (a press 5 minutes
   ago that nothing started since) and `in Doing, nothing running` (no agent working, no run and
   no running mark on it or a part in Doing, 10 minutes after its last change; only when Herdr's
-  agent list could be read). A narrow row says `pressed, not started` and `nothing running`.
+  agent list could be read). A job whose agent is alive and idle counts as running while its
+  report isn't final and its card has no `stopped …` line (it waits on a test run or the
+  heavy-command lock); a finished round (its report final) is flagged. A press's run still
+  starting a minute on shows `the run never started`. A narrow row says `pressed, not
+  started`, `nothing running` and `run never started`. The reminder says to check the card's
+  tab first and never to close a job whose agent is alive.
 - **Rounds** (0.20.0): a check of a change, and the fix after it, run as rounds on the change's
   own card (`job-start <slug> --id <card> --round check|fix`), not as cards of their own. The
   card shows them on one line, `check 1: 2 problems · fix: done · check 2: running`, and its
-  details list each with its job.
+  details list each with its job. A round on a card whose job is another job, still running (a
+  report path whose report isn't final), is refused with that job's name and the number, as
+  `job-start --id` is: a mistyped number never takes over another job's card. Give each round its
+  own slug, or the same slug with a new report file: a round is found by its job and report file.
 - **Sub-card names** (0.19.0): a check or a review made for a card shows as its parent's number
   and its kind, its own number beside it: `500 · check (511)`, the second review under 500
   `500 · review2 (515)`, where the number goes (the plain number when drawn under a card,
@@ -453,8 +463,8 @@ button itself. A click on the question never sends.
   `board.mjs run-press <card> <message id>` in the background, detached, so closing or
   restarting the pane doesn't stop it. The runner checks again that the action is this card's,
   asks the merge script whether it can run a press (`node ship.mjs contract` prints JSON whose
-  `stages` lists `run`; the script is `JOB_BOARD_SHIP`, else the job skill's
-  `~/.claude/skills/job/scripts/ship.mjs`), then runs `ship.mjs <repo> <card> run --approved-by
+  `stages` lists `run`; the script is the job skill's `~/.claude/skills/job/scripts/ship.mjs`,
+  or `JOB_BOARD_SHIP` under the test harness only), then runs `ship.mjs <repo> <card> run --approved-by
   board:<message id> --stages merge,install` in the repo. Its output goes to the store's
   `runs/<card>-<message id>.log`; the card shows the run where a job's state goes (`merge+install
   · 3 min`), the log's last line in its details, and the merge script writes the card's status
@@ -463,7 +473,9 @@ button itself. A click on the question never sends.
   <the last line>` (or `failed (exit 1)`, and the card's line says so). One run per card at a
   time. **Until the merge script has a run stage, nothing runs**: the card says `the press is
   recorded; run not available yet`, and the coordinator's message says to carry the press out as
-  before, with `--approved-by board:<message id>`. Exact button words stay accepted when the user
+  before, with `--approved-by board:<message id>` (the reason, no run stage or a `contract` that
+  didn't answer in 15 s, is in the card's details). A run its runner never claimed (still
+  starting a minute on) counts as failed: the card says `the run never started` in amber. Exact button words stay accepted when the user
   types them in the chat; other buttons (choices, plans) still go to the coordinator.
 - **A parent and its cards**: a parent shows in Waiting while a card under it asks (0.20.0, see
   Came from); a card under it that you answered leaves Waiting with its press, and the parent
@@ -732,7 +744,7 @@ and the flags it takes.
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question, status line or result: a restart deletes it, so the card would point nowhere (it says when the file is gone already); and on a result's line of prose over about three lines (never its numbers or code lines). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, result, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
 | | `add`, `edit`, `move … waiting` and `job-start` check the card they leave and write nothing when it fails; `--allow-wording` writes it anyway (see Writing cards). |
-| `done <ref>` | Same as `move <ref> done`. Done on a parent with open cards is allowed, with a warning: they keep their link, and the parent shows where the most urgent of them is until they are done (0.20.0). |
+| `done <ref>` | Same as `move <ref> done`. Done on a parent with open cards is allowed, with a warning: they keep their link, and the parent shows where the most urgent of them is (To do while real work is left) until only follow-ups are left under it (0.20.0). |
 | `rm <ref>` | Remove a card. |
 | `retag <id>… <project>` | Move cards to another project. |
 | `order <ref> top\|up\|down\|bottom [--project P]` | Move a card in its section (see Order above). With `--project`, `up` and `down` step over that project's cards only. Done cards keep their order (exit 2). |

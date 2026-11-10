@@ -1053,8 +1053,7 @@ export function handle(input, env = process.env, { roleEnv = "JOB_AGENT_ROLE", n
     if (input.stop_hook_active && !afterQueue) return pass()
     const turn = readTurn(file, sessionId)
     const pane = env.HERDR_ENV === "1" ? String(env.HERDR_PANE_ID || "") : ""
-    // A question without a Waiting card first (once a turn); else a card of this pane's whose
-    // status line is out of date (0.13.0; once per card and event, per session).
+    // A question without a Waiting card (once a turn).
     // The question may have gone out on Telegram instead: this turn's replies there count too.
     const asked = !turn || turn.blocked ? "" : asksUser(input.last_assistant_message) ? "reply" : telegramReplies(input.transcript_path).some(asksUser) ? "telegram" : ""
     if (asked) {

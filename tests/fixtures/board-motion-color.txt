@@ -16,7 +16,7 @@
   The filter panel from the approved mockup.
 
 [2m4 [0m[1mDocs: fix links[0m                                                                                                 [2m24 min[0m
-  [1;33min Doing, nothing running[0m
+  [36midle[0m
 
 [2m7 [0m[1mAPI client: regenerate[0m                                                                                          [2m20 min[0m
   [32mworking[0m[32m [=   ][0m
@@ -57,7 +57,7 @@
   The filter panel from the approved mockup.
 
 [2m4 [0m[1mDocs: fix links[0m                                   [2m24 min[0m
-  [1;33min Doing, nothing running[0m
+  [36midle[0m
 
 [2m7 [0m[1mAPI client: regenerate[0m                            [2m20 min[0m
   [32mworking[0m[32m [=   ][0m
@@ -99,7 +99,7 @@
   mockup.
 
 [2m4 [0m[1mDocs: fix links[0m               [2m24 min[0m
-  [1;33min Doing, nothing running[0m
+  [36midle[0m
 
 [2m7 [0m[1mAPI client: regenerate[0m        [2m20 min[0m
   [32mworking[0m[32m [   =][0m
@@ -132,7 +132,7 @@
 
 [1;34mDOING (4)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [=   ][0m  [2m25 min[0m
-[1m [0m[2m4[0m   Docs: fix links                                   [1;33min Doing, nothing running[0m  [2m24 min[0m
+[1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [=   ][0m  [2m20 min[0m
 [1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 
@@ -173,7 +173,7 @@
 
 [1;34mDOING (4)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [=   ][0m  [2m25 min[0m
-[1m [0m[2m4[0m   Docs: fix links                                   [1;33min Doing, nothing running[0m  [2m24 min[0m
+[1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [=   ][0m  [2m20 min[0m
 [1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 
@@ -214,7 +214,7 @@
 
 [1;34mDOING (4)[0m [34m──────────────────────────────────────────────────────────────────────────────[0m
 [1m [0m[2m3[0m   Search filters: build                           [32mworking, report done[0m[32m [   =][0m  [2m25 min[0m
-[1m [0m[2m4[0m   Docs: fix links                                   [1;33min Doing, nothing running[0m  [2m24 min[0m
+[1m [0m[2m4[0m   Docs: fix links                                                        [36midle[0m  [2m24 min[0m
 [1m [0m[2m7[0m   API client: regenerate                                       [32mworking[0m[32m [   =][0m  [2m20 min[0m
 [1m [0m[2m8[0m   Release notes: draft                              [1;33min Doing, nothing running[0m  [2m18 min[0m
 

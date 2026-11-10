@@ -212,7 +212,7 @@ test("a parent shows where its most urgent open part is: Waiting, Doing, To do, 
   }
 })
 
-test("a card with no parts shows in its stored column; a Done card stays Done with To do work under it", () => {
+test("a card with no parts shows in its stored column; a Done card shows To do while real work is left under it, Done once only follow-ups are", () => {
   const items = [
     { id: 1, title: "A: plan", column: "doing" },
     { id: 2, title: "B: release", column: "done", since: T },
@@ -224,6 +224,12 @@ test("a card with no parts shows in its stored column; a Done card stays Done wi
   ]
   const state = { items }
   assert.equal(shownColumn(state, items[0]), "doing")
+  // The agreed rule: To do while real work is left, whatever its job reported.
+  assert.equal(shownColumn(state, items[1]), "todo")
+  items[2].follow_up = true
+  assert.equal(shownColumn(state, items[1]), "done")
+  items[2].follow_up = false
+  items[2].column = "done"
   assert.equal(shownColumn(state, items[1]), "done")
   // A Done card with a part that asks shows in Waiting until it is answered.
   assert.equal(shownColumn(state, items[3]), "waiting")

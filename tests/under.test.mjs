@@ -182,8 +182,11 @@ test("Shift+↑ ↓: a sub-task in another section than its parent's moves among
 
 test("its parent done, or another project's in a view of one project: its own row in its section, 'for #231 … (done)' or with the parent's project", () => {
   const state = board({ question: false })
-  // 231 done, and its review too: only 274 (To do) is left under it, so 231 is Done.
+  // 231 done, and its review too: 274 (To do) is real work left under it, so 231 shows in To do.
   for (const i of state.items) if (i.id === 231 || i.id === 279) i.column = "done"
+  assert.match(section(plain(draw(state).text), "TO DO", "DONE").join("\n"), /^ 231   Node health[^\n]*\n 274 {5}↳ Phone alerts move/m)
+  // 274 a follow-up: only it is left under 231, so 231 is Done.
+  state.items.find((i) => i.id === 274).follow_up = true
   const text = plain(draw(state).text)
   assert.match(section(text, "TO DO", "DONE").join("\n"), /^ 274   Phone alerts move: merged, not live yet[^\n]*\n {7}for #231 Node health \(done\)$/m)
   assert.match(text, /TO DO \(1\)/)

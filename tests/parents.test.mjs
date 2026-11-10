@@ -189,13 +189,18 @@ test("done on a parent with open cards: allowed with a warning; they keep their 
   try {
     chain(t)
     const r = t.ok(["done", "2"])
-    assert.match(r.stderr, /board: #2 had open cards for it: #3\. They keep their link, and #2 shows where the most urgent of them is until they are done\./)
+    assert.match(r.stderr, /board: #2 had open cards for it: #3\. They keep their link, and #2 shows in Doing until only follow-ups are left under it\./)
     assert.equal(t.item(3).parent, 2)
     // #2 is Done, but its part #3 is still in Doing: #2 shows in Doing (0.20.0), so #3 isn't "for
     // … (done)"; once #3 is done, #2 is Done and #3 says so.
     assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: false, deploy: false })
     assert.equal(t.entry(2).shown, "doing")
+    // #3 To do: real work is left under #2, so #2 shows in To do, not Done.
     t.ok(["move", "3", "todo"], t.ops)
+    assert.equal(t.entry(2).shown, "todo")
+    assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: false, deploy: false })
+    // Marked a follow-up: only follow-ups are left, so #2 is Done and #3 says so.
+    t.ok(["edit", "3", "--follow-up", "--project", "ops"], t.ops)
     assert.deepEqual(t.entry(3).parentOf, { id: 2, title: "AI agents' AWS switch", tag: "app", done: true, deploy: false })
     const details = detailLines({ ...t.entry(3), column: "todo" }, 100, { now: new Date(NOW) }).lines.map((l) => l.map((seg) => seg.t).join("")).join("\n")
     assert.match(details, /For app #2 AI agents' AWS switch \(done\)/)
@@ -488,8 +493,9 @@ test("grouped (0.7.1): one level under each card; a Done card's open cards show 
     v = t.view()
     assert.deepEqual(v.doing.find((e) => e.id === 1).under.map((c) => c.id), [2])
     assert.deepEqual(v.doing.find((e) => e.id === 2).under.map((c) => c.id), [3])
-    // 3 done too: 2 is Done; a card under a Done card shows under its parent in its place.
-    t.ok(["add", "todo", "Leftover", "--parent", "3"], t.ops)
+    // 3 done too, with only a follow-up left under it: 2 is Done; a card under a Done card shows
+    // under its parent in its place.
+    t.ok(["add", "todo", "Leftover", "--parent", "3", "--follow-up"], t.ops)
     t.ok(["done", "3"], t.ops)
     v = t.view()
     assert.ok(v.doneToday.some((e) => e.id === 2))
@@ -517,10 +523,15 @@ test("under a deploy card (0.14.0): the merged cards wait for the deploy, and th
     assert.match(details(2), /\n {2}Waits for the deploy on #1 Release Notes Manager\n/)
     assert.match(details(1), /\n {2}Shows in Waiting on you: #2 asks you \(its own column: Doing\)\n/)
     // The deploy done while a card under it still asks: it shows in Waiting until that is answered;
-    // once nothing open under it is more than To do, it is Done and its cards say they went out with it.
-    assert.match(t.run(["done", "1"]).stderr, /#1 shows where the most urgent of them is until they are done/)
+    // then in To do while real work is left under it; once that is done, it is Done and its cards
+    // say they went out with it.
+    assert.match(t.run(["done", "1"]).stderr, /#1 shows in Waiting on you until only follow-ups are left under it/)
     assert.match(details(2), /Waits for the deploy on #1 Release Notes Manager/)
     t.ok(["move", "2", "todo"])
+    assert.equal(t.entry(1).shown, "todo")
+    assert.match(details(2), /Waits for the deploy on #1 Release Notes Manager/)
+    t.ok(["done", "3"])
+    t.ok(["edit", "2", "--follow-up"])
     assert.match(details(2), /Deployed with #1 Release Notes Manager \(done\)/)
     // A card under any other card is still a part of it, and that card waits on it.
     t.ok(["add", "doing", "Node health: goes live"])
