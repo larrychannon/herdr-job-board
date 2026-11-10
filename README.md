@@ -414,9 +414,25 @@ button itself. A click on the question never sends.
   project's coordinator only with `--front`. Workers can't. A Telegram bot is held by one
   coordinator, the front: it turns a reply such as `170 go` into `answer 170 go --from
   telegram`, and the text then ends with `(from Telegram)`.
-- The card then shows `sent: Approve · 10:42 · to sfc coordinator (w4:p6)`, under the buttons. Pressing a button again asks "send again?" first;
-  presses run one at a time, so a double click sends once. The coordinator moves or closes the
-  card when it acts on your answer.
+- **A press takes the card off Waiting at once** (0.19.0): once it is delivered, the card goes
+  to Doing with the status line `your press "Approve": being carried out`, its question and
+  buttons gone, so nothing you answered still asks for you. It comes back to Waiting only when
+  a new question is written on it (`move <id> waiting --ask … --option …`). The card keeps what
+  you pressed, the question it answered and where it went: `get` shows `Answered: Approve (a
+  press · 10:42 · to sfc coordinator (w4:p6))`, the details a "Your answer" section. The press
+  itself stays in the coordinator's inbox (`inbox get <id>`, which `ship.mjs --approved-by
+  board:<id>` reads). A question written while the press was on its way stays on the card (the
+  press answered the old one), and the card says so. Presses run one at a time, so a double
+  click sends once. A card from before 0.19.0 still in Waiting after a press shows `sent:
+  Approve · 10:42 · to …` under its buttons, and pressing again there asks "send again?" first.
+- **An answer typed in the chat** (0.19.0): `board.mjs answered <id> "<your words>"` (the
+  coordinator's) does the same for a Waiting card you answered in the chat instead: Doing, `your
+  answer "<your words>": being carried out` (cut to fit; the card keeps them whole, 300
+  characters at most), nothing sent. Workers can't.
+- **A parent and its cards**: the board never puts a parent under Waiting because a card under
+  it waits; each card shows in its own column. A card under it that you answered leaves Waiting
+  with its press, so nothing under Waiting is left over from it. The turn reminder also says
+  to use `answered <id> "<their words>"` for an answer typed in the chat.
 - If the answer can't be handed over, the card says `couldn't send: …` in red and nothing is
   sent: the coordinator's pane is gone, or it is waiting on a question of its own (answer that,
   then press again), or Herdr can't prompt it (next point).
@@ -434,8 +450,10 @@ button itself. A click on the question never sends.
   asking `Your press couldn't run this: type "deploy the fixes" in the coordinator's chat` (or
   `run this command: …`), its status line says the same, the pressed button is gone, and the
   card shows `couldn't run: the "Deploy the fixes" press · 10:36` in amber. The other buttons
-  stay. `--label` must name a button of the card or a press on record (the card's or the
-  inbox's), else nothing is written; a different press still in flight keeps its record.
+  stay: on a card the press took to Doing, the ones it had come back with it (without `--label`,
+  the press on record is the one it took). `--label` must name a button of the card, one it had
+  before a press took it off Waiting, or a press on record (the card's or the inbox's), else
+  nothing is written; a different press still in flight keeps its record.
   Workers can't run it. A new question (`--ask` or `--option`) ends it. For an action the coordinator knows no
   press can run, it does the same before anything is pressed (a Waiting card without `--ask`,
   then `not-run`): `A press can't run this: type "…" in the coordinator's chat`, no button.
@@ -673,6 +691,7 @@ and the flags it takes.
 | `add <column> <title> [--desc D] [--job slug] [--ask A] [--option L]… [--suggest L] [--project P] [--parent ID]` | Add a card; prints its id. Columns: `todo`, `queue`, `doing`, `waiting`, `done` (a card added to or moved into `queue` goes last). `--option` (Waiting only, up to 4) adds answer buttons, `--suggest` marks one. `--parent`: the open card it is made for (see Came from); it may be another project's. |
 | `move <ref> <column> [--ask A] [--desc D] [--option L]… [--suggest L]` | Move a card. `<ref>` is its id, its job slug, or a sub-card's name (`500-review`, 0.19.0). A move to `waiting` takes the question's buttons in the same command (see Writing cards). |
 | `edit <ref> [--title T] [--desc D] [--ask A] [--job slug] [--option L]… [--suggest L] [--clear-options] [--parent ID \| --no-parent]` | Change a card. New `--option`s replace the old ones. A new `--ask` (edit or move) needs `--desc` with a `Now:` line in the same call, or a current status line (see Writing cards). A `Now:` line in `--desc` (add, edit, move, job-start) becomes the card's status line and leaves the description: a card shows one Now. `--parent` sets or changes the card it is made for (one; never itself or a card under it: exit 2), `--no-parent` removes it (the old parent is not marked ready: nothing was finished). |
+| `answered <ref> "<the user's words>"` | The user answered a Waiting card in the chat (0.19.0): it goes to Doing as after a press, with `your answer "<words>": being carried out`, the words kept on the card (`get` shows them; 300 characters at most). Nothing is sent. Not for workers; exit 2 for a card not in Waiting. |
 | `not-run <ref> --type "<words>" \| --run "<command>" [--label L]` | A press its coordinator couldn't carry out (see Answer buttons): the card goes to Waiting, asking and saying in its status line what to type or run; the pressed button (`--label`, else the one sent) is gone. |
 | `lint [--project P]` | Every open card whose words fail the check (see Writing cards), each problem with its fix. It also warns (0.17.0) on a description that still has a `Now:` line next to the card's status line, on a plain description line over about three lines (60 columns each), and (0.19.0) on a file in a temporary folder (`/tmp`, `/private/tmp`, `/var/folders`) in the title, description, question, status line or result: a restart deletes it, so the card would point nowhere (it says when the file is gone already); and on a result's line of prose over about three lines (never its numbers or code lines). Read-only; exit 1 when a card must be fixed, 0 when only warnings are left. |
 | `find <words…> [--project P]` | Which card holds these words (0.19.0): every project's cards (or P's), Done and archived ones too, in the title, description, result, question, status line, job, project (tag or name) and the job report's summary, needs and notes. Any case, each word at the start of a word (`node` finds `nodes`, not `anode`). Most words first, then the newest; at most 20 (then `+N more`). Each: `#511 (500-check) · done Tue 16:00 · sfc · for #500 … · <title>  [3 of 3 words]` and the line that matches (`description: …`; text that looks like a secret hidden). Read-only; exit 1 when no card matches. |
@@ -694,7 +713,7 @@ and the flags it takes.
 | `projects` | Every project: tag, colour, open cards, folder, coordinators (live or gone). |
 | `project set <name> [--tag T] [--color C] [--name N]` | A project's tag (at most 7 characters), colour (magenta, cyan, blue, green, bright magenta, bright cyan) or name. |
 | `ls [--width N] [--project P\|all] [--done 30d]` | Print the board as the pane shows it at that width (wide from 120, the inbox from 70, else compact), with live agent status and every Waiting card open, with Done open: today's finished cards (`--done 30d`: the last 30 days', the archive's too). By default your cards: this project's and the ones your pane owns; `--project P` draws the pane's view of P, `all` every card. Piped with no `--width` (an agent reading it), or with `--width 120`, the wide layout: every card whole. |
-| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`, and `result` (a string) and `result_at` (when it was written) while it has a result (0.19.0). |
+| `json [--project P\|all] [--archive YYYY-MM]` | `{ version, scope, hidden, items, projects }` for your cards (`--project all`: the whole file), or a month's archived Done cards. A card has `parent`, `ready` and `ready_after` when set, `waiting_on` (the open ids under it) when it has any, and `not_run` ({ label, at, type or run }) after `not-run`, `answered` ({ via: press or chat, label, at, to, ask, options }) after a press or `answered` (0.19.0), and `result` (a string) and `result_at` (when it was written) while it has a result (0.19.0). |
 | `job-start <slug> [--id N] [--title T] [--desc D] [--report path] [--worktree W \| --project P] [--parent ID]` | A job started: its card moves to Doing (`--id`, refused when the card is another job's: `edit N --job <slug>` first if that is meant; else that job's To do or Doing card, else its Waiting card when it asks nothing and `--title` names no other task, else a new one, in W's repo). A Waiting card with a question or buttons stays the user's: the round gets a new card, and job-start says how to put it on that card (`--id`). A card leaving Waiting loses its ask and buttons. `--parent` as for `add`. A new card needs `--title`: the slug alone is refused (0.14.0); `--id` without `--title` keeps the card's title. |
 | `job-report <slug> [report.json] [--if-final]` | A job's report landed (default: the `--report` given at `job-start`). See below. With `--if-final`, a missing, unreadable or non-final report is a quiet no-op (exit 0). It never makes a card (0.15.0): with no card for the job, the coordinator gets a `[job note]`. |
 | `now <ref> "<where it stands>" [--only] [--event KIND]` / `now <ref> --clear [--only]` | The card's status line (0.13.0), shown at the top of the card, its details and `ls`: `Now: merged, waiting for your deploy OK`. Written on the card's lineage too (the cards above it and every open card under it, not its siblings) unless `--only`. `--event merge\|deploy\|…` notes that event on the lineage first. Words checked as for a card. See Status lines below. |
@@ -1262,7 +1281,7 @@ card as it is, with no note (0.14.0).
 `lint` lists the open cards that fail, for cards written before the check.
 
 **No secrets on a card** (0.18.0). A card reaches the pane, the coordinator's session and
-Telegram, so `add`, `edit`, `move`, `now`, `result`, `job-start`, `not-run` and `tell` refuse text that
+Telegram, so `add`, `edit`, `move`, `now`, `result`, `job-start`, `not-run`, `answered` and `tell` refuse text that
 looks like a secret, in any text they are given (title, description, question, button labels,
 status line, the note, a result: from a file or stdin too): a private key, an AWS access key, a GitHub, Anthropic, Slack or
 Telegram-bot token, a Slack webhook, a bearer token, or a `password=`, `secret=`, `token=` or

@@ -378,22 +378,36 @@ test("buttons end to end: the prompt's exact argv, sent state, send again?, Othe
     const typed = () => calls().filter((a) => a[1] === "send-text" || a[1] === "send-keys")
     const items = () => JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8")).items
     const title = `Hooks: build? $(touch ${base}/pwned) \`touch ${base}/pwned2\``
-    const rearm = () => board("edit", "1", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording")
+    // A press takes the card off Waiting (0.19.0): a new question brings it back.
+    const rearm = () => assert.equal(board("move", "1", "waiting", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording").status, 0)
     assert.equal(board("add", "waiting", title, "--desc", "Keep the board fresh.", "--ask", "Say go", "--option", "Go", "--option", "Not now", "--suggest", "Go", "--allow-wording").status, 0)
 
     let r = pane("\x1b[C\r")
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(log(), [["agent", "prompt", "w9:p1", `Board card 1 (board · ${title}): Go`]], "one argv element; no shell ever sees it")
     assert.ok(!existsSync(join(base, "pwned")) && !existsSync(join(base, "pwned2")), "nothing in the title ran")
-    assert.deepEqual(items()[0].sent, { label: "Go", at: NOW.toISOString(), pane: "w9:p1", to: "coordinator (w9:p1)" })
-    assert.match(r.stdout, /sent: Go · 10:30/)
+    // Delivered: the card is in Doing at once, its question and buttons gone, the press kept on it.
+    assert.deepEqual([items()[0].column, items()[0].ask, items()[0].options, items()[0].sent], ["doing", "", undefined, undefined])
+    assert.deepEqual(items()[0].answered, { via: "press", label: "Go", at: NOW.toISOString(), to: "coordinator (w9:p1)", ask: "Say go", options: [{ label: "Go", suggested: true }, { label: "Not now" }] })
+    assert.equal(items()[0].now.text, 'your press "Go": being carried out')
+    // The same keys again: nothing waits, nothing is sent.
+    pane("\x1b[C\r")
+    assert.equal(log().length, 1)
 
-    // Pressing again only asks; pressing twice sends again.
+    // A card from before 0.19.0, still in Waiting with a press on record: pressing again only
+    // asks; pressing twice sends again (and then it leaves Waiting).
+    rearm()
+    const legacy = JSON.parse(readFileSync(join(base, ".git", "board-state", "board.json"), "utf8"))
+    legacy.items[0].sent = { label: "Go", at: NOW.toISOString(), pane: "w9:p1", to: "coordinator (w9:p1)" }
+    writeFileSync(join(base, ".git", "board-state", "board.json"), JSON.stringify(legacy))
     r = pane("\x1b[C\r")
+    assert.match(r.stdout, /sent: Go · 10:30/)
     assert.match(r.stdout, /send again\? "Go" was sent already/)
     assert.equal(log().length, 1)
     pane("\x1b[C\r\r")
     assert.equal(log().length, 2)
+    assert.equal(items()[0].column, "doing")
+    rearm()
 
     // Other…: only focuses the coordinator; nothing is typed for the user.
     r = pane("o")
@@ -462,8 +476,12 @@ test("presses run one at a time: a double press sends once; failures become note
     // A double click: the second press arrives while the first is still sending.
     await Promise.all([answers.press(go), answers.press(go)])
     assert.equal(sent.length, 1, "one send")
-    assert.equal(JSON.parse(readFileSync(file, "utf8")).items[0].sent.label, "Go")
-    // A later press asks first.
+    assert.deepEqual([JSON.parse(readFileSync(file, "utf8")).items[0].column, JSON.parse(readFileSync(file, "utf8")).items[0].answered.label], ["doing", "Go"])
+    // A later press: the card isn't waiting any more, nothing is sent.
+    await answers.press(go)
+    assert.equal(sent.length, 1)
+    // A card from before 0.19.0 still in Waiting with a press on record asks first.
+    write({ sent: { label: "Go", at: NOW.toISOString() } })
     await answers.press(go)
     assert.equal(sent.length, 1)
     assert.match(answers.notes["#1"].t, /send again\?/)

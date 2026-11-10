@@ -109,9 +109,8 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     h.ok(sfc, ["add", "todo", "sfc card"], h.at("w4:p6"))
     let r = h.pane(sfc, "\x1b[C\r", "w4:p6")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "wA:p1", "Board card 1 (ai · Guard v5: approve): Go"]], "to its owner, not the pane's coordinator")
-    assert.equal(h.card(1).sent.to, "ai coordinator (wA:p1)")
-    r = h.pane(sfc, "", "w4:p6")
-    assert.match(flat(r.stdout), /sent: Go · 12:03 · to ai coordinator \(wA:p1\)/)
+    assert.deepEqual([h.card(1).column, h.card(1).answered.to], ["doing", "ai coordinator (wA:p1)"])
+    assert.match(h.ok(ai, ["get", "1"], h.at("wA:p1")), /^Now: your press "Go": being carried out/m)
 
     // The owner is gone, and no other ai coordinator runs: the first press warns, the second sends to w4:p6.
     // A new card goes on top of its section, so it is the first one selected.
@@ -122,7 +121,7 @@ test("buttons end to end: to the owner, then the project's coordinator; another 
     assert.match(flat(r.stdout), /no ai coordinator is running: press Yes again to send it to the board's coordinator \(sfc, pane w4:p6\)/)
     r = h.pane(sfc, "\x1b[C\r\r", "w4:p6")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w4:p6", "Board card 3 (ai · Second question): Yes"]])
-    assert.equal(h.card(3).sent.to, "sfc coordinator (w4:p6)")
+    assert.equal(h.card(3).answered.to, "sfc coordinator (w4:p6)")
 
     // No coordinator at all: couldn't send, nothing sent.
     h.ok(ai, ["add", "waiting", "Third", "--option", "Ok", "--allow-wording"], h.at("wA:p1"))
@@ -204,9 +203,8 @@ test("buttons after a restart: the card's owner, the front and the opener are go
     assert.match(flat(r.stdout), /no ai coordinator is running \(the card's own, wA:p1, is gone\): press Install it again to send it to the newest live coordinator \(work, pane w2:p1\)/)
     r = h.pane(work, "\x1b[C\r\r", "w9:p1")
     assert.deepEqual(h.prompts(), [["agent", "prompt", "w2:p1", "Board card 1 (ai · Guard update: install): Install it"]])
-    assert.equal(h.card(1).sent.to, "the newest live work coordinator (w2:p1)")
-    r = h.pane(work, "", "w9:p1")
-    assert.match(flat(r.stdout), /sent: Install it · 12:03 · to the newest live work coordinator \(w2:p1\)/)
+    assert.equal(h.card(1).answered.to, "the newest live work coordinator (w2:p1)")
+    assert.match(h.ok(work, ["get", "1"], h.at("w2:p1")), /^Answered: Install it \(a press · .* · to the newest live work coordinator \(w2:p1\)\)$/m)
     // answer: the same route, only with --front.
     h.ok(ai, ["add", "waiting", "Second: pick", "--option", "Yes please", "--option", "Not now", "--allow-wording"], h.at("wA:p1"))
     h.live("w2:p1", "w5:p3")
@@ -229,15 +227,19 @@ test("answer: a label (any case), a button's number or free text; routed like a 
     h.ok(ai, ["add", "waiting", "Git access: pick", "--option", "Tokens", "--allow-wording"], h.at("wA:p1"))
     h.ok(sfc, ["front"], h.at("w4:p6"))
     // The front (w4:p6) relays Telegram replies.
-    assert.equal(h.ok(sfc, ["answer", "2", "tokens", "--from", "telegram"], h.at("w4:p6")).trim(), "sent to ai coordinator (wA:p1): Tokens")
+    assert.equal(h.ok(sfc, ["answer", "2", "tokens", "--from", "telegram"], h.at("w4:p6")).trim(), 'sent to ai coordinator (wA:p1): Tokens\ncard 2 → doing: your press "Tokens": being carried out')
     assert.deepEqual(h.prompts().at(-1), ["agent", "prompt", "wA:p1", "Board card 2 (ai · Git access: pick): Tokens (from Telegram)"])
-    assert.deepEqual([h.card(2).sent.label, h.card(2).sent.from, h.card(2).sent.to], ["Tokens", "telegram", "ai coordinator (wA:p1)"])
+    assert.deepEqual([h.card(2).column, h.card(2).answered.label, h.card(2).answered.from, h.card(2).answered.to], ["doing", "Tokens", "telegram", "ai coordinator (wA:p1)"])
     // The front owns card 1: nothing is sent to itself; it acts.
     assert.match(h.ok(sfc, ["answer", "1", "2"], h.at("w4:p6")), /^card 1 is this pane's \(sfc coordinator \(w4:p6\)\): act on it here: LON only first$/m)
     assert.equal(h.prompts().length, 1)
     // Free text, up to 300 characters.
     h.ok(ai, ["add", "waiting", "Free", "--ask", "say", "--allow-wording"], h.at("wA:p1"))
     assert.match(h.ok(sfc, ["answer", "3", "keep as is, thanks"], h.at("w4:p6")), /^sent to ai coordinator \(wA:p1\): keep as is, thanks$/m)
+    // Each answer took its card off Waiting (0.19.0): new questions bring them back.
+    h.ok(ai, ["move", "3", "waiting", "--ask", "say again", "--allow-wording"], h.at("wA:p1"))
+    h.ok(ai, ["move", "2", "waiting", "--ask", "pick again", "--option", "Tokens", "--allow-wording"], h.at("wA:p1"))
+    h.ok(sfc, ["move", "1", "waiting", "--ask", "which waves?", "--option", "Go", "--option", "Not today", "--allow-wording"], h.at("w4:p6"))
     assert.equal(h.run(sfc, ["answer", "3", "x".repeat(301)], h.at("w4:p6")).status, 2)
     // The ai coordinator is gone: the front gets it only with --front.
     h.live("w4:p6")

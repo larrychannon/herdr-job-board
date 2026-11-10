@@ -356,11 +356,17 @@ test("a button's answer: socket first ([board answer] … #id, nothing typed), t
     assert.match(live.texts()[0], /^\[board answer\] card \d+ \(.* · Card 304: pick a path\): Socket #[a-z0-9]+$/)
     assert.deepEqual(s.prompts(), [])
 
-    // channel: the 0.9.0 way, nothing posted. (The card was answered already: a press asks
-    // "send again?" first, the second sends.)
+    // channel: the 0.9.0 way, nothing posted. (The answer took the card off Waiting, 0.19.0: a
+    // new question brings it back first.)
+    const ask = () => {
+      const r = s.board(s.coordEnv, "move", String(s.waiting.id), "waiting", "--ask", "Which now?", "--option", "Socket", "--option", "Fallback", "--allow-wording")
+      assert.equal(r.status, 0, r.stderr)
+    }
+    assert.equal(readBoard(s.file).items.find((i) => i.id === s.waiting.id).column, "doing")
     const press = async (env, label) => {
+      ask()
       const answers = createAnswerer({ file: s.file, origin: COORD, env, now: () => new Date(), agents: () => null })
-      for (let i = 0; i < 2; i++) await answers.press({ type: "send", id: s.waiting.id, label, key: `k${i}` })
+      await answers.press({ type: "send", id: s.waiting.id, label, key: "k0" })
     }
     await press({ ...s.coordEnv, JOB_BOARD_DELIVERY: "channel" }, "Fallback")
     assert.equal(unacked(s.file).length, 2)
@@ -386,6 +392,7 @@ test("a button's answer: socket first ([board answer] … #id, nothing typed), t
     assert.ok(acked.acked.has(last.id), "the failed post's message is acked")
     assert.equal(coordinatorNotes(s.file).length, 0)
     // auto with no note: the channel, as in 0.9.0.
+    ask()
     r = s.board({ ...s.coordEnv, HERDR_PANE_ID: "w1:p9" }, "answer", String(s.waiting.id), "Fallback")
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /its job-board channel\): Fallback$/m)

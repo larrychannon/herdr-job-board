@@ -4,7 +4,7 @@
 
 Board search, a press that reaches a coordinator after a restart, sub-card names, quieter Stop
 checks after a job start, a tighter secret screen, a result kept on the card, copying a card's
-text, and `get` for one card.
+text, `get` for one card, and a press that takes its card off Waiting at once.
 
 - **Why**: "which card did we test snmpwalk on?" took ten tries of scripts over board.json and
   still missed the card. After a machine restart, presses on two cards went nowhere: the cards,
@@ -55,6 +55,26 @@ text, and `get` for one card.
   stored), each link, then the whole card as text (`copied 1/3: the result, 14 lines`), round
   to the first; the key line reads `c copy (again: next)` on such a card. The copy is OSC 52,
   which Herdr passes on to the terminal you are attached from.
+- **A press takes its card off Waiting at once**: three times in a week, cards the user had
+  pressed stayed under Waiting with their answered question and buttons, so the board kept
+  asking for something already answered. Once a press is delivered (the pane's button, or
+  `answer`), the card goes to Doing with the status line `your press "<label>": being carried
+  out`, its question and buttons gone; it comes back to Waiting only when a new question is
+  written on it (`--ask`, `--option` or a job's report), and the kept answer then goes, so `get`
+  and `not-run` never name the old press for the new question. The card keeps what was answered (`answered`: { via, label, at, to, ask,
+  options }): `get` shows `Answered: …` and the question, the details a "Your answer" section.
+  The press stays in the inbox as before, for the coordinator and `inbox get` (ship.mjs's
+  `--approved-by board:<id>` lookup). `not-run` after such a press finds it: the press on record
+  is the one taken, and the other buttons come back with the not-run question. A question
+  written while the press was on its way stays (the press answered the old one), said on the
+  card. A parent that was pressed shows its press line, not the line built from its cards.
+- **`board.mjs answered <ref> "<the user's words>"`**: for an answer typed in the chat, the same
+  as a press (`your answer "<words>": being carried out`, cut to fit; the words kept whole, 300
+  characters at most); nothing is sent. The coordinator's only; screened for secrets.
+- **A parent and its pressed cards**: a card under a parent that was pressed leaves Waiting with
+  its press, so neither shows there for an answered question (the board never lifts a parent
+  into Waiting because of a card under it). A job's report read again after a press doesn't
+  bring its question back. The turn reminder names `answered` for an answer typed in the chat.
 - **`board.mjs get <ref> [--json]`**: one card whole as text (title, column, status line,
   question, buttons with the suggested one marked, description, result), or as stored; an
   archived Done card by its number too. Reading one card no longer means parsing `json`.
