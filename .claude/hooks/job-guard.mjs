@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// job-guard v15
+// job-guard v16
 // Vendored into a repo's .claude/hooks/ by the `job` skill (`/job init`). Do not edit the copy in
 // a repo: change ~/.claude/skills/job/hooks/job-guard.mjs and re-run `/job init`, which replaces
 // it (`/job init --check` reports an old or edited copy).
@@ -75,7 +75,7 @@
 // may see. A heredoc read as data (`cat > f`, `git commit -F -`, a script file) is fine.
 //
 // ship.mjs alone (v14): the coordinator, inside Herdr, runs a ship.mjs stage that acts on a press
-// (merge, release, deploy, install, approve) as a command of its own: nothing before or after it
+// (merge, release, deploy, install, and run since v16) as a command of its own: nothing before or after it
 // (`;`, `&&`, `||`, `&`), no pipe, no redirect, no `cd`. ship acks the press and moves the card
 // itself, so nothing needs chaining, and the coordinator's settings allow only that exact form (a
 // chained one waited for a permission prompt the user never saw, or was refused). Read from the
@@ -176,7 +176,7 @@ import { homedir, tmpdir } from "node:os"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-export const VERSION = 15
+export const VERSION = 16
 export const DEFAULT_ROLE_ENV = "JOB_AGENT_ROLE"
 export const JOB_TABS_FILE = "job-tabs.json"
 const HOOK = ".claude/hooks/job-guard.mjs"
@@ -1595,10 +1595,11 @@ export function inlineScript(command) {
   return ""
 }
 
-// The ship.mjs stages that act on a press (v14): the coordinator runs them alone.
-const SHIP_PRESS_STAGES = new Set(["merge", "release", "deploy", "install", "approve"])
+// The ship.mjs stages that act on a press (v14; v16: run, which carries out a press, in place
+// of approve, which is gone): the coordinator runs them alone.
+const SHIP_PRESS_STAGES = new Set(["merge", "release", "deploy", "install", "run"])
 // ship.mjs options that take a value, so a value isn't read as the repo, card or stage.
-const SHIP_VALUE_OPTIONS = /^--(?:pr|approved-by|what|brief|report|title|version|batch|stages|ask)$/
+const SHIP_VALUE_OPTIONS = /^--(?:pr|approved-by|what|brief|report|title|version|stages|ask)$/
 export const SHIP_ALONE = "run ship.mjs alone; it acks the press and moves the card itself"
 
 /** The stage a ship.mjs run names (its third word past the options), or "". */
