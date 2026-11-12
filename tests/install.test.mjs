@@ -160,6 +160,26 @@ test("restart: every board pane on an older version of this copy, or whose files
   }
 })
 
+test("restart: a board pane that refuses to quit is a failure (exit 1, said and logged); the other panes still restart", () => {
+  const t = setup()
+  try {
+    const pane = (id, extra = {}) => ({ pane_id: id, tab_id: "w9:t1", workspace_id: "w9", label: "board", running: `node '${t.plugin}/board-pane.mjs' --board /b/${id.slice(3)}.json --origin 'w9:p1' --version '0.3.9'`, ...extra })
+    t.setHerdr((s) => s.panes.push(pane("w9:p5", { refuse_quit: true }), pane("w9:p6")))
+    const r = t.run(["restart"])
+    assert.equal(r.status, 1, `a pane that didn't restart fails the command\n${r.stdout}`)
+    assert.match(r.stdout, /pane w9:p5: the board there did not quit/)
+    assert.match(r.stdout, /pane w9:p6: board [\d.]+ started/)
+    assert.match(r.stderr, /1 board pane did not restart/)
+    assert.deepEqual(runs(t).map((a) => a[2]), ["w9:p6"], "nothing typed over the board that is still there")
+    const log = readFileSync(join(t.home, ".local", "state", "herdr-job-board", "restart.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    assert.deepEqual(log.map((e) => [e.pane, e.ok]), [["w9:p5", false], ["w9:p6", true]])
+    // pane-restart, the pane's own restart, fails the same way.
+    assert.equal(t.run(["pane-restart", "w9:p5", "--board", t.store, "--origin", "w9:p1"], { JOB_BOARD_RESTART_WAIT_MS: "300" }).status, 1)
+  } finally {
+    t.done()
+  }
+})
+
 test("an update of the pane's own folder: the running pane restarts itself with the new copy, in the same pane", { skip: !/util-linux/.test(spawnSync("script", ["--version"], { encoding: "utf8" }).stdout ?? "") && "needs util-linux script" }, async () => {
   const t = setup()
   const pause = (ms) => new Promise((r) => setTimeout(r, ms))
