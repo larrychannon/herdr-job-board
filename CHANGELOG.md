@@ -79,6 +79,11 @@ press of a merge button runs the work itself.
   tool; it says to ack with the CLI.
 - **Interface for the job skill**: `contract` lists `shown_column`, `rounds` and `press_run`
   (the action syntax, the probe and the run command).
+- **A failed restart fails**: `restart` and `pane-restart` exit 1 when a board pane should have
+  restarted and didn't (the old board didn't quit, the new one didn't start or stay running), and
+  `restart` says how many on stderr. Three board installs in a week left the board pane gone
+  while the install step said "ok", because `restart` always ended with success. Panes left
+  alone on purpose (no board file, something else runs there) still exit 0.
 
 ## 0.19.0 · unreleased
 

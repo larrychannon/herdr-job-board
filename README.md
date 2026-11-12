@@ -613,7 +613,7 @@ failed restart. Restarts are logged to
 `${XDG_STATE_HOME:-~/.local/state}/herdr-job-board/restart.log` (beside the board when
 `JOB_BOARD_HOME` gives it a folder of its own); a board started in a pane within a
 few minutes of a failed restart there says why, once. Panes left alone on purpose are logged as
-skips, not failures.
+skips, not failures; a failed one makes `restart` (and `pane-restart`) exit 1.
 
 A pane from before 0.5.1 only watches its own folder, so under Herdr 0.9.5 it doesn't see the
 update (and one from before 0.4.0 can't restart itself at all): run `open` once from the pane

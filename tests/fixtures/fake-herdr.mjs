@@ -122,8 +122,8 @@ if (key === "session list") {
   process.exit(0)
 }
 if (key === "pane send-text") {
-  // The board quits on "q".
-  if (args[3] === "q" && pane(target)?.running?.includes("board-pane.mjs")) delete pane(target).running
+  // The board quits on "q" (refuse_quit: a board that doesn't, e.g. a hung one).
+  if (args[3] === "q" && pane(target)?.running?.includes("board-pane.mjs") && !pane(target).refuse_quit) delete pane(target).running
   ok({ type: "ok" })
 }
 if (key === "pane process-info") {

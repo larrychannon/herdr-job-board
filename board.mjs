@@ -8088,7 +8088,8 @@ function isRoot(env) {
  * typed, the pane is checked again: a pane with no board file to start, one that is a shell or
  * runs something else now, or one that restarted itself meanwhile, is left alone (`q` never goes
  * to a shell). Every outcome is logged (logRestart), so a board started later in that pane can
- * say why the last restart failed. Returns the lines to print.
+ * say why the last restart failed. Returns the lines to print; `lines.failed` counts the panes that
+ * should have restarted and didn't (skips don't count), so the command can exit 1.
  */
 function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyOrigin = "" } = {}) {
   // From the installed root: a board on an older install folder (Herdr 0.9.5 puts each install in
@@ -8096,9 +8097,11 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
   const root = !only && isRoot(env)
   const panes = only ? [{ pane: only, ...paneState(only, env), ...(onlyFile ? { board: onlyFile, origin: onlyOrigin } : {}) }] : boardPanes(env).filter((p) => stale(p) || (root && oldInstall(p, SCRIPTS, env)))
   const lines = []
+  lines.failed = 0
   const fail = (p, error) => {
     logRestart(env, { pane: p.pane, ok: false, version: VERSION, error })
     lines.push(`pane ${p.pane}: ${error}`)
+    lines.failed++
   }
   // Left alone on purpose: logged as a skip, which a board opened there later doesn't report.
   const skip = (p, why) => {
@@ -8173,6 +8176,7 @@ function restartPanes(env, { pane: only = "", file: onlyFile = "", origin: onlyO
       // kind "start": a board that does start there later, late, is the one this was about.
       logRestart(env, { pane: p.pane, ok: false, kind: "start", version: VERSION, error: why })
       lines.push(`pane ${p.pane}: ${why}`)
+      lines.failed++
       continue
     }
     logRestart(env, { pane: p.pane, ok: true, version: VERSION })
@@ -9738,15 +9742,19 @@ export function main(argv = process.argv.slice(2), env = process.env, io = {}) {
       if (command === "pane-restart") {
         only(opts, command)
         if (rest.length !== 1 || !opts.board) throw usage("usage: board.mjs pane-restart <pane> --board <file> [--origin <pane>]")
-        for (const line of restartPanes(env, { pane: rest[0], file: opts.board, origin: opts.origin ?? "" })) out(line)
-        return 0
+        const lines = restartPanes(env, { pane: rest[0], file: opts.board, origin: opts.origin ?? "" })
+        for (const line of lines) out(line)
+        return lines.failed ? 1 : 0
       }
       only(opts, command)
       const handed = handOver(argv, env, raw, err)
       if (handed !== null) return handed
       const lines = restartPanes(env)
       out(lines.length ? lines.join("\n") : `every board pane runs ${VERSION}: nothing to restart`)
-      return 0
+      // A pane that should have restarted and didn't is a failure (exit 1), so an install step
+      // that runs `restart` can't report ok while the board pane is gone or still the old one.
+      if (lines.failed) err(`${lines.failed} board pane${lines.failed === 1 ? "" : "s"} did not restart: see above`)
+      return lines.failed ? 1 : 0
     }
     const file = boardPath(process.cwd(), env)
     // The writer: its pane (inside Herdr), whether it is a coordinator, and its cwd's project.
